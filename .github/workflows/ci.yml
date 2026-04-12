@@ -1,0 +1,54 @@
+# Backend repository root = Laravel app (this folder).
+# Mirrors composer `ci`: audit + Pint + tests. Run `composer ci:full` locally for PHPStan.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: PHP
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, bcmath, dom, fileinfo, gd, intl, zip, pdo_sqlite
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-progress --prefer-dist --optimize-autoloader --no-interaction
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Composer audit
+        run: composer audit
+
+      - name: Laravel Pint
+        run: ./vendor/bin/pint --test
+
+      - name: PHPUnit
+        run: php artisan test
