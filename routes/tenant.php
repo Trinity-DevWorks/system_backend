@@ -58,9 +58,9 @@ Route::middleware([
         ]);
     });
 
-    // Login Route
+    // Login Route (rate limit: see config/security.php + LOGIN_RATE_LIMIT_PER_MINUTE)
     Route::post('auth/login', LoginController::class)
-        ->middleware('throttle:10,1');
+        ->middleware('throttle:login');
 
     // Protected Routes
     Route::middleware(['auth:sanctum'])->group(function () {

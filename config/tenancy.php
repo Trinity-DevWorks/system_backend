@@ -24,8 +24,14 @@ return [
      * Only relevant if you're using the domain or subdomain identification middleware.
      */
     'central_domains' => collect(explode(',', env('CENTRAL_DOMAIN', 'app.localhost')))
+        ->when(env('APP_ENV', 'production') === 'local', fn ($domains) => $domains->merge([
+            'app.localhost',
+            'localhost',
+            '127.0.0.1',
+        ]))
         ->map(fn ($d) => trim($d))
         ->filter()
+        ->unique()
         ->values()
         ->all(),
 

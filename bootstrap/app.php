@@ -21,7 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(HandleCors::class);
-        $middleware->statefulApi();
+        // Omit statefulApi(): it applies session + CSRF to /api for SANCTUM_STATEFUL_DOMAINS.
+        // This app uses Bearer tokens from createToken(), not cookie session auth — enable
+        // statefulApi() only if you add the SPA flow: GET /sanctum/csrf-cookie then POST with X-XSRF-TOKEN.
         $middleware->alias([
             'check.permission' => CheckPermission::class,
         ]);
