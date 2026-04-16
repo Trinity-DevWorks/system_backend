@@ -38,12 +38,21 @@ class TenantController extends Controller
             return ApiResponse::notFound('Tenant not found.');
         }
 
-        return ApiResponse::success([
+        $payload = [
             'tenant' => [
                 'id' => $tenant->id,
                 'name' => $tenant->name,
             ],
-        ], 'Tenant found.');
+        ];
+
+        $response = ApiResponse::success($payload, 'Tenant found.');
+        $decoded = json_decode($response->content(), true);
+        if (is_array($decoded)) {
+            // inventory-management-backend compatibility: flat `tenant` id string for middleware / clients
+            $decoded['tenant'] = $tenant->id;
+        }
+
+        return response()->json($decoded, $response->status());
     }
 
     public function index(): JsonResponse

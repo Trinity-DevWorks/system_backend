@@ -1,21 +1,25 @@
 <?php
 
-namespace App\Modules\Rbac\Http\Controllers;
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Central;
 
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use App\Modules\Rbac\Http\Requests\LoginRequest;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\PersonalAccessToken;
 
-class LoginController extends Controller
+class CentralAuthController extends Controller
 {
-    public function __invoke(LoginRequest $request): JsonResponse
+    public function login(LoginRequest $request): JsonResponse
     {
         $user = User::query()->where('email', $request->validated('email'))->first();
 
-        if (! $user || ! Hash::check($request->validated('password'), $user->password)) {
+        if (! $user || ! Hash::check($request->validated('password'), (string) $user->password)) {
             return ApiResponse::error('Invalid credentials.', 422);
         }
 
@@ -23,7 +27,7 @@ class LoginController extends Controller
             return ApiResponse::forbidden('Account is inactive.');
         }
 
-        $plainToken = $user->createToken('tenant')->plainTextToken;
+        $plainToken = $user->createToken('central')->plainTextToken;
 
         return ApiResponse::success([
             'access_token' => $plainToken,
@@ -33,8 +37,20 @@ class LoginController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                'role_id' => $user->role_id,
             ],
         ], 'Logged in successfully.');
+    }
+
+    public function logout(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if ($user instanceof User) {
+            $token = $user->currentAccessToken();
+            if ($token instanceof PersonalAccessToken) {
+                $token->delete();
+            }
+        }
+
+        return ApiResponse::success(null, 'Logged out successfully.');
     }
 }
