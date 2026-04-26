@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Http\Controllers;
 
-use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Supplier\DTOs\SupplierGroupData;
@@ -14,27 +13,15 @@ use App\Modules\Supplier\Http\Requests\UpdateSupplierGroupRequest;
 use App\Modules\Supplier\Models\SupplierGroup;
 use App\Modules\Supplier\Services\SupplierGroupService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class SupplierGroupController extends Controller
 {
-    use ResolvesListSection;
-
-    private const INDEX_SECTIONS = ['names'];
-
     public function __construct(
         private readonly SupplierGroupService $supplierGroupService
     ) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        if ($this->resolveListSection($request, self::INDEX_SECTIONS) === 'names') {
-            return ApiResponse::success(
-                SupplierGroupResponseData::collectionToArray($this->supplierGroupService->names()),
-                'Supplier group names fetched successfully.'
-            );
-        }
-
         return ApiResponse::success(
             SupplierGroupResponseData::collectionToArray($this->supplierGroupService->list()),
             'Supplier groups fetched successfully.'

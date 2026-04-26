@@ -6,21 +6,26 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUnitOfMeasurement;
 use App\Modules\Inventory\UnitOfMeasurement\DTOs\UnitOfMeasurementData;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
+use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 
 class UnitOfMeasurementService
 {
+    private const CACHE_LIST = 'unit_of_measurements.list';
+
     public function list(): Collection
     {
-        return UnitOfMeasurement::query()
-            ->with('unitGroup:id,code,name,dimension_type')
-            ->orderBy('name')
-            ->get();
+        return TenantReferenceCache::rememberModels(
+            self::CACHE_LIST,
+            UnitOfMeasurement::class,
+            fn (): Collection => UnitOfMeasurement::query()->orderBy('name')->get()
+        )->load('unitGroup:id,code,name,dimension_type');
     }
 
     public function create(UnitOfMeasurementData $data): UnitOfMeasurement
     {
         $uom = UnitOfMeasurement::query()->create($data->toArray());
+        TenantReferenceCache::forget(self::CACHE_LIST);
 
         return $uom->load('unitGroup:id,code,name,dimension_type');
     }
@@ -28,6 +33,7 @@ class UnitOfMeasurementService
     public function update(UnitOfMeasurement $uom, UnitOfMeasurementData $data): UnitOfMeasurement
     {
         $uom->update($data->toArray());
+        TenantReferenceCache::forget(self::CACHE_LIST);
 
         return $uom->refresh()->load('unitGroup:id,code,name,dimension_type');
     }
@@ -46,5 +52,6 @@ class UnitOfMeasurementService
         }
 
         $uom->delete();
+        TenantReferenceCache::forget(self::CACHE_LIST);
     }
 }

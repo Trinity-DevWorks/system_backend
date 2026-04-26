@@ -6,28 +6,30 @@ namespace App\Modules\Customer\Services;
 
 use App\Modules\Customer\DTOs\CustomerGroupData;
 use App\Modules\Customer\Models\CustomerGroup;
+use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class CustomerGroupService
 {
+    private const CACHE_LIST = 'customer_groups.list';
+
     public function list(): Collection
     {
-        return CustomerGroup::query()->orderBy('name')->get();
-    }
-
-    public function names(): Collection
-    {
-        return CustomerGroup::query()
-            ->select(['id', 'name', 'created_at', 'updated_at'])
-            ->orderBy('name')
-            ->get();
+        return TenantReferenceCache::rememberModels(
+            self::CACHE_LIST,
+            CustomerGroup::class,
+            fn (): Collection => CustomerGroup::query()->orderBy('name')->get()
+        );
     }
 
     public function create(CustomerGroupData $data): CustomerGroup
     {
         return DB::transaction(function () use ($data): CustomerGroup {
-            return CustomerGroup::query()->create($data->toArray());
+            $model = CustomerGroup::query()->create($data->toArray());
+            TenantReferenceCache::forget(self::CACHE_LIST);
+
+            return $model;
         });
     }
 
@@ -35,6 +37,7 @@ class CustomerGroupService
     {
         return DB::transaction(function () use ($group, $data): CustomerGroup {
             $group->update($data->toArray());
+            TenantReferenceCache::forget(self::CACHE_LIST);
 
             return $group->refresh();
         });
@@ -43,5 +46,6 @@ class CustomerGroupService
     public function delete(CustomerGroup $group): void
     {
         $group->delete();
+        TenantReferenceCache::forget(self::CACHE_LIST);
     }
 }

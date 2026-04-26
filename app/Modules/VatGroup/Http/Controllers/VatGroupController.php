@@ -2,7 +2,6 @@
 
 namespace App\Modules\VatGroup\Http\Controllers;
 
-use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\VatGroup\DTOs\VatGroupData;
@@ -12,27 +11,15 @@ use App\Modules\VatGroup\Http\Requests\UpdateVatGroupRequest;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\VatGroup\Services\VatGroupService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class VatGroupController extends Controller
 {
-    use ResolvesListSection;
-
-    private const INDEX_SECTIONS = ['names'];
-
     public function __construct(
         private readonly VatGroupService $vatGroupService
     ) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        if ($this->resolveListSection($request, self::INDEX_SECTIONS) === 'names') {
-            return ApiResponse::success(
-                VatGroupResponseData::collectionToArray($this->vatGroupService->names()),
-                'Vat group names fetched successfully.'
-            );
-        }
-
         return ApiResponse::success(
             VatGroupResponseData::collectionToArray($this->vatGroupService->list()),
             'Vat groups fetched successfully.'

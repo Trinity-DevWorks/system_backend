@@ -15,7 +15,7 @@ return [
     |
     */
 
-    'default' => env('CACHE_STORE', 'null'),
+    'default' => env('CACHE_STORE', 'file'),
 
     /*
     |--------------------------------------------------------------------------
@@ -126,5 +126,15 @@ return [
     */
 
     'serializable_classes' => false,
+
+    /*
+    | TTL for tenant reference lists (categories, warehouses, …).
+    */
+    'reference_ttl_seconds' => (int) env('REFERENCE_CACHE_TTL', 3600),
+
+    /*
+    | TTL for per-user RBAC permission matrix entries.
+    */
+    'rbac_matrix_ttl_seconds' => (int) env('RBAC_MATRIX_CACHE_TTL', 600),
 
 ];

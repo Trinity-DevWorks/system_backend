@@ -8,7 +8,9 @@ use App\Models\User;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\RolePermission;
+use App\Modules\Rbac\Services\PermissionCatalogService;
 use App\Services\PermissionService;
+use App\Support\TenantReferenceCache;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -25,11 +27,11 @@ class BootstrapTenantRbac implements ShouldQueue
         protected int $ownerUserId
     ) {}
 
-    public function handle(PermissionService $permissionService): void
+    public function handle(PermissionService $permissionService, PermissionCatalogService $permissionCatalogService): void
     {
         $ownerUserId = $this->ownerUserId;
 
-        $this->tenant->run(function () use ($ownerUserId, $permissionService): void {
+        $this->tenant->run(function () use ($ownerUserId, $permissionService, $permissionCatalogService): void {
             $resources = config('rbac.resources', []);
 
             foreach ($resources as $resourceKey => $label) {
@@ -89,6 +91,9 @@ class BootstrapTenantRbac implements ShouldQueue
                 $owner->update(['role_id' => $ownerRole->id]);
                 $permissionService->invalidateCacheForUser($owner->fresh());
             }
+
+            $permissionCatalogService->forget();
+            TenantReferenceCache::forget('roles.list');
         });
     }
 }

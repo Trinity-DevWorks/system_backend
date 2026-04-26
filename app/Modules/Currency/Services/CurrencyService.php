@@ -7,27 +7,26 @@ namespace App\Modules\Currency\Services;
 use App\Modules\Currency\DTOs\CurrencyData;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Models\TenantSetting;
+use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class CurrencyService
 {
+    private const CACHE_LIST = 'currencies.list';
+
     public function __construct(
         private readonly ExchangeRateService $exchangeRateService
     ) {}
 
     public function list(): Collection
     {
-        return Currency::query()->orderBy('code')->get();
-    }
-
-    public function names(): Collection
-    {
-        return Currency::query()
-            ->select(['id', 'name', 'code', 'created_at', 'updated_at'])
-            ->orderBy('code')
-            ->get();
+        return TenantReferenceCache::rememberModels(
+            self::CACHE_LIST,
+            Currency::class,
+            fn (): Collection => Currency::query()->orderBy('code')->get()
+        );
     }
 
     public function create(CurrencyData $data): Currency
@@ -46,6 +45,8 @@ class CurrencyService
                     Auth::user()?->name
                 );
             }
+
+            TenantReferenceCache::forget(self::CACHE_LIST);
 
             return $currency->fresh();
         });
@@ -83,6 +84,8 @@ class CurrencyService
                 }
             }
 
+            TenantReferenceCache::forget(self::CACHE_LIST);
+
             return $currency->refresh();
         });
     }
@@ -94,6 +97,7 @@ class CurrencyService
         }
 
         $currency->delete();
+        TenantReferenceCache::forget(self::CACHE_LIST);
     }
 
     /**

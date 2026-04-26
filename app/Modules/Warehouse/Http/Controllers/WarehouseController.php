@@ -2,7 +2,6 @@
 
 namespace App\Modules\Warehouse\Http\Controllers;
 
-use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Warehouse\DTOs\WarehouseData;
@@ -12,27 +11,15 @@ use App\Modules\Warehouse\Http\Requests\UpdateWarehouseRequest;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class WarehouseController extends Controller
 {
-    use ResolvesListSection;
-
-    private const INDEX_SECTIONS = ['names'];
-
     public function __construct(
         private readonly WarehouseService $warehouseService
     ) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        if ($this->resolveListSection($request, self::INDEX_SECTIONS) === 'names') {
-            return ApiResponse::success(
-                WarehouseResponseData::collectionToArray($this->warehouseService->names()),
-                'Warehouse names fetched successfully.'
-            );
-        }
-
         return ApiResponse::success(
             WarehouseResponseData::collectionToArray($this->warehouseService->list()),
             'Warehouses fetched successfully.'
