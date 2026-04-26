@@ -4,22 +4,21 @@ namespace App\Modules\VatGroup\Services;
 
 use App\Modules\VatGroup\DTOs\VatGroupData;
 use App\Modules\VatGroup\Models\VatGroup;
+use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class VatGroupService
 {
+    private const CACHE_LIST = 'vat_groups.list';
+
     public function list(): Collection
     {
-        return VatGroup::query()->orderByDesc('is_default')->orderBy('name')->get();
-    }
-
-    public function names(): Collection
-    {
-        return VatGroup::query()
-            ->select(['id', 'abrv', 'name', 'percentage', 'is_default', 'created_at', 'updated_at'])
-            ->orderBy('name')
-            ->get();
+        return TenantReferenceCache::rememberModels(
+            self::CACHE_LIST,
+            VatGroup::class,
+            fn (): Collection => VatGroup::query()->orderByDesc('is_default')->orderBy('name')->get()
+        );
     }
 
     public function create(VatGroupData $data): VatGroup
@@ -29,7 +28,10 @@ class VatGroupService
                 VatGroup::query()->where('is_default', true)->update(['is_default' => false]);
             }
 
-            return VatGroup::query()->create($data->toArray());
+            $created = VatGroup::query()->create($data->toArray());
+            TenantReferenceCache::forget(self::CACHE_LIST);
+
+            return $created;
         });
     }
 
@@ -45,6 +47,8 @@ class VatGroupService
 
             $vatGroup->update($data->toArray());
 
+            TenantReferenceCache::forget(self::CACHE_LIST);
+
             return $vatGroup->refresh();
         });
     }
@@ -52,5 +56,6 @@ class VatGroupService
     public function delete(VatGroup $vatGroup): void
     {
         $vatGroup->delete();
+        TenantReferenceCache::forget(self::CACHE_LIST);
     }
 }

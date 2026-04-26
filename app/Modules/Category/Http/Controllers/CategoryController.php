@@ -2,7 +2,6 @@
 
 namespace App\Modules\Category\Http\Controllers;
 
-use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Category\DTOs\CategoryData;
@@ -12,27 +11,15 @@ use App\Modules\Category\Http\Requests\UpdateCategoryRequest;
 use App\Modules\Category\Models\Category;
 use App\Modules\Category\Services\CategoryService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
-    use ResolvesListSection;
-
-    private const INDEX_SECTIONS = ['names'];
-
     public function __construct(
         private readonly CategoryService $categoryService
     ) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        if ($this->resolveListSection($request, self::INDEX_SECTIONS) === 'names') {
-            return ApiResponse::success(
-                CategoryResponseData::collectionToArray($this->categoryService->names()),
-                'Category names fetched successfully.'
-            );
-        }
-
         return ApiResponse::success(
             CategoryResponseData::collectionToArray($this->categoryService->list()),
             'Categories fetched successfully.'

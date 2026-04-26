@@ -4,31 +4,34 @@ namespace App\Modules\Category\Services;
 
 use App\Modules\Category\DTOs\CategoryData;
 use App\Modules\Category\Models\Category;
+use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 
 class CategoryService
 {
+    private const CACHE_LIST = 'categories.list';
+
     public function list(): Collection
     {
-        return Category::query()->orderBy('name')->get();
-    }
-
-    public function names(): Collection
-    {
-        return Category::query()
-            ->select(['id', 'name', 'color', 'created_at', 'updated_at'])
-            ->orderBy('name')
-            ->get();
+        return TenantReferenceCache::rememberModels(
+            self::CACHE_LIST,
+            Category::class,
+            fn (): Collection => Category::query()->orderBy('name')->get()
+        );
     }
 
     public function create(CategoryData $data): Category
     {
-        return Category::query()->create($data->toArray());
+        $model = Category::query()->create($data->toArray());
+        TenantReferenceCache::forget(self::CACHE_LIST);
+
+        return $model;
     }
 
     public function update(Category $category, CategoryData $data): Category
     {
         $category->update($data->toArray());
+        TenantReferenceCache::forget(self::CACHE_LIST);
 
         return $category->refresh();
     }
@@ -36,5 +39,6 @@ class CategoryService
     public function delete(Category $category): void
     {
         $category->delete();
+        TenantReferenceCache::forget(self::CACHE_LIST);
     }
 }

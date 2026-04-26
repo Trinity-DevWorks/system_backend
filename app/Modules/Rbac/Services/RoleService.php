@@ -5,18 +5,25 @@ namespace App\Modules\Rbac\Services;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\RolePermission;
 use App\Services\PermissionService;
+use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class RoleService
 {
+    private const CACHE_LIST = 'roles.list';
+
     public function __construct(
         private readonly PermissionService $permissionService
     ) {}
 
     public function list(): Collection
     {
-        return Role::query()->orderBy('name')->get();
+        return TenantReferenceCache::rememberModels(
+            self::CACHE_LIST,
+            Role::class,
+            fn (): Collection => Role::query()->orderBy('name')->get()
+        );
     }
 
     /**
@@ -34,6 +41,7 @@ class RoleService
 
             $this->syncPermissions($role, $data['permissions']);
             $this->permissionService->invalidateCacheForAllUsers();
+            TenantReferenceCache::forget(self::CACHE_LIST);
 
             return $role->load('permissions');
         });
@@ -57,6 +65,7 @@ class RoleService
 
             $this->syncPermissions($role, $data['permissions']);
             $this->permissionService->invalidateCacheForAllUsers();
+            TenantReferenceCache::forget(self::CACHE_LIST);
 
             return $role->refresh()->load('permissions');
         });
@@ -74,6 +83,7 @@ class RoleService
 
         $role->delete();
         $this->permissionService->invalidateCacheForAllUsers();
+        TenantReferenceCache::forget(self::CACHE_LIST);
     }
 
     /**

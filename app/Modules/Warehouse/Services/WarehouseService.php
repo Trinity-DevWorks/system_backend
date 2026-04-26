@@ -4,22 +4,21 @@ namespace App\Modules\Warehouse\Services;
 
 use App\Modules\Warehouse\DTOs\WarehouseData;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class WarehouseService
 {
+    private const CACHE_LIST = 'warehouses.list';
+
     public function list(): Collection
     {
-        return Warehouse::query()->orderByDesc('is_default')->orderBy('name')->get();
-    }
-
-    public function names(): Collection
-    {
-        return Warehouse::query()
-            ->select(['id', 'name', 'shortcut_name', 'is_active', 'is_default', 'created_at', 'updated_at'])
-            ->orderBy('name')
-            ->get();
+        return TenantReferenceCache::rememberModels(
+            self::CACHE_LIST,
+            Warehouse::class,
+            fn (): Collection => Warehouse::query()->orderByDesc('is_default')->orderBy('name')->get()
+        );
     }
 
     public function create(WarehouseData $data): Warehouse
@@ -29,7 +28,10 @@ class WarehouseService
                 Warehouse::query()->where('is_default', true)->update(['is_default' => false]);
             }
 
-            return Warehouse::query()->create($data->toArray());
+            $created = Warehouse::query()->create($data->toArray());
+            TenantReferenceCache::forget(self::CACHE_LIST);
+
+            return $created;
         });
     }
 
@@ -45,6 +47,8 @@ class WarehouseService
 
             $warehouse->update($data->toArray());
 
+            TenantReferenceCache::forget(self::CACHE_LIST);
+
             return $warehouse->refresh();
         });
     }
@@ -52,5 +56,6 @@ class WarehouseService
     public function delete(Warehouse $warehouse): void
     {
         $warehouse->delete();
+        TenantReferenceCache::forget(self::CACHE_LIST);
     }
 }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Currency\Http\Controllers;
 
-use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Currency\DTOs\CurrencyData;
@@ -15,32 +14,15 @@ use App\Modules\Currency\Http\Requests\UpdateCurrencyRequest;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\CurrencyService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class CurrencyController extends Controller
 {
-    use ResolvesListSection;
-
-    private const INDEX_SECTIONS = ['names'];
-
     public function __construct(
         private readonly CurrencyService $currencyService
     ) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        if ($this->resolveListSection($request, self::INDEX_SECTIONS) === 'names') {
-            $rows = $this->currencyService->names()->map(fn (Currency $c): array => [
-                'id' => $c->id,
-                'name' => $c->name,
-                'code' => $c->code,
-                'created_at' => (string) $c->created_at,
-                'updated_at' => (string) $c->updated_at,
-            ])->values()->all();
-
-            return ApiResponse::success($rows, 'Currency names fetched successfully.');
-        }
-
         return ApiResponse::success(
             CurrencyResponseData::collectionToArray($this->currencyService->list()),
             'Currencies fetched successfully.'

@@ -45,8 +45,6 @@ return [
         DatabaseTenancyBootstrapper::class,
         FilesystemTenancyBootstrapper::class,
         QueueTenancyBootstrapper::class,
-        // CacheTenancyBootstrapper requires a tag-capable store (e.g. Redis). Not used — app avoids cache.
-        // Stancl\Tenancy\Bootstrappers\RedisTenancyBootstrapper::class,
     ],
 
     /**
@@ -80,7 +78,7 @@ return [
     ],
 
     /**
-     * Unused unless you re-enable CacheTenancyBootstrapper (requires tag-capable cache).
+     * Tag base for Stancl CacheTenancyBootstrapper (unused — app prefixes keys in TenantReferenceCache).
      */
     'cache' => [
         'tag_base' => 'tenant',

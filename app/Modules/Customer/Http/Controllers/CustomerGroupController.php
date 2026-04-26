@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Customer\Http\Controllers;
 
-use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Customer\DTOs\CustomerGroupData;
@@ -14,27 +13,15 @@ use App\Modules\Customer\Http\Requests\UpdateCustomerGroupRequest;
 use App\Modules\Customer\Models\CustomerGroup;
 use App\Modules\Customer\Services\CustomerGroupService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class CustomerGroupController extends Controller
 {
-    use ResolvesListSection;
-
-    private const INDEX_SECTIONS = ['names'];
-
     public function __construct(
         private readonly CustomerGroupService $customerGroupService
     ) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        if ($this->resolveListSection($request, self::INDEX_SECTIONS) === 'names') {
-            return ApiResponse::success(
-                CustomerGroupResponseData::collectionToArray($this->customerGroupService->names()),
-                'Customer group names fetched successfully.'
-            );
-        }
-
         return ApiResponse::success(
             CustomerGroupResponseData::collectionToArray($this->customerGroupService->list()),
             'Customer groups fetched successfully.'
