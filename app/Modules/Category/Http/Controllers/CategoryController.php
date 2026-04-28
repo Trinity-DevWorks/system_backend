@@ -11,6 +11,7 @@ use App\Modules\Category\Http\Requests\UpdateCategoryRequest;
 use App\Modules\Category\Models\Category;
 use App\Modules\Category\Services\CategoryService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
@@ -18,10 +19,12 @@ class CategoryController extends Controller
         private readonly CategoryService $categoryService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $forceRefresh = $request->boolean('refresh');
+
         return ApiResponse::success(
-            CategoryResponseData::collectionToArray($this->categoryService->list()),
+            CategoryResponseData::collectionToArray($this->categoryService->list($forceRefresh)),
             'Categories fetched successfully.'
         );
     }
@@ -50,7 +53,7 @@ class CategoryController extends Controller
     {
         $updated = $this->categoryService->update(
             $category,
-            CategoryData::fromUpdateRequest($request)
+            CategoryData::fromUpdateRequest($request, $category)
         );
 
         return ApiResponse::success(

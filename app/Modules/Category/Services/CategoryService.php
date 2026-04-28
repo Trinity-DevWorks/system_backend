@@ -11,8 +11,12 @@ class CategoryService
 {
     private const CACHE_LIST = 'categories.list';
 
-    public function list(): Collection
+    public function list(bool $forceRefresh = false): Collection
     {
+        if ($forceRefresh) {
+            TenantReferenceCache::forget(self::CACHE_LIST);
+        }
+
         return TenantReferenceCache::rememberModels(
             self::CACHE_LIST,
             Category::class,
