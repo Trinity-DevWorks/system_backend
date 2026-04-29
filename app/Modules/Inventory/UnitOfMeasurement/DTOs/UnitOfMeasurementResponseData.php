@@ -2,6 +2,7 @@
 
 namespace App\Modules\Inventory\UnitOfMeasurement\DTOs;
 
+use App\Modules\Inventory\Shared\Enums\DimensionType;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use Illuminate\Support\Collection;
@@ -82,14 +83,26 @@ readonly class UnitOfMeasurementResponseData
             return null;
         }
 
-        $dim = $group->dimension_type;
-        $dimValue = $dim instanceof \BackedEnum ? $dim->value : (string) $dim;
-
         return [
             'id' => $group->id,
             'code' => $group->code,
             'name' => $group->name,
-            'dimension_type' => $dimValue,
+            'dimension_type' => self::dimensionTypeValue($group),
         ];
+    }
+
+    private static function dimensionTypeValue(UnitGroup $group): string
+    {
+        $raw = $group->getRawOriginal('dimension_type');
+        if (! is_string($raw)) {
+            return '';
+        }
+
+        $value = trim($raw);
+        if ($value === '') {
+            return '';
+        }
+
+        return DimensionType::tryFrom($value)?->value ?? $value;
     }
 }
