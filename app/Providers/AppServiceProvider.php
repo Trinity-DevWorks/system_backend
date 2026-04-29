@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\User;
+use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
 use App\Modules\Customer\Models\CustomerContact;
-use App\Modules\Customer\Models\Customer;
-use App\Modules\Supplier\Models\SupplierAddress;
 use App\Modules\Supplier\Models\Supplier;
+use App\Modules\Supplier\Models\SupplierAddress;
 use App\Modules\Supplier\Models\SupplierContact;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;

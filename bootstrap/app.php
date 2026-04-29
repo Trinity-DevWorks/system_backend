@@ -2,8 +2,8 @@
 
 use App\Http\Middleware\CheckPermission;
 use App\Http\Responses\ApiResponse;
-use Illuminate\Auth\AuthenticationException;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -70,6 +70,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (HttpExceptionInterface $e, Request $request) use ($wantsEnvelope) {
             if ($wantsEnvelope($request)) {
                 $code = $e->getHeaders()['X-Error-Code'] ?? null;
+
                 return ApiResponse::error(
                     $e->getMessage() !== '' ? $e->getMessage() : 'Request failed.',
                     $e->getStatusCode(),

@@ -87,16 +87,14 @@ final class ApiResponse
     public static function notFound(
         string $message = 'Resource not found.',
         string $code = 'NOT_FOUND'
-    ): JsonResponse
-    {
+    ): JsonResponse {
         return self::error($message, 404, null, [], null, null, $code);
     }
 
     public static function forbidden(
         string $message = 'Forbidden.',
         string $code = 'FORBIDDEN'
-    ): JsonResponse
-    {
+    ): JsonResponse {
         return self::error($message, 403, null, [], null, null, $code);
     }
 
