@@ -10,7 +10,7 @@ use Illuminate\Http\JsonResponse;
  * Stable JSON API envelope (same contract as inventory-management-backend).
  *
  * Success: { success, status, message, data, meta? }
- * Error:   { success, status, message, data?, errors?, error_type?, details? }
+ * Error:   { success, status, message, code?, data?, errors?, error_type?, details? }
  *
  * `status` mirrors `success` (bool) for backward compatibility with older clients.
  */
@@ -49,13 +49,19 @@ final class ApiResponse
         mixed $data = null,
         array|string $errors = [],
         ?string $errorType = null,
-        mixed $details = null
+        mixed $details = null,
+        ?string $code = null
     ): JsonResponse {
+        $resolvedCode = ($code !== null && $code !== '')
+            ? $code
+            : self::defaultErrorCodeForStatus($statusCode);
+
         $body = [
             'success' => false,
             'status' => false,
             'message' => $message,
             'data' => $data,
+            'code' => $resolvedCode,
         ];
         if ($errors !== [] && $errors !== '') {
             $body['errors'] = $errors;
@@ -72,18 +78,37 @@ final class ApiResponse
 
     public static function validationFailed(
         array $errors,
-        string $message = 'Validation failed.'
+        string $message = 'Validation failed.',
+        string $code = 'VALIDATION_ERROR'
     ): JsonResponse {
-        return self::error($message, 422, null, $errors);
+        return self::error($message, 422, null, $errors, null, null, $code);
     }
 
-    public static function notFound(string $message = 'Resource not found.'): JsonResponse
+    public static function notFound(
+        string $message = 'Resource not found.',
+        string $code = 'NOT_FOUND'
+    ): JsonResponse
     {
-        return self::error($message, 404);
+        return self::error($message, 404, null, [], null, null, $code);
     }
 
-    public static function forbidden(string $message = 'Forbidden.'): JsonResponse
+    public static function forbidden(
+        string $message = 'Forbidden.',
+        string $code = 'FORBIDDEN'
+    ): JsonResponse
     {
-        return self::error($message, 403);
+        return self::error($message, 403, null, [], null, null, $code);
+    }
+
+    private static function defaultErrorCodeForStatus(int $statusCode): string
+    {
+        return match ($statusCode) {
+            401 => 'UNAUTHORIZED',
+            403 => 'FORBIDDEN',
+            404 => 'NOT_FOUND',
+            409 => 'CONFLICT',
+            422 => 'VALIDATION_ERROR',
+            default => 'REQUEST_FAILED',
+        };
     }
 }

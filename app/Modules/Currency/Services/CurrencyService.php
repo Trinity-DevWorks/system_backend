@@ -93,7 +93,7 @@ class CurrencyService
     public function delete(Currency $currency): void
     {
         if ($currency->isPrimary()) {
-            abort(422, 'Cannot delete the primary currency. Set another currency as primary first.');
+            abort(422, 'Cannot delete the primary currency. Set another currency as primary first.', ['X-Error-Code' => 'CURRENCY_PRIMARY_DELETE_FORBIDDEN']);
         }
 
         $currency->delete();

@@ -54,7 +54,7 @@ class RoleService
     {
         return DB::transaction(function () use ($role, $data): Role {
             if (in_array($role->name, ['Owner', 'Admin'], true) && $data['name'] !== $role->name) {
-                abort(422, 'Cannot rename system role.');
+                abort(422, 'Cannot rename system role.', ['X-Error-Code' => 'ROLE_SYSTEM_RENAME_FORBIDDEN']);
             }
 
             $role->update([
@@ -74,11 +74,11 @@ class RoleService
     public function delete(Role $role): void
     {
         if (in_array($role->name, ['Owner', 'Admin'], true)) {
-            abort(422, 'Cannot delete system role.');
+            abort(422, 'Cannot delete system role.', ['X-Error-Code' => 'ROLE_SYSTEM_DELETE_FORBIDDEN']);
         }
 
         if ($role->users()->exists()) {
-            abort(409, 'Cannot delete role while users are assigned.');
+            abort(409, 'Cannot delete role while users are assigned.', ['X-Error-Code' => 'ROLE_DELETE_HAS_ASSIGNED_USERS']);
         }
 
         $role->delete();

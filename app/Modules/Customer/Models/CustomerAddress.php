@@ -12,6 +12,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 #[Fillable([
     'customer_id',
+    'address_type',
     'address_line_1',
     'address_line_2',
     'city',

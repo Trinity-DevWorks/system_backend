@@ -19,6 +19,7 @@ class StoreCustomerAddressRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'address_type' => ['required', 'string', 'in:billing,shipping'],
             'address_line_1' => ['required', 'string', 'max:255'],
             'address_line_2' => ['nullable', 'string', 'max:255'],
             'city' => ['required', 'string', 'max:120'],

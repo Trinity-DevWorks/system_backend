@@ -39,7 +39,7 @@ class UnitGroupService
     public function delete(UnitGroup $group): void
     {
         if ($group->unitsOfMeasurement()->exists()) {
-            abort(409, 'Cannot delete unit group while units of measurement exist.');
+            abort(409, 'Cannot delete unit group while units of measurement exist.', ['X-Error-Code' => 'UNIT_GROUP_DELETE_HAS_UNITS']);
         }
 
         $group->delete();

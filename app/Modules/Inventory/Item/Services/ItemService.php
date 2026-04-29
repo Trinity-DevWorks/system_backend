@@ -91,7 +91,7 @@ class ItemService
         foreach ($pivots as $pivot) {
             $uom = $pivot->unitOfMeasurement;
             if ($uom && (int) $uom->unit_group_id !== (int) $newBase->unit_group_id) {
-                abort(422, 'Cannot change base UOM: existing alternate UOMs belong to a different unit group.');
+                abort(422, 'Cannot change base UOM: existing alternate UOMs belong to a different unit group.', ['X-Error-Code' => 'ITEM_BASE_UOM_CHANGE_GROUP_MISMATCH']);
             }
         }
     }

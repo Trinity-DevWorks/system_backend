@@ -19,6 +19,7 @@ class UpdateSupplierAddressRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'address_type' => ['sometimes', 'string', 'in:billing,shipping'],
             'address_line_1' => ['sometimes', 'string', 'max:255'],
             'address_line_2' => ['sometimes', 'nullable', 'string', 'max:255'],
             'city' => ['sometimes', 'string', 'max:120'],
