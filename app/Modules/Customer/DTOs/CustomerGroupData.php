@@ -10,6 +10,7 @@ use App\Modules\Customer\Http\Requests\UpdateCustomerGroupRequest;
 readonly class CustomerGroupData
 {
     public function __construct(
+        public string $code,
         public string $name,
     ) {}
 
@@ -17,21 +18,30 @@ readonly class CustomerGroupData
     {
         $d = $request->validated();
 
-        return new self(name: $d['name']);
+        return new self(
+            code: $d['code'],
+            name: $d['name']
+        );
     }
 
     public static function fromUpdateRequest(UpdateCustomerGroupRequest $request): self
     {
         $d = $request->validated();
 
-        return new self(name: $d['name']);
+        return new self(
+            code: $d['code'],
+            name: $d['name']
+        );
     }
 
     /**
-     * @return array{name: string}
+     * @return array{code: string, name: string}
      */
     public function toArray(): array
     {
-        return ['name' => $this->name];
+        return [
+            'code' => $this->code,
+            'name' => $this->name,
+        ];
     }
 }

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name'])]
+#[Fillable(['code', 'name'])]
 class SupplierGroup extends Model implements AuditableContract
 {
     use Auditable;

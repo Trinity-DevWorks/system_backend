@@ -6,6 +6,7 @@ namespace App\Modules\Currency\Services;
 
 use App\Modules\Currency\DTOs\CurrencyData;
 use App\Modules\Currency\Models\Currency;
+use App\Modules\Currency\Models\CurrencyPairRate;
 use App\Modules\Currency\Models\TenantSetting;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
@@ -27,6 +28,35 @@ class CurrencyService
             Currency::class,
             fn (): Collection => Currency::query()->orderBy('code')->get()
         );
+    }
+
+    /**
+     * All stored pair rates (current rows only — no history). For exchange-rates UI.
+     *
+     * @return list<array{id: int, from_currency_id: int, to_currency_id: int, from_code: string|null, to_code: string|null, rate: float, effective_from: string|null}>
+     */
+    public function listPairRates(): array
+    {
+        $pairs = CurrencyPairRate::query()
+            ->with([
+                'fromCurrency:id,code,name',
+                'toCurrency:id,code,name',
+            ])
+            ->orderBy('from_currency_id')
+            ->orderBy('to_currency_id')
+            ->get();
+
+        return $pairs->map(static function (CurrencyPairRate $row): array {
+            return [
+                'id' => (int) $row->id,
+                'from_currency_id' => (int) $row->from_currency_id,
+                'to_currency_id' => (int) $row->to_currency_id,
+                'from_code' => $row->fromCurrency?->code,
+                'to_code' => $row->toCurrency?->code,
+                'rate' => (float) $row->rate,
+                'effective_from' => $row->effective_from?->toIso8601String(),
+            ];
+        })->values()->all();
     }
 
     public function create(CurrencyData $data): Currency
