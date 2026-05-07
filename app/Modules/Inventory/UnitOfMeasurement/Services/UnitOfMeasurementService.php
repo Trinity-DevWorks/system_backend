@@ -44,11 +44,11 @@ class UnitOfMeasurementService
             ->orWhere('purchase_uom_id', $uom->id)
             ->orWhere('sales_uom_id', $uom->id)
             ->exists()) {
-            abort(409, 'Cannot delete unit of measurement: referenced by items.');
+            abort(409, 'Cannot delete unit of measurement: referenced by items.', ['X-Error-Code' => 'UOM_DELETE_REFERENCED_BY_ITEMS']);
         }
 
         if (ItemUnitOfMeasurement::query()->where('unit_of_measurement_id', $uom->id)->exists()) {
-            abort(409, 'Cannot delete unit of measurement: referenced by item UOM conversions.');
+            abort(409, 'Cannot delete unit of measurement: referenced by item UOM conversions.', ['X-Error-Code' => 'UOM_DELETE_REFERENCED_BY_ITEM_CONVERSIONS']);
         }
 
         $uom->delete();

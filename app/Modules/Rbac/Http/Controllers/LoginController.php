@@ -16,11 +16,11 @@ class LoginController extends Controller
         $user = User::query()->where('email', $request->validated('email'))->first();
 
         if (! $user || ! Hash::check($request->validated('password'), $user->password)) {
-            return ApiResponse::error('Invalid credentials.', 422);
+            return ApiResponse::error('Invalid credentials.', 422, null, [], null, null, 'INVALID_CREDENTIALS');
         }
 
         if (! $user->active) {
-            return ApiResponse::forbidden('Account is inactive.');
+            return ApiResponse::forbidden('Account is inactive.', 'ACCOUNT_INACTIVE');
         }
 
         $plainToken = $user->createToken('tenant')->plainTextToken;

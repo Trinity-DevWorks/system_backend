@@ -72,7 +72,7 @@ class SupplierContactController extends Controller
     private function ensureScoped(Supplier $supplier, SupplierContact $contact): void
     {
         if ((int) $contact->supplier_id !== (int) $supplier->id) {
-            abort(404);
+            abort(404, 'Contact not found for this supplier.', ['X-Error-Code' => 'SUPPLIER_CONTACT_SCOPE_MISMATCH']);
         }
     }
 }

@@ -11,6 +11,7 @@ readonly class CustomerGroupResponseData
 {
     public function __construct(
         public int $id,
+        public string $code,
         public string $name,
         public string $createdAt,
         public string $updatedAt,
@@ -20,6 +21,7 @@ readonly class CustomerGroupResponseData
     {
         return new self(
             id: $group->id,
+            code: $group->code,
             name: $group->name,
             createdAt: (string) $group->created_at,
             updatedAt: (string) $group->updated_at,
@@ -45,6 +47,7 @@ readonly class CustomerGroupResponseData
     {
         return [
             'id' => $this->id,
+            'code' => $this->code,
             'name' => $this->name,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,

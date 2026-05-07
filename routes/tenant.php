@@ -102,7 +102,11 @@ Route::middleware([
             ->middlewareFor(['destroy'], ['check.permission:vat_groups,delete']);
 
         // Currency Management Routes
+        Route::get('currencies/pair-rates', [CurrencyController::class, 'pairRates'])
+            ->middleware('check.permission:currencies,view');
         Route::get('currencies/{currency}/rate-history', [CurrencyController::class, 'rateHistory'])
+            ->middleware('check.permission:currencies,view');
+        Route::post('currencies/fetch-exchange-rates', [CurrencyController::class, 'fetchExchangeRates'])
             ->middleware('check.permission:currencies,view');
         Route::apiResource('currencies', CurrencyController::class)
             ->middlewareFor(['index', 'show'], ['check.permission:currencies,view'])

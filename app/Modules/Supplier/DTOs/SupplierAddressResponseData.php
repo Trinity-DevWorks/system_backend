@@ -12,6 +12,7 @@ readonly class SupplierAddressResponseData
     public function __construct(
         public int $id,
         public int $supplierId,
+        public string $addressType,
         public string $addressLine1,
         public ?string $addressLine2,
         public string $city,
@@ -27,6 +28,7 @@ readonly class SupplierAddressResponseData
         return new self(
             id: $address->id,
             supplierId: $address->supplier_id,
+            addressType: (string) $address->address_type,
             addressLine1: $address->address_line_1,
             addressLine2: $address->address_line_2,
             city: $address->city,
@@ -58,6 +60,7 @@ readonly class SupplierAddressResponseData
         return [
             'id' => $this->id,
             'supplier_id' => $this->supplierId,
+            'address_type' => $this->addressType,
             'address_line_1' => $this->addressLine1,
             'address_line_2' => $this->addressLine2,
             'city' => $this->city,

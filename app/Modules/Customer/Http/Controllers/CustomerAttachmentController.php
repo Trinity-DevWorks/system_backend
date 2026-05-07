@@ -71,7 +71,7 @@ class CustomerAttachmentController extends Controller
 
         $disk = Storage::disk('local');
         if (! $disk instanceof FilesystemAdapter) {
-            abort(500, 'Local filesystem is not configured for downloads.');
+            abort(500, 'Local filesystem is not configured for downloads.', ['X-Error-Code' => 'ATTACHMENT_DOWNLOAD_STORAGE_NOT_CONFIGURED']);
         }
 
         return response()->download($disk->path($attachment->file_path), $attachment->file_name);
@@ -89,7 +89,7 @@ class CustomerAttachmentController extends Controller
     {
         if ($attachment->attachable_type !== $customer->getMorphClass()
             || (int) $attachment->attachable_id !== (int) $customer->id) {
-            abort(404);
+            abort(404, 'Attachment not found for this customer.', ['X-Error-Code' => 'CUSTOMER_ATTACHMENT_SCOPE_MISMATCH']);
         }
     }
 

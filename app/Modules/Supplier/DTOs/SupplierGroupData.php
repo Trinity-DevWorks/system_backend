@@ -10,6 +10,7 @@ use App\Modules\Supplier\Http\Requests\UpdateSupplierGroupRequest;
 readonly class SupplierGroupData
 {
     public function __construct(
+        public string $code,
         public string $name,
     ) {}
 
@@ -17,21 +18,30 @@ readonly class SupplierGroupData
     {
         $d = $request->validated();
 
-        return new self(name: $d['name']);
+        return new self(
+            code: $d['code'],
+            name: $d['name']
+        );
     }
 
     public static function fromUpdateRequest(UpdateSupplierGroupRequest $request): self
     {
         $d = $request->validated();
 
-        return new self(name: $d['name']);
+        return new self(
+            code: $d['code'],
+            name: $d['name']
+        );
     }
 
     /**
-     * @return array{name: string}
+     * @return array{code: string, name: string}
      */
     public function toArray(): array
     {
-        return ['name' => $this->name];
+        return [
+            'code' => $this->code,
+            'name' => $this->name,
+        ];
     }
 }

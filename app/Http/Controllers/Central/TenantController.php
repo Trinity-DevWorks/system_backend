@@ -25,17 +25,17 @@ class TenantController extends Controller
         $name = strtolower(trim($name));
 
         if ($name === '' || in_array($name, self::RESERVED_TENANT_SLUGS, true)) {
-            return ApiResponse::notFound('Tenant not found.');
+            return ApiResponse::notFound('Tenant not found.', 'TENANT_NOT_FOUND');
         }
 
         if (! preg_match('/^[a-z0-9][a-z0-9_-]*$/', $name) || strlen($name) > 63) {
-            return ApiResponse::notFound('Tenant not found.');
+            return ApiResponse::notFound('Tenant not found.', 'TENANT_NOT_FOUND');
         }
 
         $tenant = Tenant::query()->whereKey($name)->first();
 
         if ($tenant === null) {
-            return ApiResponse::notFound('Tenant not found.');
+            return ApiResponse::notFound('Tenant not found.', 'TENANT_NOT_FOUND');
         }
 
         $payload = [
@@ -123,7 +123,7 @@ class TenantController extends Controller
         });
 
         if ($ownerUserId === null) {
-            return ApiResponse::error('Failed to create tenant owner user.', 500);
+            return ApiResponse::error('Failed to create tenant owner user.', 500, null, [], null, null, 'TENANT_OWNER_CREATE_FAILED');
         }
 
         BootstrapTenantRbac::dispatchSync($tenant, $ownerUserId);
