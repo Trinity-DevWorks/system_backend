@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Models\Attachment;
 use App\Modules\Customer\Models\Customer;
+use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Supplier\Models\Supplier;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
@@ -18,12 +19,12 @@ class AttachmentService
     /**
      * @return Collection<int, Attachment>
      */
-    public function listFor(Customer|Supplier $attachable): Collection
+    public function listFor(Customer|Supplier|Salesman $attachable): Collection
     {
         return $attachable->attachments()->orderByDesc('id')->get();
     }
 
-    public function store(Customer|Supplier $attachable, UploadedFile $file, ?int $uploadedByUserId): Attachment
+    public function store(Customer|Supplier|Salesman $attachable, UploadedFile $file, ?int $uploadedByUserId): Attachment
     {
         return DB::transaction(function () use ($attachable, $file, $uploadedByUserId): Attachment {
             $original = $file->getClientOriginalName() ?: 'upload';

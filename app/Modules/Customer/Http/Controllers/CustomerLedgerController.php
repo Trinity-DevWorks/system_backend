@@ -34,18 +34,32 @@ class CustomerLedgerController extends Controller
 
     public function balance(Customer $customer): JsonResponse
     {
-        $balanceStr = $this->ledgerService->balance($customer);
-        $balance = (float) $balanceStr;
-        $creditLimit = (float) $customer->credit_limit;
-        $outstanding = max(0.0, $balance);
-        $remainingCredit = max(0.0, $creditLimit - $outstanding);
+        $customer->load(['balances.currency']);
+        $currencies = [];
+
+        foreach ($customer->balances as $cb) {
+            $currencyId = (int) $cb->currency_id;
+            $balStr = $this->ledgerService->balanceInCurrency($customer, $currencyId);
+            $balance = (float) $balStr;
+            $creditLimit = (float) $cb->credit_limit;
+            $outstanding = max(0.0, $balance);
+            $remainingCredit = max(0.0, $creditLimit - $outstanding);
+
+            $currencies[] = [
+                'currency_id' => $currencyId,
+                'currency_code' => $cb->currency?->code,
+                'opening_balance' => (string) $cb->opening_balance,
+                'opening_date' => $cb->opening_date?->toDateString(),
+                'credit_limit' => (string) $cb->credit_limit,
+                'balance' => $balStr,
+                'outstanding' => number_format($outstanding, 4, '.', ''),
+                'remaining_credit' => number_format($remainingCredit, 4, '.', ''),
+            ];
+        }
 
         return ApiResponse::success(
             [
-                'balance' => $balanceStr,
-                'credit_limit' => (string) $customer->credit_limit,
-                'outstanding' => number_format($outstanding, 4, '.', ''),
-                'remaining_credit' => number_format($remainingCredit, 4, '.', ''),
+                'currencies' => $currencies,
             ],
             'Customer balance retrieved successfully.'
         );

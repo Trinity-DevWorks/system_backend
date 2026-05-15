@@ -12,12 +12,18 @@ use Illuminate\Pagination\LengthAwarePaginator;
 class SupplierLedgerService
 {
     /**
-     * Live balance: SUM(credit) − SUM(debit). Positive means amount owed to supplier (accounts payable).
+     * Live balance in one currency: SUM(credit) − SUM(debit). Positive means amount owed to supplier (AP).
      */
-    public function balance(Supplier $supplier): string
+    public function balanceInCurrency(Supplier $supplier, int $currencyId): string
+    {
+        return $this->balanceInCurrencyForSupplierId($supplier->id, $currencyId);
+    }
+
+    public function balanceInCurrencyForSupplierId(int $supplierId, int $currencyId): string
     {
         $raw = SupplierLedgerEntry::query()
-            ->where('supplier_id', $supplier->id)
+            ->where('supplier_id', $supplierId)
+            ->where('currency_id', $currencyId)
             ->selectRaw('COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as bal')
             ->value('bal');
 
@@ -25,10 +31,29 @@ class SupplierLedgerService
     }
 
     /**
-     * @param  list<int>  $supplierIds
-     * @return array<int, string> supplier_id => balance
+     * @return array<int, string> currency_id => formatted balance
      */
-    public function balancesForSupplierIds(array $supplierIds): array
+    public function balancesPerCurrencyForSupplier(Supplier $supplier): array
+    {
+        $rows = SupplierLedgerEntry::query()
+            ->where('supplier_id', $supplier->id)
+            ->groupBy('currency_id')
+            ->selectRaw('currency_id, COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as bal')
+            ->pluck('bal', 'currency_id');
+
+        $out = [];
+        foreach ($rows as $currencyId => $raw) {
+            $out[(int) $currencyId] = $this->formatMoney($raw);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<int>  $supplierIds
+     * @return array<int, string> supplier_id => balance in one currency
+     */
+    public function balancesForSupplierIdsInCurrency(array $supplierIds, int $currencyId): array
     {
         if ($supplierIds === []) {
             return [];
@@ -36,6 +61,7 @@ class SupplierLedgerService
 
         $rows = SupplierLedgerEntry::query()
             ->whereIn('supplier_id', $supplierIds)
+            ->where('currency_id', $currencyId)
             ->groupBy('supplier_id')
             ->selectRaw('supplier_id, COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as bal')
             ->pluck('bal', 'supplier_id');
@@ -48,20 +74,88 @@ class SupplierLedgerService
         return $out;
     }
 
-    public function postOpeningBalance(Supplier $supplier, string $openingBalance): void
+    /**
+     * @param  list<int>  $supplierIds
+     * @return array<int, array<int, string>> supplier_id => currency_id => balance
+     */
+    public function balancesGroupedBySupplierAndCurrency(array $supplierIds): array
+    {
+        if ($supplierIds === []) {
+            return [];
+        }
+
+        $rows = SupplierLedgerEntry::query()
+            ->whereIn('supplier_id', $supplierIds)
+            ->groupBy('supplier_id', 'currency_id')
+            ->selectRaw('supplier_id, currency_id, COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as bal')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $sid = (int) $row->supplier_id;
+            $curId = (int) $row->currency_id;
+            $out[$sid][$curId] = $this->formatMoney($row->bal);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Primary-currency balance for list views (first currency row or zero).
+     *
+     * @deprecated Prefer balancesPerCurrencyForSupplier; kept for callers expecting a single scalar.
+     */
+    public function balance(Supplier $supplier): string
+    {
+        $byCur = $this->balancesPerCurrencyForSupplier($supplier);
+        if ($byCur === []) {
+            return '0.0000';
+        }
+
+        return reset($byCur);
+    }
+
+    /**
+     * @param  list<int>  $supplierIds
+     * @return array<int, string> supplier_id => balance (sum across currencies — legacy list helper)
+     */
+    public function balancesForSupplierIds(array $supplierIds): array
+    {
+        if ($supplierIds === []) {
+            return [];
+        }
+
+        $grouped = $this->balancesGroupedBySupplierAndCurrency($supplierIds);
+        $out = [];
+        foreach ($supplierIds as $id) {
+            $rows = $grouped[$id] ?? [];
+            $sum = array_sum(array_map(static fn (string $v): float => (float) $v, $rows));
+            $out[$id] = $this->formatMoney($sum);
+        }
+
+        return $out;
+    }
+
+    public function postOpeningBalance(Supplier $supplier, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
     {
         $amount = (float) $openingBalance;
         if (abs($amount) < 0.0000001) {
             return;
         }
 
-        $today = now()->toDateString();
+        $date = $transactionDate ?? now()->toDateString();
 
         if ($amount > 0) {
-            $this->insertEntry($supplier, '0', (string) $amount, LedgerReferenceType::OpeningBalance, null, $today);
+            $this->insertEntry($supplier, $currencyId, '0', (string) $amount, LedgerReferenceType::OpeningBalance, null, $date);
         } else {
-            $this->insertEntry($supplier, (string) abs($amount), '0', LedgerReferenceType::OpeningBalance, null, $today);
+            $this->insertEntry($supplier, $currencyId, (string) abs($amount), '0', LedgerReferenceType::OpeningBalance, null, $date);
         }
+    }
+
+    public function replaceOpeningBalancePosting(Supplier $supplier, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
+    {
+        $this->deleteOpeningEntries($supplier, $currencyId);
+        $this->postOpeningBalance($supplier, $currencyId, $openingBalance, $transactionDate);
     }
 
     /**
@@ -69,6 +163,7 @@ class SupplierLedgerService
      */
     public function postEntry(
         Supplier $supplier,
+        int $currencyId,
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
@@ -81,7 +176,7 @@ class SupplierLedgerService
             throw new \InvalidArgumentException('Ledger entry must have a positive debit or credit.');
         }
 
-        return $this->insertEntry($supplier, $debit, $credit, $referenceType, $referenceId, $transactionDate);
+        return $this->insertEntry($supplier, $currencyId, $debit, $credit, $referenceType, $referenceId, $transactionDate);
     }
 
     /**
@@ -91,13 +186,24 @@ class SupplierLedgerService
     {
         return SupplierLedgerEntry::query()
             ->where('supplier_id', $supplier->id)
+            ->with('currency:id,code')
             ->orderByDesc('transaction_date')
             ->orderByDesc('id')
             ->paginate($perPage);
     }
 
+    private function deleteOpeningEntries(Supplier $supplier, int $currencyId): void
+    {
+        SupplierLedgerEntry::query()
+            ->where('supplier_id', $supplier->id)
+            ->where('currency_id', $currencyId)
+            ->where('reference_type', LedgerReferenceType::OpeningBalance)
+            ->delete();
+    }
+
     private function insertEntry(
         Supplier $supplier,
+        int $currencyId,
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
@@ -106,6 +212,7 @@ class SupplierLedgerService
     ): SupplierLedgerEntry {
         return SupplierLedgerEntry::query()->create([
             'supplier_id' => $supplier->id,
+            'currency_id' => $currencyId,
             'debit' => $debit,
             'credit' => $credit,
             'reference_type' => $referenceType,

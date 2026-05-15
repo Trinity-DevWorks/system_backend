@@ -6,7 +6,9 @@ namespace App\Modules\Supplier\Services;
 
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
+use App\Modules\Supplier\Models\SupplierBalance;
 use App\Modules\Supplier\Models\SupplierContact;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -19,7 +21,27 @@ class SupplierService
     public function list(): Collection
     {
         return Supplier::query()
-            ->with('supplierGroup')
+            ->with(['supplierGroup', 'balances.currency'])
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function listForTable(): Collection
+    {
+        return Supplier::query()
+            ->select([
+                'id',
+                'supplier_code',
+                'name',
+                'company_name',
+                'supplier_group_id',
+                'phone',
+                'email',
+                'is_active',
+                'created_at',
+                'updated_at',
+            ])
+            ->with(['supplierGroup:id,name'])
             ->orderBy('name')
             ->get();
     }
@@ -38,18 +60,22 @@ class SupplierService
     public function create(array $validated): Supplier
     {
         return DB::transaction(function () use ($validated): Supplier {
-            $opening = isset($validated['opening_balance']) ? (string) $validated['opening_balance'] : '0';
-
             $supplier = Supplier::query()->create([
                 'supplier_group_id' => $validated['supplier_group_id'] ?? null,
+                'payment_method_id' => $validated['payment_method_id'] ?? null,
+                'payment_terms_id' => $validated['payment_terms_id'] ?? null,
+                'vat_group_id' => $validated['vat_group_id'] ?? null,
                 'supplier_code' => null,
                 'name' => $validated['name'],
+                'company_name' => $validated['company_name'] ?? null,
                 'email' => $validated['email'] ?? null,
                 'phone' => $validated['phone'] ?? null,
-                'credit_limit' => $validated['credit_limit'] ?? 0,
-                'opening_balance' => $opening,
                 'is_active' => $validated['is_active'] ?? true,
                 'is_vat_registered' => (bool) ($validated['is_vat_registered'] ?? false),
+                'is_exempted' => (bool) ($validated['is_exempted'] ?? false),
+                'exemption_reason' => $validated['exemption_reason'] ?? null,
+                'exempted_from' => $validated['exempted_from'] ?? null,
+                'exempted_to' => $validated['exempted_to'] ?? null,
                 'vat_number' => $validated['vat_number'] ?? null,
                 'notes' => $validated['notes'] ?? null,
             ]);
@@ -90,9 +116,30 @@ class SupplierService
                 ]);
             }
 
-            $this->ledgerService->postOpeningBalance($supplier, $opening);
+            foreach ($validated['currency_balances'] ?? [] as $row) {
+                $currencyId = (int) $row['currency_id'];
+                $openingStr = isset($row['opening_balance']) ? (string) $row['opening_balance'] : '0';
+                $creditStr = isset($row['credit_limit']) ? (string) $row['credit_limit'] : '0';
+                $openingDate = $this->resolveOpeningBalanceDate($row, null);
 
-            return $supplier->load('supplierGroup');
+                SupplierBalance::query()->create([
+                    'supplier_id' => $supplier->id,
+                    'currency_id' => $currencyId,
+                    'opening_balance' => $openingStr,
+                    'opening_date' => $openingDate,
+                    'credit_limit' => $creditStr,
+                ]);
+
+                $this->ledgerService->postOpeningBalance($supplier, $currencyId, $openingStr, $openingDate);
+            }
+
+            return $supplier->load([
+                'supplierGroup',
+                'balances.currency',
+                'paymentMethod',
+                'paymentTerm',
+                'vatGroup',
+            ]);
         });
     }
 
@@ -102,14 +149,103 @@ class SupplierService
     public function update(Supplier $supplier, array $patch): Supplier
     {
         DB::transaction(function () use ($supplier, $patch): void {
-            $supplier->fill($patch);
+            $currencyBalances = $patch['currency_balances'] ?? null;
+            $scalar = collect($patch)->except(['currency_balances'])->all();
+
+            $supplier->fill($scalar);
             if (! $supplier->is_vat_registered) {
                 $supplier->vat_number = null;
             }
+            if (! $supplier->is_exempted) {
+                $supplier->exemption_reason = null;
+                $supplier->exempted_from = null;
+                $supplier->exempted_to = null;
+            }
             $supplier->save();
+
+            if (is_array($currencyBalances)) {
+                $this->syncCurrencyBalances($supplier, $currencyBalances);
+            }
         });
 
-        return $supplier->refresh()->load('supplierGroup');
+        return $supplier->refresh()->load([
+            'supplierGroup',
+            'balances.currency',
+            'paymentMethod',
+            'paymentTerm',
+            'vatGroup',
+        ]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function syncCurrencyBalances(Supplier $supplier, array $rows): void
+    {
+        foreach ($rows as $row) {
+            $currencyId = (int) $row['currency_id'];
+
+            $balanceRow = SupplierBalance::query()
+                ->where('supplier_id', $supplier->id)
+                ->where('currency_id', $currencyId)
+                ->first();
+
+            $prevOpening = $balanceRow !== null
+                ? $this->normalizeMoneyString((string) $balanceRow->opening_balance)
+                : '0.0000';
+
+            $prevOpeningDate = $balanceRow?->opening_date?->toDateString();
+
+            $newOpening = array_key_exists('opening_balance', $row)
+                ? $this->normalizeMoneyString((string) $row['opening_balance'])
+                : $prevOpening;
+
+            $newOpeningDate = $this->resolveOpeningBalanceDate($row, $balanceRow);
+
+            $prevCredit = $balanceRow !== null
+                ? $this->normalizeMoneyString((string) $balanceRow->credit_limit)
+                : '0.0000';
+
+            $newCredit = array_key_exists('credit_limit', $row)
+                ? $this->normalizeMoneyString((string) $row['credit_limit'])
+                : $prevCredit;
+
+            SupplierBalance::query()->updateOrCreate(
+                [
+                    'supplier_id' => $supplier->id,
+                    'currency_id' => $currencyId,
+                ],
+                [
+                    'opening_balance' => $newOpening,
+                    'opening_date' => $newOpeningDate,
+                    'credit_limit' => $newCredit,
+                ],
+            );
+
+            if ($newOpening !== $prevOpening || $newOpeningDate !== $prevOpeningDate) {
+                $this->ledgerService->replaceOpeningBalancePosting($supplier, $currencyId, $newOpening, $newOpeningDate);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function resolveOpeningBalanceDate(array $row, ?SupplierBalance $existing): string
+    {
+        if (array_key_exists('opening_date', $row) && $row['opening_date'] !== null && $row['opening_date'] !== '') {
+            return Carbon::parse((string) $row['opening_date'])->toDateString();
+        }
+        if ($existing?->opening_date !== null) {
+            return $existing->opening_date->toDateString();
+        }
+
+        return now()->toDateString();
+    }
+
+    private function normalizeMoneyString(string $value): string
+    {
+        return number_format((float) $value, 4, '.', '');
     }
 
     public function delete(Supplier $supplier): void

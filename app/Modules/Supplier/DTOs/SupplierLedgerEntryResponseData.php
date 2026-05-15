@@ -11,6 +11,8 @@ readonly class SupplierLedgerEntryResponseData
     public function __construct(
         public int $id,
         public int $supplierId,
+        public int $currencyId,
+        public ?string $currencyCode,
         public string $debit,
         public string $credit,
         public string $referenceType,
@@ -22,9 +24,13 @@ readonly class SupplierLedgerEntryResponseData
 
     public static function fromModel(SupplierLedgerEntry $entry): self
     {
+        $entry->loadMissing('currency:id,code');
+
         return new self(
             id: $entry->id,
             supplierId: $entry->supplier_id,
+            currencyId: (int) $entry->currency_id,
+            currencyCode: $entry->currency?->code,
             debit: (string) $entry->debit,
             credit: (string) $entry->credit,
             referenceType: $entry->reference_type instanceof \BackedEnum ? $entry->reference_type->value : (string) $entry->reference_type,
@@ -43,6 +49,8 @@ readonly class SupplierLedgerEntryResponseData
         return [
             'id' => $this->id,
             'supplier_id' => $this->supplierId,
+            'currency_id' => $this->currencyId,
+            'currency_code' => $this->currencyCode,
             'debit' => $this->debit,
             'credit' => $this->credit,
             'reference_type' => $this->referenceType,

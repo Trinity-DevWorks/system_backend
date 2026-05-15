@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use App\Modules\Rbac\Models\Role;
+use App\Modules\Salesman\Models\Salesman;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -52,5 +54,13 @@ class User extends Authenticatable implements AuditableContract
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * @return HasOne<Salesman, $this>
+     */
+    public function salesmanProfile(): HasOne
+    {
+        return $this->hasOne(Salesman::class);
     }
 }

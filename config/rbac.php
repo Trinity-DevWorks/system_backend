@@ -16,7 +16,10 @@ return [
         'sub_categories' => 'Sub Category Management',
         'vat_groups' => 'VAT Group Management',
         'currencies' => 'Currency Management',
+        'payment_methods' => 'Payment Method Management',
+        'payment_terms' => 'Payment Term Management',
         'warehouses' => 'Warehouse Management',
+        'salesmen' => 'Salesman Management',
 
         'unit_groups' => 'Unit Group Management',
         'unit_of_measurements' => 'Unit Of Measurement Management',

@@ -10,10 +10,12 @@ use App\Http\Controllers\Concerns\ResolvesShowSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\Attachment;
+use App\Modules\Currency\Models\Currency;
 use App\Modules\Supplier\DTOs\SupplierAddressResponseData;
 use App\Modules\Supplier\DTOs\SupplierContactResponseData;
 use App\Modules\Supplier\DTOs\SupplierLedgerEntryResponseData;
 use App\Modules\Supplier\DTOs\SupplierResponseData;
+use App\Modules\Supplier\DTOs\SupplierTableRowResponseData;
 use App\Modules\Supplier\Http\Requests\StoreSupplierRequest;
 use App\Modules\Supplier\Http\Requests\UpdateSupplierRequest;
 use App\Modules\Supplier\Models\Supplier;
@@ -51,11 +53,13 @@ class SupplierController extends Controller
             return ApiResponse::success($rows, 'Supplier names fetched successfully.');
         }
 
-        $suppliers = $this->supplierService->list();
-        $balances = $this->ledgerService->balancesForSupplierIds($suppliers->pluck('id')->all());
+        $suppliers = $this->supplierService->listForTable();
 
         return ApiResponse::success(
-            SupplierResponseData::collectionToArray($suppliers, $balances),
+            $suppliers
+                ->map(fn (Supplier $s): array => SupplierTableRowResponseData::fromModel($s)->toArray())
+                ->values()
+                ->all(),
             'Suppliers fetched successfully.'
         );
     }
@@ -63,10 +67,11 @@ class SupplierController extends Controller
     public function store(StoreSupplierRequest $request): JsonResponse
     {
         $supplier = $this->supplierService->create($request->validated());
-        $balance = $this->ledgerService->balance($supplier);
+        $supplier->loadMissing(['balances.currency', 'supplierGroup', 'paymentMethod', 'paymentTerm', 'vatGroup']);
+        $ledgerBy = $this->ledgerService->balancesPerCurrencyForSupplier($supplier);
 
         return ApiResponse::created(
-            SupplierResponseData::fromModel($supplier, $balance)->toArray(),
+            SupplierResponseData::fromModel($supplier, $ledgerBy, Currency::getPrimary()?->id)->toArray(),
             'Supplier created successfully.'
         );
     }
@@ -74,8 +79,9 @@ class SupplierController extends Controller
     public function show(Request $request, Supplier $supplier): JsonResponse
     {
         $section = $this->resolveShowSection($request, self::SHOW_SECTIONS, 'summary');
-        $balance = $this->ledgerService->balance($supplier);
-        $base = SupplierResponseData::fromModel($supplier, $balance)->toArray();
+        $supplier->loadMissing(['balances.currency', 'supplierGroup', 'paymentMethod', 'paymentTerm', 'vatGroup']);
+        $ledgerBy = $this->ledgerService->balancesPerCurrencyForSupplier($supplier);
+        $base = SupplierResponseData::fromModel($supplier, $ledgerBy, Currency::getPrimary()?->id)->toArray();
 
         if ($section === 'summary') {
             return ApiResponse::success($base, 'Supplier fetched successfully.');
@@ -88,6 +94,7 @@ class SupplierController extends Controller
             $supplier->contacts()->orderBy('name')->get()
         );
         $ledgerPreview = $supplier->ledgerEntries()
+            ->with('currency:id,code')
             ->orderByDesc('transaction_date')
             ->orderByDesc('id')
             ->limit(20)
@@ -118,10 +125,11 @@ class SupplierController extends Controller
     public function update(UpdateSupplierRequest $request, Supplier $supplier): JsonResponse
     {
         $supplier = $this->supplierService->update($supplier, $request->validated());
-        $balance = $this->ledgerService->balance($supplier);
+        $supplier->loadMissing(['balances.currency', 'supplierGroup', 'paymentMethod', 'paymentTerm', 'vatGroup']);
+        $ledgerBy = $this->ledgerService->balancesPerCurrencyForSupplier($supplier);
 
         return ApiResponse::success(
-            SupplierResponseData::fromModel($supplier, $balance)->toArray(),
+            SupplierResponseData::fromModel($supplier, $ledgerBy, Currency::getPrimary()?->id)->toArray(),
             'Supplier updated successfully.'
         );
     }

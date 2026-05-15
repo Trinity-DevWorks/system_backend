@@ -10,10 +10,13 @@ use App\Http\Controllers\Concerns\ResolvesShowSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\Attachment;
+use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\DTOs\CustomerAddressResponseData;
 use App\Modules\Customer\DTOs\CustomerContactResponseData;
 use App\Modules\Customer\DTOs\CustomerLedgerEntryResponseData;
 use App\Modules\Customer\DTOs\CustomerResponseData;
+use App\Modules\Customer\DTOs\CustomerTableRowResponseData;
+use App\Modules\Customer\Enums\CustomerStatus;
 use App\Modules\Customer\Http\Requests\StoreCustomerRequest;
 use App\Modules\Customer\Http\Requests\UpdateCustomerRequest;
 use App\Modules\Customer\Models\Customer;
@@ -43,7 +46,9 @@ class CustomerController extends Controller
                 'id' => $c->id,
                 'customer_code' => (string) ($c->customer_code ?? ''),
                 'name' => $c->name,
-                'is_active' => (bool) $c->is_active,
+                'status' => $c->status instanceof CustomerStatus
+                    ? $c->status->value
+                    : (string) ($c->status ?? CustomerStatus::Active->value),
                 'created_at' => (string) $c->created_at,
                 'updated_at' => (string) $c->updated_at,
             ])->values()->all();
@@ -51,11 +56,13 @@ class CustomerController extends Controller
             return ApiResponse::success($rows, 'Customer names fetched successfully.');
         }
 
-        $customers = $this->customerService->list();
-        $balances = $this->ledgerService->balancesForCustomerIds($customers->pluck('id')->all());
+        $customers = $this->customerService->listForTable();
 
         return ApiResponse::success(
-            CustomerResponseData::collectionToArray($customers, $balances),
+            $customers
+                ->map(fn (Customer $c): array => CustomerTableRowResponseData::fromModel($c)->toArray())
+                ->values()
+                ->all(),
             'Customers fetched successfully.'
         );
     }
@@ -63,10 +70,11 @@ class CustomerController extends Controller
     public function store(StoreCustomerRequest $request): JsonResponse
     {
         $customer = $this->customerService->create($request->validated());
-        $balance = $this->ledgerService->balance($customer);
+        $customer->loadMissing(['balances.currency', 'customerGroup', 'salesman', 'paymentMethod', 'paymentTerm', 'vatGroup']);
+        $ledgerBy = $this->ledgerService->balancesPerCurrencyForCustomer($customer);
 
         return ApiResponse::created(
-            CustomerResponseData::fromModel($customer, $balance)->toArray(),
+            CustomerResponseData::fromModel($customer, $ledgerBy, Currency::getPrimary()?->id)->toArray(),
             'Customer created successfully.'
         );
     }
@@ -74,8 +82,9 @@ class CustomerController extends Controller
     public function show(Request $request, Customer $customer): JsonResponse
     {
         $section = $this->resolveShowSection($request, self::SHOW_SECTIONS, 'summary');
-        $balance = $this->ledgerService->balance($customer);
-        $base = CustomerResponseData::fromModel($customer, $balance)->toArray();
+        $customer->loadMissing(['balances.currency', 'customerGroup', 'salesman', 'paymentMethod', 'paymentTerm', 'vatGroup']);
+        $ledgerBy = $this->ledgerService->balancesPerCurrencyForCustomer($customer);
+        $base = CustomerResponseData::fromModel($customer, $ledgerBy, Currency::getPrimary()?->id)->toArray();
 
         if ($section === 'summary') {
             return ApiResponse::success($base, 'Customer fetched successfully.');
@@ -88,6 +97,7 @@ class CustomerController extends Controller
             $customer->contacts()->orderBy('name')->get()
         );
         $ledgerPreview = $customer->ledgerEntries()
+            ->with('currency:id,code')
             ->orderByDesc('transaction_date')
             ->orderByDesc('id')
             ->limit(20)
@@ -118,10 +128,11 @@ class CustomerController extends Controller
     public function update(UpdateCustomerRequest $request, Customer $customer): JsonResponse
     {
         $customer = $this->customerService->update($customer, $request->validated());
-        $balance = $this->ledgerService->balance($customer);
+        $customer->loadMissing(['balances.currency', 'customerGroup', 'salesman', 'paymentMethod', 'paymentTerm', 'vatGroup']);
+        $ledgerBy = $this->ledgerService->balancesPerCurrencyForCustomer($customer);
 
         return ApiResponse::success(
-            CustomerResponseData::fromModel($customer, $balance)->toArray(),
+            CustomerResponseData::fromModel($customer, $ledgerBy, Currency::getPrimary()?->id)->toArray(),
             'Customer updated successfully.'
         );
     }

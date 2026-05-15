@@ -12,12 +12,18 @@ use Illuminate\Pagination\LengthAwarePaginator;
 class CustomerLedgerService
 {
     /**
-     * Live balance: SUM(debit) − SUM(credit). Positive means customer owes.
+     * Live balance in one currency: SUM(debit) − SUM(credit). Positive means customer owes.
      */
-    public function balance(Customer $customer): string
+    public function balanceInCurrency(Customer $customer, int $currencyId): string
+    {
+        return $this->balanceInCurrencyForCustomerId($customer->id, $currencyId);
+    }
+
+    public function balanceInCurrencyForCustomerId(int $customerId, int $currencyId): string
     {
         $raw = CustomerLedgerEntry::query()
-            ->where('customer_id', $customer->id)
+            ->where('customer_id', $customerId)
+            ->where('currency_id', $currencyId)
             ->selectRaw('COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as bal')
             ->value('bal');
 
@@ -25,10 +31,29 @@ class CustomerLedgerService
     }
 
     /**
-     * @param  list<int>  $customerIds
-     * @return array<int, string> customer_id => balance
+     * @return array<int, string> currency_id => formatted balance
      */
-    public function balancesForCustomerIds(array $customerIds): array
+    public function balancesPerCurrencyForCustomer(Customer $customer): array
+    {
+        $rows = CustomerLedgerEntry::query()
+            ->where('customer_id', $customer->id)
+            ->groupBy('currency_id')
+            ->selectRaw('currency_id, COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as bal')
+            ->pluck('bal', 'currency_id');
+
+        $out = [];
+        foreach ($rows as $currencyId => $raw) {
+            $out[(int) $currencyId] = $this->formatMoney($raw);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<int>  $customerIds
+     * @return array<int, array<int, string>> customer_id => currency_id => balance
+     */
+    public function balancesGroupedByCustomerAndCurrency(array $customerIds): array
     {
         if ($customerIds === []) {
             return [];
@@ -36,32 +61,40 @@ class CustomerLedgerService
 
         $rows = CustomerLedgerEntry::query()
             ->whereIn('customer_id', $customerIds)
-            ->groupBy('customer_id')
-            ->selectRaw('customer_id, COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as bal')
-            ->pluck('bal', 'customer_id');
+            ->groupBy('customer_id', 'currency_id')
+            ->selectRaw('customer_id, currency_id, COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as bal')
+            ->get();
 
         $out = [];
-        foreach ($customerIds as $id) {
-            $out[$id] = $this->formatMoney($rows[$id] ?? 0);
+        foreach ($rows as $row) {
+            $cid = (int) $row->customer_id;
+            $curId = (int) $row->currency_id;
+            $out[$cid][$curId] = $this->formatMoney($row->bal);
         }
 
         return $out;
     }
 
-    public function postOpeningBalance(Customer $customer, string $openingBalance): void
+    public function postOpeningBalance(Customer $customer, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
     {
         $amount = (float) $openingBalance;
         if (abs($amount) < 0.0000001) {
             return;
         }
 
-        $today = now()->toDateString();
+        $date = $transactionDate ?? now()->toDateString();
 
         if ($amount > 0) {
-            $this->insertEntry($customer, (string) $amount, '0', LedgerReferenceType::OpeningBalance, null, $today);
+            $this->insertEntry($customer, $currencyId, (string) $amount, '0', LedgerReferenceType::OpeningBalance, null, $date);
         } else {
-            $this->insertEntry($customer, '0', (string) abs($amount), LedgerReferenceType::OpeningBalance, null, $today);
+            $this->insertEntry($customer, $currencyId, '0', (string) abs($amount), LedgerReferenceType::OpeningBalance, null, $date);
         }
+    }
+
+    public function replaceOpeningBalancePosting(Customer $customer, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
+    {
+        $this->deleteOpeningEntries($customer, $currencyId);
+        $this->postOpeningBalance($customer, $currencyId, $openingBalance, $transactionDate);
     }
 
     /**
@@ -69,6 +102,7 @@ class CustomerLedgerService
      */
     public function postEntry(
         Customer $customer,
+        int $currencyId,
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
@@ -81,7 +115,7 @@ class CustomerLedgerService
             throw new \InvalidArgumentException('Ledger entry must have a positive debit or credit.');
         }
 
-        return $this->insertEntry($customer, $debit, $credit, $referenceType, $referenceId, $transactionDate);
+        return $this->insertEntry($customer, $currencyId, $debit, $credit, $referenceType, $referenceId, $transactionDate);
     }
 
     /**
@@ -91,13 +125,24 @@ class CustomerLedgerService
     {
         return CustomerLedgerEntry::query()
             ->where('customer_id', $customer->id)
+            ->with('currency:id,code')
             ->orderByDesc('transaction_date')
             ->orderByDesc('id')
             ->paginate($perPage);
     }
 
+    private function deleteOpeningEntries(Customer $customer, int $currencyId): void
+    {
+        CustomerLedgerEntry::query()
+            ->where('customer_id', $customer->id)
+            ->where('currency_id', $currencyId)
+            ->where('reference_type', LedgerReferenceType::OpeningBalance)
+            ->delete();
+    }
+
     private function insertEntry(
         Customer $customer,
+        int $currencyId,
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
@@ -106,6 +151,7 @@ class CustomerLedgerService
     ): CustomerLedgerEntry {
         return CustomerLedgerEntry::query()->create([
             'customer_id' => $customer->id,
+            'currency_id' => $currencyId,
             'debit' => $debit,
             'credit' => $credit,
             'reference_type' => $referenceType,

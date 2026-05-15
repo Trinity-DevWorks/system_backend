@@ -4,18 +4,23 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Category\Models\Category;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
+use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerContact;
 use App\Modules\Customer\Models\CustomerGroup;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
+use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
+use App\Modules\Salesman\Models\Salesman;
 use App\Modules\SubCategory\Models\SubCategory;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
@@ -47,12 +52,15 @@ class AppServiceProvider extends ServiceProvider
         $this->configureLoginRateLimiting();
 
         Relation::enforceMorphMap([
+            'tenant' => Tenant::class,
             'user' => User::class,
             'category' => Category::class,
             'sub_category' => SubCategory::class,
             'customer' => Customer::class,
             'customer_group' => CustomerGroup::class,
             'customer_address' => CustomerAddress::class,
+            'customer_balance' => CustomerBalance::class,
+            'salesman' => Salesman::class,
             'supplier' => Supplier::class,
             'supplier_group' => SupplierGroup::class,
             'supplier_address' => SupplierAddress::class,
@@ -61,6 +69,8 @@ class AppServiceProvider extends ServiceProvider
             'vat_group' => VatGroup::class,
             'warehouse' => Warehouse::class,
             'currency' => Currency::class,
+            'payment_method' => PaymentMethod::class,
+            'payment_term' => PaymentTerm::class,
             'permission' => Permission::class,
             'role' => Role::class,
             'item' => Item::class,
