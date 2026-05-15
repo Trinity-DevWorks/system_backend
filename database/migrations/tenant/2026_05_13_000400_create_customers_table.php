@@ -13,17 +13,24 @@ return new class extends Migration
         Schema::create('customers', function (Blueprint $table) {
             $table->id();
             $table->foreignId('customer_group_id')->nullable()->constrained('customer_groups')->nullOnDelete();
+            $table->foreignId('salesman_id')->nullable()->constrained('salesmen')->nullOnDelete();
+            $table->foreignId('payment_method_id')->nullable()->constrained('payment_methods')->nullOnDelete();
+            $table->foreignId('payment_terms_id')->nullable()->constrained('payment_terms')->nullOnDelete();
+            $table->foreignId('vat_group_id')->nullable()->constrained('vat_groups')->nullOnDelete();
             $table->string('customer_code')->nullable()->unique();
             $table->string('name');
             $table->string('email')->nullable()->unique();
             $table->string('phone', 32)->nullable()->index();
             /** individual | business */
             $table->string('type', 32)->index();
-            $table->decimal('credit_limit', 20, 4)->default(0);
-            /** Snapshot at creation / migration only; live balance comes from ledger */
-            $table->decimal('opening_balance', 20, 4)->default(0);
-            $table->boolean('is_active')->default(true);
+            /** active | suspended | blacklisted */
+            $table->string('status', 32)->default('active')->index();
+            $table->text('blacklist_reason')->nullable();
             $table->boolean('is_vat_registered')->default(false);
+            $table->boolean('is_exempted')->default(false);
+            $table->text('exemption_reason')->nullable();
+            $table->date('exempted_from')->nullable();
+            $table->date('exempted_to')->nullable();
             $table->string('vat_number', 128)->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();

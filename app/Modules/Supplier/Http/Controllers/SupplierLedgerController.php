@@ -34,19 +34,32 @@ class SupplierLedgerController extends Controller
 
     public function balance(Supplier $supplier): JsonResponse
     {
-        $balanceStr = $this->ledgerService->balance($supplier);
-        $balance = (float) $balanceStr;
-        $creditLimit = (float) $supplier->credit_limit;
-        /** Payable to supplier (AP); headroom under credit_limit */
-        $outstanding = max(0.0, $balance);
-        $remainingCredit = max(0.0, $creditLimit - $outstanding);
+        $supplier->load(['balances.currency']);
+        $currencies = [];
+
+        foreach ($supplier->balances as $sb) {
+            $currencyId = (int) $sb->currency_id;
+            $balStr = $this->ledgerService->balanceInCurrency($supplier, $currencyId);
+            $balance = (float) $balStr;
+            $creditLimit = (float) $sb->credit_limit;
+            $outstanding = max(0.0, $balance);
+            $remainingCredit = max(0.0, $creditLimit - $outstanding);
+
+            $currencies[] = [
+                'currency_id' => $currencyId,
+                'currency_code' => $sb->currency?->code,
+                'opening_balance' => (string) $sb->opening_balance,
+                'opening_date' => $sb->opening_date?->toDateString(),
+                'credit_limit' => (string) $sb->credit_limit,
+                'balance' => $balStr,
+                'outstanding' => number_format($outstanding, 4, '.', ''),
+                'remaining_credit' => number_format($remainingCredit, 4, '.', ''),
+            ];
+        }
 
         return ApiResponse::success(
             [
-                'balance' => $balanceStr,
-                'credit_limit' => (string) $supplier->credit_limit,
-                'outstanding' => number_format($outstanding, 4, '.', ''),
-                'remaining_credit' => number_format($remainingCredit, 4, '.', ''),
+                'currencies' => $currencies,
             ],
             'Supplier balance retrieved successfully.'
         );

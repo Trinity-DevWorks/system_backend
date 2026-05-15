@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Supplier\Models;
 
 use App\Models\Attachment;
+use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\PaymentTerm\Models\PaymentTerm;
+use App\Modules\VatGroup\Models\VatGroup;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -17,14 +20,20 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 #[Fillable([
     'supplier_group_id',
+    'payment_method_id',
+    'payment_terms_id',
+    'vat_group_id',
     'supplier_code',
     'name',
+    'company_name',
     'email',
     'phone',
-    'credit_limit',
-    'opening_balance',
     'is_active',
     'is_vat_registered',
+    'is_exempted',
+    'exemption_reason',
+    'exempted_from',
+    'exempted_to',
     'vat_number',
     'notes',
 ])]
@@ -40,10 +49,11 @@ class Supplier extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
-            'credit_limit' => 'decimal:4',
-            'opening_balance' => 'decimal:4',
             'is_active' => 'boolean',
             'is_vat_registered' => 'boolean',
+            'is_exempted' => 'boolean',
+            'exempted_from' => 'date',
+            'exempted_to' => 'date',
         ];
     }
 
@@ -53,6 +63,38 @@ class Supplier extends Model implements AuditableContract
     public function supplierGroup(): BelongsTo
     {
         return $this->belongsTo(SupplierGroup::class, 'supplier_group_id');
+    }
+
+    /**
+     * @return BelongsTo<PaymentMethod, $this>
+     */
+    public function paymentMethod(): BelongsTo
+    {
+        return $this->belongsTo(PaymentMethod::class);
+    }
+
+    /**
+     * @return BelongsTo<PaymentTerm, $this>
+     */
+    public function paymentTerm(): BelongsTo
+    {
+        return $this->belongsTo(PaymentTerm::class, 'payment_terms_id');
+    }
+
+    /**
+     * @return BelongsTo<VatGroup, $this>
+     */
+    public function vatGroup(): BelongsTo
+    {
+        return $this->belongsTo(VatGroup::class);
+    }
+
+    /**
+     * @return HasMany<SupplierBalance, $this>
+     */
+    public function balances(): HasMany
+    {
+        return $this->hasMany(SupplierBalance::class);
     }
 
     /**

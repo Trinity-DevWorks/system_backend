@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Currency\Models;
 
+use App\Modules\PaymentMethod\Models\PaymentMethod;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -74,5 +75,13 @@ class Currency extends Model implements AuditableContract
     public function pairRatesTo(): HasMany
     {
         return $this->hasMany(CurrencyPairRate::class, 'to_currency_id');
+    }
+
+    /**
+     * @return HasMany<PaymentMethod, $this>
+     */
+    public function paymentMethods(): HasMany
+    {
+        return $this->hasMany(PaymentMethod::class);
     }
 }

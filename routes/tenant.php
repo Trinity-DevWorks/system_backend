@@ -15,11 +15,15 @@ use App\Modules\Inventory\Item\Http\Controllers\ItemController;
 use App\Modules\Inventory\Item\Http\Controllers\ItemUomController;
 use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
 use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementController;
+use App\Modules\PaymentMethod\Http\Controllers\PaymentMethodController;
+use App\Modules\PaymentTerm\Http\Controllers\PaymentTermController;
 use App\Modules\Rbac\Http\Controllers\LoginController;
 use App\Modules\Rbac\Http\Controllers\PermissionController;
 use App\Modules\Rbac\Http\Controllers\RoleController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
+use App\Modules\Salesman\Http\Controllers\SalesmanAttachmentController;
+use App\Modules\Salesman\Http\Controllers\SalesmanController;
 use App\Modules\SubCategory\Http\Controllers\SubCategoryController;
 use App\Modules\Supplier\Http\Controllers\SupplierAddressController;
 use App\Modules\Supplier\Http\Controllers\SupplierAttachmentController;
@@ -114,12 +118,39 @@ Route::middleware([
             ->middlewareFor(['update'], ['check.permission:currencies,edit'])
             ->middlewareFor(['destroy'], ['check.permission:currencies,delete']);
 
+        Route::apiResource('payment-methods', PaymentMethodController::class)
+            ->middlewareFor(['index', 'show'], ['check.permission:payment_methods,view'])
+            ->middlewareFor(['store'], ['check.permission:payment_methods,add'])
+            ->middlewareFor(['update'], ['check.permission:payment_methods,edit'])
+            ->middlewareFor(['destroy'], ['check.permission:payment_methods,delete']);
+
+        Route::apiResource('payment-terms', PaymentTermController::class)
+            ->middlewareFor(['index', 'show'], ['check.permission:payment_terms,view'])
+            ->middlewareFor(['store'], ['check.permission:payment_terms,add'])
+            ->middlewareFor(['update'], ['check.permission:payment_terms,edit'])
+            ->middlewareFor(['destroy'], ['check.permission:payment_terms,delete']);
+
         // Warehouse Management Routes
         Route::apiResource('warehouses', WarehouseController::class)
             ->middlewareFor(['index', 'show'], ['check.permission:warehouses,view'])
             ->middlewareFor(['store'], ['check.permission:warehouses,add'])
             ->middlewareFor(['update'], ['check.permission:warehouses,edit'])
             ->middlewareFor(['destroy'], ['check.permission:warehouses,delete']);
+
+        Route::get('salesmen/{salesman}/attachments/{attachment}/download', [SalesmanAttachmentController::class, 'download'])
+            ->middleware('check.permission:salesmen,view')
+            ->name('salesmen.attachments.download');
+
+        Route::apiResource('salesmen.attachments', SalesmanAttachmentController::class)
+            ->only(['index', 'store', 'show', 'destroy'])
+            ->middlewareFor(['index', 'show'], ['check.permission:salesmen,view'])
+            ->middlewareFor(['store', 'destroy'], ['check.permission:salesmen,edit']);
+
+        Route::apiResource('salesmen', SalesmanController::class)
+            ->middlewareFor(['index', 'show'], ['check.permission:salesmen,view'])
+            ->middlewareFor(['store'], ['check.permission:salesmen,add'])
+            ->middlewareFor(['update'], ['check.permission:salesmen,edit'])
+            ->middlewareFor(['destroy'], ['check.permission:salesmen,delete']);
 
         // Unit Group Management Routes
         Route::get('unit-groups/{unit_group}/units', [UnitGroupController::class, 'units'])

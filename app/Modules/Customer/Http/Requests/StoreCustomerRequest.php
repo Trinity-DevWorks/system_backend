@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Customer\Http\Requests;
 
+use App\Modules\Customer\Enums\CustomerStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Enum;
 
 class StoreCustomerRequest extends FormRequest
 {
@@ -22,6 +24,20 @@ class StoreCustomerRequest extends FormRequest
                 'vat_number' => null,
             ]);
         }
+
+        $status = $this->input('status', CustomerStatus::Active->value);
+        if ($status !== CustomerStatus::Blacklisted->value) {
+            $this->merge(['blacklist_reason' => null]);
+        }
+
+        if (! $this->boolean('is_exempted')) {
+            $this->merge([
+                'is_exempted' => false,
+                'exemption_reason' => null,
+                'exempted_from' => null,
+                'exempted_to' => null,
+            ]);
+        }
     }
 
     /**
@@ -34,10 +50,22 @@ class StoreCustomerRequest extends FormRequest
             'email' => ['nullable', 'email', 'max:255', 'unique:customers,email'],
             'phone' => ['nullable', 'string', 'max:32'],
             'customer_group_id' => ['nullable', 'integer', 'exists:customer_groups,id'],
+            'salesman_id' => ['nullable', 'integer', 'exists:salesmen,id'],
+            'payment_method_id' => ['nullable', 'integer', 'exists:payment_methods,id'],
+            'payment_terms_id' => ['nullable', 'integer', 'exists:payment_terms,id'],
+            'vat_group_id' => ['nullable', 'integer', 'exists:vat_groups,id'],
             'type' => ['required', 'string', Rule::in(['individual', 'business'])],
-            'credit_limit' => ['nullable', 'numeric', 'min:0'],
-            'opening_balance' => ['nullable', 'numeric'],
-            'is_active' => ['nullable', 'boolean'],
+            'status' => ['nullable', 'string', new Enum(CustomerStatus::class)],
+            'blacklist_reason' => ['nullable', 'string', 'required_if:status,'.CustomerStatus::Blacklisted->value],
+            'is_exempted' => ['nullable', 'boolean'],
+            'exemption_reason' => ['nullable', 'string', 'required_if:is_exempted,true'],
+            'exempted_from' => ['nullable', 'date', 'required_with:exempted_to'],
+            'exempted_to' => ['nullable', 'date', 'after_or_equal:exempted_from'],
+            'currency_balances' => ['nullable', 'array'],
+            'currency_balances.*.currency_id' => ['required', 'integer', 'exists:currencies,id', 'distinct'],
+            'currency_balances.*.opening_balance' => ['nullable', 'numeric'],
+            'currency_balances.*.opening_date' => ['nullable', 'date'],
+            'currency_balances.*.credit_limit' => ['nullable', 'numeric', 'min:0'],
             'is_vat_registered' => ['nullable', 'boolean'],
             'vat_number' => ['nullable', 'string', 'max:128', 'required_if:is_vat_registered,true'],
             'notes' => ['nullable', 'string'],

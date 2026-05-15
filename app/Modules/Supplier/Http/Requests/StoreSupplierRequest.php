@@ -21,6 +21,15 @@ class StoreSupplierRequest extends FormRequest
                 'vat_number' => null,
             ]);
         }
+
+        if (! $this->boolean('is_exempted')) {
+            $this->merge([
+                'is_exempted' => false,
+                'exemption_reason' => null,
+                'exempted_from' => null,
+                'exempted_to' => null,
+            ]);
+        }
     }
 
     /**
@@ -30,14 +39,25 @@ class StoreSupplierRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'company_name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', 'unique:suppliers,email'],
             'phone' => ['nullable', 'string', 'max:32'],
             'supplier_group_id' => ['nullable', 'integer', 'exists:supplier_groups,id'],
-            'credit_limit' => ['nullable', 'numeric', 'min:0'],
-            'opening_balance' => ['nullable', 'numeric'],
+            'payment_method_id' => ['nullable', 'integer', 'exists:payment_methods,id'],
+            'payment_terms_id' => ['nullable', 'integer', 'exists:payment_terms,id'],
+            'vat_group_id' => ['nullable', 'integer', 'exists:vat_groups,id'],
+            'currency_balances' => ['nullable', 'array'],
+            'currency_balances.*.currency_id' => ['required', 'integer', 'exists:currencies,id', 'distinct'],
+            'currency_balances.*.opening_balance' => ['nullable', 'numeric'],
+            'currency_balances.*.opening_date' => ['nullable', 'date'],
+            'currency_balances.*.credit_limit' => ['nullable', 'numeric', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
             'is_vat_registered' => ['nullable', 'boolean'],
             'vat_number' => ['nullable', 'string', 'max:128', 'required_if:is_vat_registered,true'],
+            'is_exempted' => ['nullable', 'boolean'],
+            'exemption_reason' => ['nullable', 'string', 'required_if:is_exempted,true'],
+            'exempted_from' => ['nullable', 'date', 'required_with:exempted_to'],
+            'exempted_to' => ['nullable', 'date', 'after_or_equal:exempted_from'],
             'notes' => ['nullable', 'string'],
 
             'addresses' => ['nullable', 'array'],
@@ -53,6 +73,9 @@ class StoreSupplierRequest extends FormRequest
             'contacts.*.phone' => ['nullable', 'string', 'max:32'],
             'contacts.*.email' => ['nullable', 'email', 'max:255'],
             'contacts.*.position' => ['nullable', 'string', 'max:255'],
+
+            'credit_limit' => ['prohibited'],
+            'opening_balance' => ['prohibited'],
         ];
     }
 }

@@ -13,6 +13,7 @@ return new class extends Migration
         Schema::create('supplier_ledger_entries', function (Blueprint $table) {
             $table->id();
             $table->foreignId('supplier_id')->constrained('suppliers')->cascadeOnDelete();
+            $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             /** Amounts paid to the supplier (reduces payable) */
             $table->decimal('debit', 20, 4)->default(0);
             /** Amounts owed to the supplier from purchases (increases payable) */
@@ -23,6 +24,7 @@ return new class extends Migration
             $table->date('transaction_date')->index();
             $table->timestamps();
 
+            $table->index(['supplier_id', 'currency_id', 'transaction_date']);
             $table->index(['supplier_id', 'transaction_date']);
         });
     }
