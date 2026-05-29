@@ -1,29 +1,30 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Modules\Rbac\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
+use App\Modules\Rbac\DTOs\UserResponseData;
 use App\Modules\Rbac\Http\Requests\UpdateUserRoleRequest;
-use App\Services\PermissionService;
+use App\Modules\Rbac\Services\UserService;
 use Illuminate\Http\JsonResponse;
 
 class UserRoleController extends Controller
 {
     public function __construct(
-        private readonly PermissionService $permissionService
+        private readonly UserService $userService
     ) {}
 
     public function update(UpdateUserRoleRequest $request, User $user): JsonResponse
     {
-        $user->update(['role_id' => $request->validated('role_id')]);
+        $updated = $this->userService->assignRole($user, (int) $request->validated('role_id'));
 
-        $this->permissionService->invalidateCacheForUser($user->fresh());
-
-        return ApiResponse::success([
-            'id' => $user->id,
-            'role_id' => $user->role_id,
-        ], 'User role updated successfully.');
+        return ApiResponse::success(
+            UserResponseData::fromModel($updated)->toArray(),
+            'User role updated successfully.'
+        );
     }
 }

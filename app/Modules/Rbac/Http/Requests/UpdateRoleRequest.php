@@ -26,7 +26,7 @@ class UpdateRoleRequest extends FormRequest
             ],
             'description' => ['nullable', 'string'],
             'active' => ['required', 'boolean'],
-            'permissions' => ['required', 'array'],
+            'permissions' => ['sometimes', 'array'],
             'permissions.*.permission_id' => ['required', 'integer', 'exists:permissions,id'],
             'permissions.*.can_view' => ['required', 'boolean'],
             'permissions.*.can_add' => ['required', 'boolean'],

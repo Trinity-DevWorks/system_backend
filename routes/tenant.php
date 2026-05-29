@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Brand\Http\Controllers\BrandController;
 use App\Modules\Category\Http\Controllers\CategoryController;
 use App\Modules\Currency\Http\Controllers\CurrencyController;
 use App\Modules\Customer\Http\Controllers\CustomerAddressController;
@@ -10,9 +11,17 @@ use App\Modules\Customer\Http\Controllers\CustomerContactController;
 use App\Modules\Customer\Http\Controllers\CustomerController;
 use App\Modules\Customer\Http\Controllers\CustomerGroupController;
 use App\Modules\Customer\Http\Controllers\CustomerLedgerController;
+use App\Modules\Inventory\Item\Http\Controllers\BundleItemController;
+use App\Modules\Inventory\Item\Http\Controllers\ItemAttachmentController;
 use App\Modules\Inventory\Item\Http\Controllers\ItemBarcodeController;
 use App\Modules\Inventory\Item\Http\Controllers\ItemController;
 use App\Modules\Inventory\Item\Http\Controllers\ItemUomController;
+use App\Modules\Inventory\Item\Http\Controllers\RecipeController;
+use App\Modules\Inventory\Item\Http\Controllers\RecipeItemController;
+use App\Modules\Inventory\ItemType\Http\Controllers\ItemTypeController;
+use App\Modules\Inventory\Stock\Http\Controllers\StockBalanceController;
+use App\Modules\Inventory\Stock\Http\Controllers\StockMovementController;
+use App\Modules\Inventory\Stock\Http\Controllers\StockTransferController;
 use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
 use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementController;
 use App\Modules\PaymentMethod\Http\Controllers\PaymentMethodController;
@@ -24,12 +33,12 @@ use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
 use App\Modules\Salesman\Http\Controllers\SalesmanAttachmentController;
 use App\Modules\Salesman\Http\Controllers\SalesmanController;
-use App\Modules\SubCategory\Http\Controllers\SubCategoryController;
 use App\Modules\Supplier\Http\Controllers\SupplierAddressController;
 use App\Modules\Supplier\Http\Controllers\SupplierAttachmentController;
 use App\Modules\Supplier\Http\Controllers\SupplierContactController;
 use App\Modules\Supplier\Http\Controllers\SupplierController;
 use App\Modules\Supplier\Http\Controllers\SupplierGroupController;
+use App\Modules\Supplier\Http\Controllers\SupplierItemController;
 use App\Modules\Supplier\Http\Controllers\SupplierLedgerController;
 use App\Modules\VatGroup\Http\Controllers\VatGroupController;
 use App\Modules\Warehouse\Http\Controllers\WarehouseController;
@@ -79,10 +88,20 @@ Route::middleware([
             ->middlewareFor(['destroy'], ['check.permission:roles,delete']);
 
         // User Management Routes
-        Route::get('users', [UserController::class, 'index'])
-            ->middleware('check.permission:users,view');
+        Route::apiResource('users', UserController::class)
+            ->middlewareFor(['index', 'show'], ['check.permission:users,view'])
+            ->middlewareFor(['store'], ['check.permission:users,add'])
+            ->middlewareFor(['update'], ['check.permission:users,edit'])
+            ->middlewareFor(['destroy'], ['check.permission:users,delete']);
         Route::patch('users/{user}/role', [UserRoleController::class, 'update'])
             ->middleware('check.permission:users,edit');
+
+        // Brand Management Routes
+        Route::apiResource('brands', BrandController::class)
+            ->middlewareFor(['index', 'show'], ['check.permission:brands,view'])
+            ->middlewareFor(['store'], ['check.permission:brands,add'])
+            ->middlewareFor(['update'], ['check.permission:brands,edit'])
+            ->middlewareFor(['destroy'], ['check.permission:brands,delete']);
 
         // Category Management Routes
         Route::apiResource('categories', CategoryController::class)
@@ -90,13 +109,6 @@ Route::middleware([
             ->middlewareFor(['store'], ['check.permission:categories,add'])
             ->middlewareFor(['update'], ['check.permission:categories,edit'])
             ->middlewareFor(['destroy'], ['check.permission:categories,delete']);
-
-        // Sub Category Management Routes
-        Route::apiResource('sub-categories', SubCategoryController::class)
-            ->middlewareFor(['index', 'show'], ['check.permission:sub_categories,view'])
-            ->middlewareFor(['store'], ['check.permission:sub_categories,add'])
-            ->middlewareFor(['update'], ['check.permission:sub_categories,edit'])
-            ->middlewareFor(['destroy'], ['check.permission:sub_categories,delete']);
 
         // Vat Group Management Routes
         Route::apiResource('vat-groups', VatGroupController::class)
@@ -137,9 +149,39 @@ Route::middleware([
             ->middlewareFor(['update'], ['check.permission:warehouses,edit'])
             ->middlewareFor(['destroy'], ['check.permission:warehouses,delete']);
 
+        // Stock (base UOM quantities per warehouse; movements ledger)
+        Route::get('stock/balances', [StockBalanceController::class, 'index'])
+            ->middleware('check.permission:stock,view');
+        Route::get('stock/balances/show', [StockBalanceController::class, 'show'])
+            ->middleware('check.permission:stock,view');
+        Route::get('stock/movements', [StockMovementController::class, 'index'])
+            ->middleware('check.permission:stock,view');
+        Route::post('stock/adjustments', [StockMovementController::class, 'storeAdjustment'])
+            ->middleware('check.permission:stock,edit');
+
+        Route::get('stock/transfers', [StockTransferController::class, 'index'])
+            ->middleware('check.permission:stock,view');
+        Route::post('stock/transfers', [StockTransferController::class, 'store'])
+            ->middleware('check.permission:stock,edit');
+        Route::get('stock/transfers/{stock_transfer}', [StockTransferController::class, 'show'])
+            ->middleware('check.permission:stock,view');
+        Route::put('stock/transfers/{stock_transfer}', [StockTransferController::class, 'update'])
+            ->middleware('check.permission:stock,edit');
+        Route::delete('stock/transfers/{stock_transfer}', [StockTransferController::class, 'destroy'])
+            ->middleware('check.permission:stock,edit');
+        Route::put('stock/transfers/{stock_transfer}/lines/sync', [StockTransferController::class, 'syncLines'])
+            ->middleware('check.permission:stock,edit');
+        Route::post('stock/transfers/{stock_transfer}/post', [StockTransferController::class, 'post'])
+            ->middleware('check.permission:stock,edit');
+        Route::post('stock/transfers/{stock_transfer}/cancel', [StockTransferController::class, 'cancel'])
+            ->middleware('check.permission:stock,edit');
+
         Route::get('salesmen/{salesman}/attachments/{attachment}/download', [SalesmanAttachmentController::class, 'download'])
             ->middleware('check.permission:salesmen,view')
             ->name('salesmen.attachments.download');
+        Route::get('salesmen/{salesman}/attachments/{attachment}/view', [SalesmanAttachmentController::class, 'view'])
+            ->middleware('check.permission:salesmen,view')
+            ->name('salesmen.attachments.view');
 
         Route::apiResource('salesmen.attachments', SalesmanAttachmentController::class)
             ->only(['index', 'store', 'show', 'destroy'])
@@ -170,16 +212,73 @@ Route::middleware([
             ->middlewareFor(['update'], ['check.permission:unit_of_measurements,edit'])
             ->middlewareFor(['destroy'], ['check.permission:unit_of_measurements,delete']);
 
-        // Item Unit of Measurement Management Routes
-        Route::get('items/{item}/unit-of-measurements', [ItemUomController::class, 'index'])
+        // Item type catalog (read-only; seeded on tenant creation)
+        Route::get('item-types', [ItemTypeController::class, 'index'])
             ->middleware('check.permission:items,view');
-        Route::post('items/{item}/unit-of-measurements', [ItemUomController::class, 'store'])
+
+        // Item UOM rows (pricing, barcode, conversion — per currency)
+        Route::get('items/{item}/item-uoms', [ItemUomController::class, 'index'])
+            ->middleware('check.permission:items,view');
+        Route::post('items/{item}/item-uoms', [ItemUomController::class, 'store'])
             ->middleware('check.permission:items,edit');
-        Route::put('items/{item}/unit-of-measurements/{unit_of_measurement}', [ItemUomController::class, 'update'])
+        Route::put('items/{item}/item-uoms/{item_uom}', [ItemUomController::class, 'update'])
             ->middleware('check.permission:items,edit');
-        Route::delete('items/{item}/unit-of-measurements/{unit_of_measurement}', [ItemUomController::class, 'destroy'])
+        Route::delete('items/{item}/item-uoms/{item_uom}', [ItemUomController::class, 'destroy'])
             ->middleware('check.permission:items,edit');
+        Route::get('items/lookup-by-barcode', [ItemBarcodeController::class, 'lookup'])
+            ->middleware('check.permission:items,view');
+        Route::get('items/{item}/barcodes', [ItemBarcodeController::class, 'index'])
+            ->middleware('check.permission:items,view');
         Route::post('items/{item}/barcodes', [ItemBarcodeController::class, 'store'])
+            ->middleware('check.permission:items,edit');
+        Route::put('items/{item}/barcodes/{item_barcode}', [ItemBarcodeController::class, 'update'])
+            ->middleware('check.permission:items,edit');
+        Route::delete('items/{item}/barcodes/{item_barcode}', [ItemBarcodeController::class, 'destroy'])
+            ->middleware('check.permission:items,edit');
+
+        Route::get('items/{item}/supplier-items', [SupplierItemController::class, 'indexForItem'])
+            ->middleware('check.permission:items,view');
+
+        Route::get('items/{item}/attachments/{attachment}/download', [ItemAttachmentController::class, 'download'])
+            ->middleware('check.permission:items,view')
+            ->name('items.attachments.download');
+        Route::get('items/{item}/attachments/{attachment}/view', [ItemAttachmentController::class, 'view'])
+            ->middleware('check.permission:items,view')
+            ->name('items.attachments.view');
+        Route::put('items/{item}/attachments/{attachment}/primary', [ItemAttachmentController::class, 'setPrimary'])
+            ->middleware('check.permission:items,edit')
+            ->name('items.attachments.set-primary');
+
+        Route::apiResource('items.attachments', ItemAttachmentController::class)
+            ->only(['index', 'store', 'show', 'destroy'])
+            ->middlewareFor(['index', 'show'], ['check.permission:items,view'])
+            ->middlewareFor(['store', 'destroy'], ['check.permission:items,edit']);
+
+        Route::get('items/{item}/bundle-items', [BundleItemController::class, 'index'])
+            ->middleware('check.permission:items,view');
+        Route::post('items/{item}/bundle-items', [BundleItemController::class, 'store'])
+            ->middleware('check.permission:items,edit');
+        Route::put('items/{item}/bundle-items/sync', [BundleItemController::class, 'sync'])
+            ->middleware('check.permission:items,edit');
+        Route::put('items/{item}/bundle-items/{bundle_item}', [BundleItemController::class, 'update'])
+            ->middleware('check.permission:items,edit');
+        Route::delete('items/{item}/bundle-items/{bundle_item}', [BundleItemController::class, 'destroy'])
+            ->middleware('check.permission:items,edit');
+
+        Route::get('items/{item}/recipe', [RecipeController::class, 'show'])
+            ->middleware('check.permission:items,view');
+        Route::put('items/{item}/recipe', [RecipeController::class, 'upsert'])
+            ->middleware('check.permission:items,edit');
+
+        Route::get('items/{item}/recipe-items', [RecipeItemController::class, 'index'])
+            ->middleware('check.permission:items,view');
+        Route::post('items/{item}/recipe-items', [RecipeItemController::class, 'store'])
+            ->middleware('check.permission:items,edit');
+        Route::put('items/{item}/recipe-items/sync', [RecipeItemController::class, 'sync'])
+            ->middleware('check.permission:items,edit');
+        Route::put('items/{item}/recipe-items/{recipe_item}', [RecipeItemController::class, 'update'])
+            ->middleware('check.permission:items,edit');
+        Route::delete('items/{item}/recipe-items/{recipe_item}', [RecipeItemController::class, 'destroy'])
             ->middleware('check.permission:items,edit');
 
         // Item Management Routes
@@ -215,6 +314,9 @@ Route::middleware([
         Route::get('customers/{customer}/attachments/{attachment}/download', [CustomerAttachmentController::class, 'download'])
             ->middleware('check.permission:customers,view')
             ->name('customers.attachments.download');
+        Route::get('customers/{customer}/attachments/{attachment}/view', [CustomerAttachmentController::class, 'view'])
+            ->middleware('check.permission:customers,view')
+            ->name('customers.attachments.view');
 
         Route::apiResource('customers.attachments', CustomerAttachmentController::class)
             ->only(['index', 'store', 'show', 'destroy'])
@@ -250,9 +352,17 @@ Route::middleware([
             ->middlewareFor(['index', 'show'], ['check.permission:suppliers,view'])
             ->middlewareFor(['store', 'update', 'destroy'], ['check.permission:suppliers,edit']);
 
+        Route::apiResource('suppliers.supplier-items', SupplierItemController::class)
+            ->scoped()
+            ->middlewareFor(['index', 'show'], ['check.permission:suppliers,view'])
+            ->middlewareFor(['store', 'update', 'destroy'], ['check.permission:suppliers,edit']);
+
         Route::get('suppliers/{supplier}/attachments/{attachment}/download', [SupplierAttachmentController::class, 'download'])
             ->middleware('check.permission:suppliers,view')
             ->name('suppliers.attachments.download');
+        Route::get('suppliers/{supplier}/attachments/{attachment}/view', [SupplierAttachmentController::class, 'view'])
+            ->middleware('check.permission:suppliers,view')
+            ->name('suppliers.attachments.view');
 
         Route::apiResource('suppliers.attachments', SupplierAttachmentController::class)
             ->only(['index', 'store', 'show', 'destroy'])

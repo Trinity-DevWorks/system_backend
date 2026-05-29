@@ -6,10 +6,9 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+#[Fillable(['item_id', 'item_uom_id', 'barcode', 'is_primary'])]
 class ItemBarcode extends Model
 {
-    #[Fillable(['item_id', 'item_unit_of_measurement_id', 'barcode', 'is_primary'])]
-
     /**
      * @return array<string, string>
      */
@@ -20,19 +19,13 @@ class ItemBarcode extends Model
         ];
     }
 
-    /**
-     * @return BelongsTo<Item, $this>
-     */
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);
     }
 
-    /**
-     * @return BelongsTo<ItemUnitOfMeasurement, $this>
-     */
-    public function itemUnitOfMeasurement(): BelongsTo
+    public function itemUom(): BelongsTo
     {
-        return $this->belongsTo(ItemUnitOfMeasurement::class);
+        return $this->belongsTo(ItemUom::class);
     }
 }

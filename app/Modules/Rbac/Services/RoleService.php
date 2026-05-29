@@ -2,6 +2,7 @@
 
 namespace App\Modules\Rbac\Services;
 
+use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\RolePermission;
 use App\Services\PermissionService;
@@ -27,7 +28,7 @@ class RoleService
     }
 
     /**
-     * @param  array{permissions: array<int, array<string, mixed>>}  $data
+     * @param  array{name: string, description?: string|null, active: bool, permissions?: array<int, array<string, mixed>>}  $data
      */
     public function create(array $data): Role
     {
@@ -39,7 +40,8 @@ class RoleService
                 'created_by' => auth()->id,
             ]);
 
-            $this->syncPermissions($role, $data['permissions']);
+            $permissions = $data['permissions'] ?? $this->defaultDeniedPermissionRows();
+            $this->syncPermissions($role, $permissions);
             $this->permissionService->invalidateCacheForAllUsers();
             TenantReferenceCache::forget(self::CACHE_LIST);
 
@@ -48,7 +50,7 @@ class RoleService
     }
 
     /**
-     * @param  array{permissions: array<int, array<string, mixed>>}  $data
+     * @param  array{name: string, description?: string|null, active: bool, permissions?: array<int, array<string, mixed>>}  $data
      */
     public function update(Role $role, array $data): Role
     {
@@ -63,7 +65,9 @@ class RoleService
                 'active' => $data['active'],
             ]);
 
-            $this->syncPermissions($role, $data['permissions']);
+            if (array_key_exists('permissions', $data) && is_array($data['permissions'])) {
+                $this->syncPermissions($role, $data['permissions']);
+            }
             $this->permissionService->invalidateCacheForAllUsers();
             TenantReferenceCache::forget(self::CACHE_LIST);
 
@@ -84,6 +88,27 @@ class RoleService
         $role->delete();
         $this->permissionService->invalidateCacheForAllUsers();
         TenantReferenceCache::forget(self::CACHE_LIST);
+    }
+
+    /**
+     * @return array<int, array{permission_id: int, can_view: bool, can_add: bool, can_edit: bool, can_delete: bool, can_import: bool, can_export: bool}>
+     */
+    private function defaultDeniedPermissionRows(): array
+    {
+        return Permission::query()
+            ->orderBy('resource_key')
+            ->get()
+            ->map(fn (Permission $permission): array => [
+                'permission_id' => $permission->id,
+                'can_view' => false,
+                'can_add' => false,
+                'can_edit' => false,
+                'can_delete' => false,
+                'can_import' => false,
+                'can_export' => false,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

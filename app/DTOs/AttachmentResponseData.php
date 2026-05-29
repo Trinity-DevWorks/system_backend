@@ -14,23 +14,33 @@ readonly class AttachmentResponseData
         public string $attachableType,
         public int $attachableId,
         public string $fileName,
-        public string $fileType,
+        public string $mimeType,
+        public int $fileSize,
+        public string $viewerCategory,
+        public bool $canPreview,
+        public bool $isPrimary,
         public ?int $uploadedBy,
         public string $downloadUrl,
+        public string $viewUrl,
         public string $createdAt,
         public string $updatedAt,
     ) {}
 
-    public static function fromModel(Attachment $attachment, string $downloadUrl): self
+    public static function fromModel(Attachment $attachment, string $downloadUrl, string $viewUrl): self
     {
         return new self(
             id: $attachment->id,
             attachableType: (string) $attachment->attachable_type,
             attachableId: (int) $attachment->attachable_id,
             fileName: $attachment->file_name,
-            fileType: $attachment->file_type,
+            mimeType: $attachment->mime_type,
+            fileSize: (int) $attachment->file_size,
+            viewerCategory: $attachment->viewer_category->value,
+            canPreview: (bool) $attachment->can_preview,
+            isPrimary: (bool) $attachment->is_primary,
             uploadedBy: $attachment->uploaded_by !== null ? (int) $attachment->uploaded_by : null,
             downloadUrl: $downloadUrl,
+            viewUrl: $viewUrl,
             createdAt: (string) $attachment->created_at,
             updatedAt: (string) $attachment->updated_at,
         );
@@ -38,13 +48,17 @@ readonly class AttachmentResponseData
 
     /**
      * @param  Collection<int, Attachment>  $rows
-     * @param  callable(Attachment): string  $downloadUrlFor
+     * @param  callable(Attachment): array{download: string, view: string}  $urlsFor
      * @return array<int, array<string, mixed>>
      */
-    public static function collectionToArray(Collection $rows, callable $downloadUrlFor): array
+    public static function collectionToArray(Collection $rows, callable $urlsFor): array
     {
         return $rows
-            ->map(fn (Attachment $a): array => self::fromModel($a, $downloadUrlFor($a))->toArray())
+            ->map(function (Attachment $a) use ($urlsFor): array {
+                $urls = $urlsFor($a);
+
+                return self::fromModel($a, $urls['download'], $urls['view'])->toArray();
+            })
             ->values()
             ->all();
     }
@@ -59,9 +73,14 @@ readonly class AttachmentResponseData
             'attachable_type' => $this->attachableType,
             'attachable_id' => $this->attachableId,
             'file_name' => $this->fileName,
-            'file_type' => $this->fileType,
+            'mime_type' => $this->mimeType,
+            'file_size' => $this->fileSize,
+            'viewer_category' => $this->viewerCategory,
+            'can_preview' => $this->canPreview,
+            'is_primary' => $this->isPrimary,
             'uploaded_by' => $this->uploadedBy,
             'download_url' => $this->downloadUrl,
+            'view_url' => $this->viewUrl,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];

@@ -114,6 +114,14 @@ class Supplier extends Model implements AuditableContract
     }
 
     /**
+     * @return HasMany<SupplierItem, $this>
+     */
+    public function supplierItems(): HasMany
+    {
+        return $this->hasMany(SupplierItem::class);
+    }
+
+    /**
      * @return HasMany<SupplierLedgerEntry, $this>
      */
     public function ledgerEntries(): HasMany

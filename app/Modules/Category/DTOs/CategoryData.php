@@ -9,6 +9,7 @@ use App\Modules\Category\Models\Category;
 readonly class CategoryData
 {
     public function __construct(
+        public ?int $parentId,
         public string $code,
         public string $name,
         public string $color,
@@ -21,6 +22,7 @@ readonly class CategoryData
         $data = $request->validated();
 
         return new self(
+            parentId: self::normalizeParentId($data['parent_id'] ?? null),
             code: $data['code'],
             name: $data['name'],
             color: $data['color'],
@@ -34,6 +36,9 @@ readonly class CategoryData
         $data = $request->validated();
 
         return new self(
+            parentId: array_key_exists('parent_id', $data)
+                ? self::normalizeParentId($data['parent_id'])
+                : $category->parent_id,
             code: $data['code'] ?? $category->code,
             name: $data['name'] ?? $category->name,
             color: $data['color'] ?? $category->color,
@@ -47,17 +52,27 @@ readonly class CategoryData
     }
 
     /**
-     * @return array{code: string, name: string, color: string, description: ?string, is_active: bool}
+     * @return array{parent_id: ?int, code: string, name: string, color: string, description: ?string, is_active: bool}
      */
     public function toArray(): array
     {
         return [
+            'parent_id' => $this->parentId,
             'code' => $this->code,
             'name' => $this->name,
             'color' => $this->color,
             'description' => $this->description,
             'is_active' => $this->isActive,
         ];
+    }
+
+    private static function normalizeParentId(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) $value;
     }
 
     private static function normalizeDescription(?string $value): ?string

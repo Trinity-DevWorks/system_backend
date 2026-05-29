@@ -12,13 +12,14 @@ return [
         'roles' => 'Role Management',
         'permissions' => 'Permission Management',
 
+        'brands' => 'Brand Management',
         'categories' => 'Category Management',
-        'sub_categories' => 'Sub Category Management',
         'vat_groups' => 'VAT Group Management',
         'currencies' => 'Currency Management',
         'payment_methods' => 'Payment Method Management',
         'payment_terms' => 'Payment Term Management',
         'warehouses' => 'Warehouse Management',
+        'stock' => 'Stock Management',
         'salesmen' => 'Salesman Management',
 
         'unit_groups' => 'Unit Group Management',

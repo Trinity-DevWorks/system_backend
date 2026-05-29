@@ -2,7 +2,9 @@
 
 namespace App\Modules\Inventory\Item\Http\Requests;
 
-use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
+use App\Modules\Category\Support\CategoryTree;
+use App\Modules\Inventory\Item\Support\ItemTypeDefaults;
+use App\Modules\Inventory\ItemType\Models\ItemType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -19,46 +21,52 @@ class StoreItemRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'code' => ['required', 'string', 'max:100', 'unique:items,code'],
             'name' => ['required', 'string', 'max:255'],
-            'type' => ['required', 'string', 'in:stockable,service,non_stock'],
-            'base_uom_id' => ['nullable', 'integer', 'exists:unit_of_measurements,id'],
-            'purchase_uom_id' => ['nullable', 'integer', 'exists:unit_of_measurements,id'],
-            'sales_uom_id' => ['nullable', 'integer', 'exists:unit_of_measurements,id'],
-            'active' => ['required', 'boolean'],
+            'sku' => ['required', 'string', 'max:100', 'unique:items,sku'],
+            'plu_code' => ['nullable', 'string', 'max:100', 'unique:items,plu_code'],
+            'item_type_id' => ['required', 'integer', 'exists:item_types,id'],
+            'category_id' => ['required', 'integer', 'exists:categories,id'],
+            'brand_id' => ['nullable', 'integer', 'exists:brands,id'],
+            'base_uom_id' => ['required', 'integer', 'exists:unit_of_measurements,id'],
+            'vat_group_id' => ['nullable', 'integer', 'exists:vat_groups,id'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'track_inventory' => ['nullable', 'boolean'],
+            'allow_sale' => ['nullable', 'boolean'],
+            'allow_purchase' => ['nullable', 'boolean'],
+            'is_active' => ['nullable', 'boolean'],
         ];
     }
 
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            $type = (string) $this->input('type');
-            $baseId = $this->input('base_uom_id');
-
-            if ($type === 'stockable' && empty($baseId)) {
-                $validator->errors()->add('base_uom_id', 'Base unit of measurement is required for stockable items.');
+            $typeId = $this->input('item_type_id');
+            if (empty($typeId)) {
+                return;
             }
 
-            if ($type !== 'stockable' && $baseId) {
-                $validator->errors()->add('base_uom_id', 'Base UOM should only be set for stockable items.');
+            $type = ItemType::query()->where('is_active', true)->find((int) $typeId);
+            if (! $type) {
+                $validator->errors()->add('item_type_id', 'The selected item type is invalid or inactive.');
+
+                return;
             }
 
-            $this->assertSameGroup($validator, $baseId, $this->input('purchase_uom_id'), 'purchase_uom_id');
-            $this->assertSameGroup($validator, $baseId, $this->input('sales_uom_id'), 'sales_uom_id');
+            $trackInventory = $this->has('track_inventory')
+                ? (bool) $this->boolean('track_inventory')
+                : ItemTypeDefaults::flagsForCode($type->code)['track_inventory'];
+
+            if ($trackInventory && empty($this->input('base_uom_id'))) {
+                $validator->errors()->add('base_uom_id', 'Base unit of measurement is required when inventory is tracked.');
+            }
+
+            $categoryId = $this->input('category_id');
+            if (! empty($categoryId) && ! CategoryTree::isLeaf((int) $categoryId)) {
+                $validator->errors()->add(
+                    'category_id',
+                    'The selected category must be a leaf category (one with no subcategories).'
+                );
+            }
         });
-    }
-
-    private function assertSameGroup(Validator $validator, mixed $baseId, mixed $otherId, string $field): void
-    {
-        if (empty($baseId) || empty($otherId)) {
-            return;
-        }
-
-        $base = UnitOfMeasurement::query()->find((int) $baseId);
-        $other = UnitOfMeasurement::query()->find((int) $otherId);
-
-        if ($base && $other && $base->unit_group_id !== $other->unit_group_id) {
-            $validator->errors()->add($field, 'Must belong to the same unit group as the base UOM.');
-        }
     }
 }

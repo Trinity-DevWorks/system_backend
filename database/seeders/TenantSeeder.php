@@ -8,6 +8,8 @@ use App\Jobs\BootstrapTenantRbac;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Category\Models\Category;
+use App\Modules\Currency\Models\Currency;
+use App\Modules\Currency\Models\TenantSetting;
 use Illuminate\Database\Seeder;
 use Stancl\Tenancy\Database\Models\Domain;
 
@@ -26,63 +28,78 @@ class TenantSeeder extends Seeder
     public const OWNER_PASSWORD = '12345678';
 
     /**
-     * @var list<array{code:string,name:string,color:string,description:string,is_active:bool}>
+     * Sample category tree (parent → children). Only leaf nodes should be used on items.
+     *
+     * @var list<array{code:string,name:string,color:string,description:string,is_active:bool,children?:list<array<string,mixed>>}>
      */
-    private const DEFAULT_CATEGORIES = [
+    private const DEFAULT_CATEGORY_TREE = [
         [
-            'code' => 'BEV-CAR-001',
-            'name' => 'Carbonated Beverages',
+            'code' => 'BEV',
+            'name' => 'Beverages',
             'color' => '#1E88E5',
-            'description' => 'Soft drinks and sparkling beverages.',
+            'description' => 'All beverage products.',
             'is_active' => true,
+            'children' => [
+                [
+                    'code' => 'BEV-SOFT',
+                    'name' => 'Soft Drinks',
+                    'color' => '#42A5F5',
+                    'description' => 'Carbonated and non-carbonated soft drinks.',
+                    'is_active' => true,
+                    'children' => [
+                        [
+                            'code' => 'BEV-ENERGY',
+                            'name' => 'Energy Drinks',
+                            'color' => '#7E57C2',
+                            'description' => 'Energy and sports drinks.',
+                            'is_active' => true,
+                        ],
+                        [
+                            'code' => 'BEV-COLA',
+                            'name' => 'Cola',
+                            'color' => '#5D4037',
+                            'description' => 'Cola beverages.',
+                            'is_active' => true,
+                        ],
+                    ],
+                ],
+                [
+                    'code' => 'BEV-JUI',
+                    'name' => 'Juices',
+                    'color' => '#43A047',
+                    'description' => 'Packaged fruit and mixed juices.',
+                    'is_active' => true,
+                ],
+            ],
         ],
         [
-            'code' => 'BEV-JUI-002',
-            'name' => 'Juices',
-            'color' => '#43A047',
-            'description' => 'Packaged fruit and mixed juices.',
-            'is_active' => true,
-        ],
-        [
-            'code' => 'SNA-CHI-001',
-            'name' => 'Chips',
+            'code' => 'SNA',
+            'name' => 'Snacks',
             'color' => '#FB8C00',
-            'description' => 'Salted and flavored potato chips.',
+            'description' => 'Snack foods.',
             'is_active' => true,
+            'children' => [
+                [
+                    'code' => 'SNA-CHI',
+                    'name' => 'Chips',
+                    'color' => '#F57C00',
+                    'description' => 'Salted and flavored potato chips.',
+                    'is_active' => true,
+                ],
+                [
+                    'code' => 'SNA-BIS',
+                    'name' => 'Biscuits',
+                    'color' => '#8D6E63',
+                    'description' => 'Sweet and savory biscuits.',
+                    'is_active' => true,
+                ],
+            ],
         ],
         [
-            'code' => 'SNA-BIS-002',
-            'name' => 'Biscuits',
-            'color' => '#8D6E63',
-            'description' => 'Sweet and savory biscuits.',
-            'is_active' => true,
-        ],
-        [
-            'code' => 'FRU-FRE-001',
-            'name' => 'Fresh Fruits',
-            'color' => '#7CB342',
-            'description' => 'Fresh fruit products.',
-            'is_active' => true,
-        ],
-        [
-            'code' => 'DAI-MLK-001',
-            'name' => 'Milk Products',
+            'code' => 'DAI',
+            'name' => 'Dairy',
             'color' => '#5C6BC0',
             'description' => 'Milk and milk-based items.',
-            'is_active' => true,
-        ],
-        [
-            'code' => 'FRO-ICE-001',
-            'name' => 'Frozen Foods',
-            'color' => '#26C6DA',
-            'description' => 'Frozen products and ice cream.',
-            'is_active' => true,
-        ],
-        [
-            'code' => 'CLE-HOU-001',
-            'name' => 'Household Cleaning',
-            'color' => '#EF5350',
-            'description' => 'Cleaning and hygiene household products.',
             'is_active' => true,
         ],
     ];
@@ -115,12 +132,11 @@ class TenantSeeder extends Seeder
             ]);
             $ownerUserId = $user->id;
 
-            foreach (self::DEFAULT_CATEGORIES as $category) {
-                Category::query()->firstOrCreate(
-                    ['code' => $category['code']],
-                    $category
-                );
+            foreach (self::DEFAULT_CATEGORY_TREE as $node) {
+                $this->seedCategoryNode($node, null);
             }
+
+            $this->seedPrimaryCurrency();
         });
 
         if ($ownerUserId === null) {
@@ -130,5 +146,41 @@ class TenantSeeder extends Seeder
         BootstrapTenantRbac::dispatchSync($tenant, $ownerUserId);
 
         $this->command?->info('Tenant ['.self::TENANT_NAME.'] created. Domain: '.self::TENANT_DOMAIN.'. Owner: '.self::OWNER_EMAIL);
+    }
+
+    /**
+     * @param  array{code:string,name:string,color:string,description:string,is_active:bool,children?:list<array<string,mixed>>}  $node
+     */
+    private function seedCategoryNode(array $node, ?int $parentId): void
+    {
+        $category = Category::query()->firstOrCreate(
+            ['code' => $node['code']],
+            [
+                'parent_id' => $parentId,
+                'name' => $node['name'],
+                'color' => $node['color'],
+                'description' => $node['description'],
+                'is_active' => $node['is_active'],
+            ]
+        );
+
+        foreach ($node['children'] ?? [] as $child) {
+            $this->seedCategoryNode($child, $category->id);
+        }
+    }
+
+    private function seedPrimaryCurrency(): void
+    {
+        $currency = Currency::query()->firstOrCreate(
+            ['code' => 'USD'],
+            [
+                'name' => 'US Dollar',
+                'iso_code' => 'USD',
+                'symbol' => '$',
+                'active' => true,
+            ]
+        );
+
+        TenantSetting::singleton()->update(['primary_currency_id' => $currency->id]);
     }
 }

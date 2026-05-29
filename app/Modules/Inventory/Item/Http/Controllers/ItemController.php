@@ -38,7 +38,7 @@ class ItemController extends Controller
 
     public function show(Item $item): JsonResponse
     {
-        $item->load(['baseUom', 'purchaseUom', 'salesUom']);
+        $item->load(['itemType', 'category', 'brand', 'baseUom']);
 
         return ApiResponse::success(
             ItemResponseData::fromModel($item)->toArray(),
@@ -48,7 +48,7 @@ class ItemController extends Controller
 
     public function update(UpdateItemRequest $request, Item $item): JsonResponse
     {
-        $updated = $this->itemService->update($item, ItemData::fromUpdateRequest($request));
+        $updated = $this->itemService->update($item, ItemData::fromUpdateRequest($request, $item));
 
         return ApiResponse::success(
             ItemResponseData::fromModel($updated)->toArray(),

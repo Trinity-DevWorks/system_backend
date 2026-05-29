@@ -22,6 +22,17 @@ class CategoryController extends Controller
     public function index(Request $request): JsonResponse
     {
         $forceRefresh = $request->boolean('refresh');
+        $leavesOnly = $request->boolean('leaves_only') || $request->boolean('assignable');
+
+        if ($leavesOnly) {
+            $activeOnly = ! $request->boolean('include_inactive');
+            $categories = $this->categoryService->leaves($activeOnly, $forceRefresh);
+
+            return ApiResponse::success(
+                CategoryResponseData::collectionToArray($categories),
+                'Categories fetched successfully.'
+            );
+        }
 
         return ApiResponse::success(
             CategoryResponseData::collectionToArray($this->categoryService->list($forceRefresh)),
@@ -43,6 +54,8 @@ class CategoryController extends Controller
 
     public function show(Category $category): JsonResponse
     {
+        $category->load(['parent:id,code,name'])->loadCount('children');
+
         return ApiResponse::success(
             CategoryResponseData::fromModel($category)->toArray(),
             'Category fetched successfully.'

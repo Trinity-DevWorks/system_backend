@@ -2,12 +2,15 @@
 
 use App\Http\Middleware\CheckPermission;
 use App\Http\Responses\ApiResponse;
+use App\Support\Database\QueryExceptionMapper;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\QueryException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -32,6 +35,20 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $wantsEnvelope = static fn (Request $request): bool => $request->expectsJson();
+
+        $exceptions->render(function (PostTooLargeException $e, Request $request) use ($wantsEnvelope) {
+            if ($wantsEnvelope($request)) {
+                return ApiResponse::error(
+                    'The uploaded file exceeds the maximum allowed size (15 MB).',
+                    413,
+                    null,
+                    [],
+                    null,
+                    null,
+                    'ATTACHMENT_FILE_TOO_LARGE'
+                );
+            }
+        });
 
         $exceptions->render(function (ValidationException $e, Request $request) use ($wantsEnvelope) {
             if ($wantsEnvelope($request)) {
@@ -65,6 +82,12 @@ return Application::configure(basePath: dirname(__DIR__))
                 return ApiResponse::notFound('Resource not found.', 'NOT_FOUND');
             }
 
+        });
+
+        $exceptions->render(function (QueryException $e, Request $request) use ($wantsEnvelope) {
+            if ($wantsEnvelope($request)) {
+                return QueryExceptionMapper::tryForeignKeyViolationResponse($e);
+            }
         });
 
         $exceptions->render(function (HttpExceptionInterface $e, Request $request) use ($wantsEnvelope) {
