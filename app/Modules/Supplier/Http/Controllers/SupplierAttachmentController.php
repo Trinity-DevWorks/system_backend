@@ -5,19 +5,20 @@ declare(strict_types=1);
 namespace App\Modules\Supplier\Http\Controllers;
 
 use App\DTOs\AttachmentResponseData;
+use App\Http\Controllers\Concerns\DeliversAttachmentFiles;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreAttachmentRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\Attachment;
 use App\Modules\Supplier\Models\Supplier;
 use App\Services\AttachmentService;
-use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SupplierAttachmentController extends Controller
 {
+    use DeliversAttachmentFiles;
+
     public function __construct(
         private readonly AttachmentService $attachmentService
     ) {}
@@ -29,7 +30,7 @@ class SupplierAttachmentController extends Controller
         return ApiResponse::success(
             AttachmentResponseData::collectionToArray(
                 $rows,
-                fn (Attachment $a): string => $this->downloadUrl($supplier, $a)
+                fn (Attachment $a): array => $this->urls($supplier, $a)
             ),
             'Attachments fetched successfully.'
         );
@@ -41,12 +42,10 @@ class SupplierAttachmentController extends Controller
         assert($file !== null);
         $userId = $request->user()?->id;
         $attachment = $this->attachmentService->store($supplier, $file, $userId !== null ? (int) $userId : null);
+        $urls = $this->urls($supplier, $attachment);
 
         return ApiResponse::created(
-            AttachmentResponseData::fromModel(
-                $attachment,
-                $this->downloadUrl($supplier, $attachment)
-            )->toArray(),
+            AttachmentResponseData::fromModel($attachment, $urls['download'], $urls['view'])->toArray(),
             'Attachment uploaded successfully.'
         );
     }
@@ -54,27 +53,26 @@ class SupplierAttachmentController extends Controller
     public function show(Supplier $supplier, Attachment $attachment): JsonResponse
     {
         $this->ensureMorph($supplier, $attachment);
+        $urls = $this->urls($supplier, $attachment);
 
         return ApiResponse::success(
-            AttachmentResponseData::fromModel(
-                $attachment,
-                $this->downloadUrl($supplier, $attachment)
-            )->toArray(),
+            AttachmentResponseData::fromModel($attachment, $urls['download'], $urls['view'])->toArray(),
             'Attachment fetched successfully.'
         );
+    }
+
+    public function view(Supplier $supplier, Attachment $attachment): BinaryFileResponse
+    {
+        $this->ensureMorph($supplier, $attachment);
+
+        return $this->deliverAttachmentView($attachment);
     }
 
     public function download(Supplier $supplier, Attachment $attachment): BinaryFileResponse
     {
         $this->ensureMorph($supplier, $attachment);
-        $this->attachmentService->assertStoredFileExists($attachment);
 
-        $disk = Storage::disk('local');
-        if (! $disk instanceof FilesystemAdapter) {
-            abort(500, 'Local filesystem is not configured for downloads.', ['X-Error-Code' => 'ATTACHMENT_DOWNLOAD_STORAGE_NOT_CONFIGURED']);
-        }
-
-        return response()->download($disk->path($attachment->file_path), $attachment->file_name);
+        return $this->deliverAttachmentDownload($attachment);
     }
 
     public function destroy(Supplier $supplier, Attachment $attachment): JsonResponse
@@ -85,6 +83,11 @@ class SupplierAttachmentController extends Controller
         return ApiResponse::success(null, 'Attachment deleted successfully.');
     }
 
+    protected function resolveAttachmentService(): AttachmentService
+    {
+        return $this->attachmentService;
+    }
+
     private function ensureMorph(Supplier $supplier, Attachment $attachment): void
     {
         if ($attachment->attachable_type !== $supplier->getMorphClass()
@@ -93,11 +96,20 @@ class SupplierAttachmentController extends Controller
         }
     }
 
-    private function downloadUrl(Supplier $supplier, Attachment $attachment): string
+    /**
+     * @return array{download: string, view: string}
+     */
+    private function urls(Supplier $supplier, Attachment $attachment): array
     {
-        return route('suppliers.attachments.download', [
-            'supplier' => $supplier->getKey(),
-            'attachment' => $attachment->getKey(),
-        ]);
+        return [
+            'download' => route('suppliers.attachments.download', [
+                'supplier' => $supplier->getKey(),
+                'attachment' => $attachment->getKey(),
+            ]),
+            'view' => route('suppliers.attachments.view', [
+                'supplier' => $supplier->getKey(),
+                'attachment' => $attachment->getKey(),
+            ]),
+        ];
     }
 }

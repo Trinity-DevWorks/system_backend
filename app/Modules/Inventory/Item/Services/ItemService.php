@@ -2,19 +2,32 @@
 
 namespace App\Modules\Inventory\Item\Services;
 
+use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\DTOs\ItemData;
 use App\Modules\Inventory\Item\Models\Item;
-use App\Modules\Inventory\Item\Models\ItemUnitOfMeasurement;
+use App\Modules\Inventory\Item\Models\ItemUom;
+use App\Modules\Inventory\Item\Support\ItemDeleteRules;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ItemService
 {
+    public function __construct(
+        private readonly ItemUomService $itemUomService
+    ) {}
+
     public function list(): Collection
     {
         return Item::query()
-            ->with(['baseUom:id,code,name,unit_group_id', 'purchaseUom:id,code,name,unit_group_id', 'salesUom:id,code,name,unit_group_id'])
+            ->with([
+                'itemType:id,code,name',
+                'category:id,code,name',
+                'brand:id,code,name',
+                'baseUom:id,code,name,unit_group_id',
+                'vatGroup:id,abrv,name,percentage',
+                'primaryImageAttachment:id,attachable_type,attachable_id,viewer_category,is_primary',
+            ])
             ->orderBy('name')
             ->get();
     }
@@ -24,11 +37,11 @@ class ItemService
         return DB::transaction(function () use ($data): Item {
             $item = Item::query()->create($data->toArray());
 
-            if ($data->type === 'stockable' && $data->baseUomId) {
-                $this->ensureBasePivot($item->id, $data->baseUomId);
+            if ($data->trackInventory && $data->baseUomId) {
+                $this->ensureBaseItemUom($item);
             }
 
-            return $item->load(['baseUom', 'purchaseUom', 'salesUom']);
+            return $item->load(['itemType', 'category', 'brand', 'baseUom', 'vatGroup']);
         });
     }
 
@@ -37,59 +50,56 @@ class ItemService
         return DB::transaction(function () use ($item, $data): Item {
             $oldBaseId = $item->base_uom_id;
 
-            if ($data->type !== 'stockable') {
-                ItemUnitOfMeasurement::query()->where('item_id', $item->id)->delete();
+            if (! $data->trackInventory) {
+                ItemUom::query()->where('item_id', $item->id)->delete();
             }
 
             $item->update($data->toArray());
             $item->refresh();
 
-            if ($data->type === 'stockable' && $data->baseUomId) {
+            if ($data->trackInventory && $data->baseUomId) {
                 $newBase = UnitOfMeasurement::query()->findOrFail($data->baseUomId);
                 $this->assertPivotsMatchBaseGroup($item, $newBase);
 
                 if ($oldBaseId !== null && (int) $oldBaseId !== (int) $data->baseUomId) {
-                    ItemUnitOfMeasurement::query()
+                    ItemUom::query()
                         ->where('item_id', $item->id)
-                        ->where('unit_of_measurement_id', $oldBaseId)
+                        ->where('uom_id', $oldBaseId)
                         ->delete();
                 }
 
-                $this->ensureBasePivot($item->id, $data->baseUomId);
+                $this->ensureBaseItemUom($item);
             }
 
-            return $item->load(['baseUom', 'purchaseUom', 'salesUom']);
+            return $item->load(['itemType', 'category', 'brand', 'baseUom', 'vatGroup']);
         });
     }
 
     public function delete(Item $item): void
     {
+        ItemDeleteRules::assertDeletable($item);
         $item->delete();
     }
 
-    private function ensureBasePivot(int $itemId, int $baseUomId): void
+    private function ensureBaseItemUom(Item $item): void
     {
-        ItemUnitOfMeasurement::query()->updateOrCreate(
-            [
-                'item_id' => $itemId,
-                'unit_of_measurement_id' => $baseUomId,
-            ],
-            [
-                'operation' => 'multiply',
-                'conversion' => 1,
-            ]
-        );
+        $primary = Currency::getPrimary();
+        if (! $primary) {
+            abort(422, 'Set a primary currency before creating stockable items.', ['X-Error-Code' => 'PRIMARY_CURRENCY_REQUIRED']);
+        }
+
+        $this->itemUomService->ensureBaseRow($item, (int) $primary->id);
     }
 
     private function assertPivotsMatchBaseGroup(Item $item, UnitOfMeasurement $newBase): void
     {
-        $pivots = ItemUnitOfMeasurement::query()
+        $pivots = ItemUom::query()
             ->where('item_id', $item->id)
-            ->with('unitOfMeasurement:id,unit_group_id')
+            ->with('uom:id,unit_group_id')
             ->get();
 
         foreach ($pivots as $pivot) {
-            $uom = $pivot->unitOfMeasurement;
+            $uom = $pivot->uom;
             if ($uom && (int) $uom->unit_group_id !== (int) $newBase->unit_group_id) {
                 abort(422, 'Cannot change base UOM: existing alternate UOMs belong to a different unit group.', ['X-Error-Code' => 'ITEM_BASE_UOM_CHANGE_GROUP_MISMATCH']);
             }

@@ -20,7 +20,7 @@ class StoreRoleRequest extends FormRequest
             'name' => ['required', 'string', 'max:100', 'unique:roles,name'],
             'description' => ['nullable', 'string'],
             'active' => ['required', 'boolean'],
-            'permissions' => ['required', 'array'],
+            'permissions' => ['sometimes', 'array'],
             'permissions.*.permission_id' => ['required', 'integer', 'exists:permissions,id'],
             'permissions.*.can_view' => ['required', 'boolean'],
             'permissions.*.can_add' => ['required', 'boolean'],

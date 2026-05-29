@@ -12,5 +12,7 @@ enum PaymentMethodType: string
     case Cheque = 'cheque';
     case DigitalWallet = 'digital_wallet';
     case Credit = 'credit';
+    case WishMoney = 'wish_money';
+    case VISA = 'visa';
     case Other = 'other';
 }

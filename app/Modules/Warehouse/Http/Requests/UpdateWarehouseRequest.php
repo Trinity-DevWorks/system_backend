@@ -32,6 +32,10 @@ class UpdateWarehouseRequest extends FormRequest
             ],
             'is_active' => ['required', 'boolean'],
             'is_default' => ['required', 'boolean'],
+            'is_default_sales' => ['required', 'boolean'],
+            'is_default_production' => ['required', 'boolean'],
+            'is_default_purchase' => ['required', 'boolean'],
+            'is_default_storage' => ['required', 'boolean'],
         ];
     }
 }

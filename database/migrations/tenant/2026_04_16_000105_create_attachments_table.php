@@ -15,9 +15,14 @@ return new class extends Migration
             $table->morphs('attachable');
             $table->string('file_path');
             $table->string('file_name');
-            /** pdf | image | document | other */
-            $table->string('file_type', 32)->index();
+            $table->string('mime_type', 127);
+            $table->unsignedBigInteger('file_size');
+            /** image | pdf | document | video | audio | text | other */
+            $table->string('viewer_category', 32)->index();
+            $table->boolean('can_preview')->default(false);
+            $table->boolean('is_primary')->default(false);
             $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->index(['attachable_type', 'attachable_id', 'is_primary']);
             $table->timestamps();
         });
     }

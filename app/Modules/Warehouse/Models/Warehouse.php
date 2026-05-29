@@ -8,7 +8,16 @@ use Illuminate\Database\Eloquent\Model;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name', 'shortcut_name', 'is_active', 'is_default'])]
+#[Fillable([
+    'name',
+    'shortcut_name',
+    'is_active',
+    'is_default',
+    'is_default_sales',
+    'is_default_production',
+    'is_default_purchase',
+    'is_default_storage',
+])]
 class Warehouse extends Model implements AuditableContract
 {
     use Auditable;
@@ -22,6 +31,10 @@ class Warehouse extends Model implements AuditableContract
         return [
             'is_active' => 'boolean',
             'is_default' => 'boolean',
+            'is_default_sales' => 'boolean',
+            'is_default_production' => 'boolean',
+            'is_default_purchase' => 'boolean',
+            'is_default_storage' => 'boolean',
         ];
     }
 }

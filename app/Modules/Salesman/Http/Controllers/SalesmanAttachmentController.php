@@ -5,19 +5,20 @@ declare(strict_types=1);
 namespace App\Modules\Salesman\Http\Controllers;
 
 use App\DTOs\AttachmentResponseData;
+use App\Http\Controllers\Concerns\DeliversAttachmentFiles;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreAttachmentRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\Attachment;
 use App\Modules\Salesman\Models\Salesman;
 use App\Services\AttachmentService;
-use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SalesmanAttachmentController extends Controller
 {
+    use DeliversAttachmentFiles;
+
     public function __construct(
         private readonly AttachmentService $attachmentService
     ) {}
@@ -29,7 +30,7 @@ class SalesmanAttachmentController extends Controller
         return ApiResponse::success(
             AttachmentResponseData::collectionToArray(
                 $rows,
-                fn (Attachment $a): string => $this->downloadUrl($salesman, $a)
+                fn (Attachment $a): array => $this->urls($salesman, $a)
             ),
             'Attachments fetched successfully.'
         );
@@ -41,12 +42,10 @@ class SalesmanAttachmentController extends Controller
         assert($file !== null);
         $userId = $request->user()?->id;
         $attachment = $this->attachmentService->store($salesman, $file, $userId !== null ? (int) $userId : null);
+        $urls = $this->urls($salesman, $attachment);
 
         return ApiResponse::created(
-            AttachmentResponseData::fromModel(
-                $attachment,
-                $this->downloadUrl($salesman, $attachment)
-            )->toArray(),
+            AttachmentResponseData::fromModel($attachment, $urls['download'], $urls['view'])->toArray(),
             'Attachment uploaded successfully.'
         );
     }
@@ -54,27 +53,26 @@ class SalesmanAttachmentController extends Controller
     public function show(Salesman $salesman, Attachment $attachment): JsonResponse
     {
         $this->ensureMorph($salesman, $attachment);
+        $urls = $this->urls($salesman, $attachment);
 
         return ApiResponse::success(
-            AttachmentResponseData::fromModel(
-                $attachment,
-                $this->downloadUrl($salesman, $attachment)
-            )->toArray(),
+            AttachmentResponseData::fromModel($attachment, $urls['download'], $urls['view'])->toArray(),
             'Attachment fetched successfully.'
         );
+    }
+
+    public function view(Salesman $salesman, Attachment $attachment): BinaryFileResponse
+    {
+        $this->ensureMorph($salesman, $attachment);
+
+        return $this->deliverAttachmentView($attachment);
     }
 
     public function download(Salesman $salesman, Attachment $attachment): BinaryFileResponse
     {
         $this->ensureMorph($salesman, $attachment);
-        $this->attachmentService->assertStoredFileExists($attachment);
 
-        $disk = Storage::disk('local');
-        if (! $disk instanceof FilesystemAdapter) {
-            abort(500, 'Local filesystem is not configured for downloads.', ['X-Error-Code' => 'ATTACHMENT_DOWNLOAD_STORAGE_NOT_CONFIGURED']);
-        }
-
-        return response()->download($disk->path($attachment->file_path), $attachment->file_name);
+        return $this->deliverAttachmentDownload($attachment);
     }
 
     public function destroy(Salesman $salesman, Attachment $attachment): JsonResponse
@@ -85,6 +83,11 @@ class SalesmanAttachmentController extends Controller
         return ApiResponse::success(null, 'Attachment deleted successfully.');
     }
 
+    protected function resolveAttachmentService(): AttachmentService
+    {
+        return $this->attachmentService;
+    }
+
     private function ensureMorph(Salesman $salesman, Attachment $attachment): void
     {
         if ($attachment->attachable_type !== $salesman->getMorphClass()
@@ -93,11 +96,20 @@ class SalesmanAttachmentController extends Controller
         }
     }
 
-    private function downloadUrl(Salesman $salesman, Attachment $attachment): string
+    /**
+     * @return array{download: string, view: string}
+     */
+    private function urls(Salesman $salesman, Attachment $attachment): array
     {
-        return route('salesmen.attachments.download', [
-            'salesman' => $salesman->getKey(),
-            'attachment' => $attachment->getKey(),
-        ]);
+        return [
+            'download' => route('salesmen.attachments.download', [
+                'salesman' => $salesman->getKey(),
+                'attachment' => $attachment->getKey(),
+            ]),
+            'view' => route('salesmen.attachments.view', [
+                'salesman' => $salesman->getKey(),
+                'attachment' => $attachment->getKey(),
+            ]),
+        ];
     }
 }

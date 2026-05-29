@@ -10,15 +10,25 @@ return new class extends Migration
     {
         Schema::create('items', function (Blueprint $table) {
             $table->id();
-            $table->string('code')->unique();
             $table->string('name');
-            /** stockable | service | non_stock */
-            $table->string('type', 32)->default('stockable')->index();
-            $table->foreignId('base_uom_id')->nullable()->constrained('unit_of_measurements')->nullOnDelete();
-            $table->foreignId('purchase_uom_id')->nullable()->constrained('unit_of_measurements')->nullOnDelete();
-            $table->foreignId('sales_uom_id')->nullable()->constrained('unit_of_measurements')->nullOnDelete();
-            $table->boolean('active')->default(true);
+            $table->string('sku', 100)->unique();
+            $table->string('plu_code', 100)->nullable()->unique();
+            $table->foreignId('item_type_id')->constrained('item_types')->restrictOnDelete();
+            $table->foreignId('category_id')->constrained('categories')->restrictOnDelete();
+            $table->foreignId('brand_id')->nullable()->constrained('brands')->nullOnDelete();
+            $table->foreignId('base_uom_id')->constrained('unit_of_measurements')->restrictOnDelete();
+            $table->foreignId('vat_group_id')->nullable()->constrained('vat_groups')->nullOnDelete();
+            $table->string('description', 500)->nullable();
+            $table->boolean('track_inventory')->default(true);
+            $table->boolean('allow_sale')->default(true);
+            $table->boolean('allow_purchase')->default(true);
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
+
+            $table->index('item_type_id');
+            $table->index('category_id');
+            $table->index('brand_id');
+            $table->index('vat_group_id');
         });
     }
 

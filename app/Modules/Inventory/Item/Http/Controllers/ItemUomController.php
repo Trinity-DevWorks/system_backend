@@ -4,12 +4,12 @@ namespace App\Modules\Inventory\Item\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
-use App\Modules\Inventory\Item\DTOs\ItemUomPivotResponseData;
-use App\Modules\Inventory\Item\Http\Requests\AttachItemUomRequest;
+use App\Modules\Inventory\Item\DTOs\ItemUomResponseData;
+use App\Modules\Inventory\Item\Http\Requests\StoreItemUomRequest;
 use App\Modules\Inventory\Item\Http\Requests\UpdateItemUomRequest;
 use App\Modules\Inventory\Item\Models\Item;
+use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Item\Services\ItemUomService;
-use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use Illuminate\Http\JsonResponse;
 
 class ItemUomController extends Controller
@@ -20,36 +20,36 @@ class ItemUomController extends Controller
 
     public function index(Item $item): JsonResponse
     {
-        $rows = $this->itemUomService->listForItem($item);
-        $data = $rows->map(fn ($p): array => ItemUomPivotResponseData::fromPivot($p))->values()->all();
-
-        return ApiResponse::success($data, 'Item units of measurement fetched successfully.');
-    }
-
-    public function store(AttachItemUomRequest $request, Item $item): JsonResponse
-    {
-        $pivot = $this->itemUomService->attach($item, $request->validated());
-
-        return ApiResponse::created(
-            ItemUomPivotResponseData::fromPivot($pivot),
-            'Unit of measurement attached successfully.'
+        return ApiResponse::success(
+            ItemUomResponseData::collectionToArray($this->itemUomService->listForItem($item)),
+            'Item units of measurement fetched successfully.'
         );
     }
 
-    public function update(UpdateItemUomRequest $request, Item $item, UnitOfMeasurement $unitOfMeasurement): JsonResponse
+    public function store(StoreItemUomRequest $request, Item $item): JsonResponse
     {
-        $pivot = $this->itemUomService->updatePivot($item, $unitOfMeasurement, $request->validated());
+        $row = $this->itemUomService->create($item, $request->validated());
+
+        return ApiResponse::created(
+            ItemUomResponseData::fromModel($row),
+            'Item unit of measurement created successfully.'
+        );
+    }
+
+    public function update(UpdateItemUomRequest $request, Item $item, ItemUom $itemUom): JsonResponse
+    {
+        $row = $this->itemUomService->update($item, $itemUom, $request->validated());
 
         return ApiResponse::success(
-            ItemUomPivotResponseData::fromPivot($pivot),
+            ItemUomResponseData::fromModel($row),
             'Item unit of measurement updated successfully.'
         );
     }
 
-    public function destroy(Item $item, UnitOfMeasurement $unitOfMeasurement): JsonResponse
+    public function destroy(Item $item, ItemUom $itemUom): JsonResponse
     {
-        $this->itemUomService->detach($item, $unitOfMeasurement);
+        $this->itemUomService->delete($item, $itemUom);
 
-        return ApiResponse::success(null, 'Unit of measurement detached successfully.');
+        return ApiResponse::success(null, 'Item unit of measurement deleted successfully.');
     }
 }
