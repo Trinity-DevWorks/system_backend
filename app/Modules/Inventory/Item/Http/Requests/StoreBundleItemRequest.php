@@ -23,7 +23,7 @@ class StoreBundleItemRequest extends FormRequest
         return [
             'child_item_id' => [
                 'required',
-                'integer',
+                'uuid',
                 'exists:items,id',
                 Rule::unique('bundle_items', 'child_item_id')->where('bundle_item_id', $bundleId),
                 Rule::notIn([$bundleId]),

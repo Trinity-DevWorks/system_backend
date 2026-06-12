@@ -7,10 +7,13 @@ use App\Models\Attachment;
 use App\Modules\Brand\Models\Brand;
 use App\Modules\Category\Models\Category;
 use App\Modules\Inventory\ItemType\Models\ItemType;
+use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
+use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\Supplier\Models\SupplierItem;
 use App\Modules\VatGroup\Models\VatGroup;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -24,13 +27,22 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 #[Fillable([
     'name',
     'sku',
+    'item_code',
     'plu_code',
     'item_type_id',
     'category_id',
     'brand_id',
+    'unit_group_id',
     'base_uom_id',
     'vat_group_id',
     'description',
+    'ticket_name',
+    'kitchen_name',
+    'send_to_kitchen',
+    'qr_enabled',
+    'qr_description',
+    'pos_name',
+    'color',
     'track_inventory',
     'allow_sale',
     'allow_purchase',
@@ -40,6 +52,7 @@ class Item extends Model implements AuditableContract
 {
     use Auditable;
     use HasFactory;
+    use HasUuids;
 
     /**
      * @return array<string, string>
@@ -47,6 +60,8 @@ class Item extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
+            'send_to_kitchen' => 'boolean',
+            'qr_enabled' => 'boolean',
             'track_inventory' => 'boolean',
             'allow_sale' => 'boolean',
             'allow_purchase' => 'boolean',
@@ -67,6 +82,14 @@ class Item extends Model implements AuditableContract
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    /**
+     * @return BelongsTo<UnitGroup, $this>
+     */
+    public function unitGroup(): BelongsTo
+    {
+        return $this->belongsTo(UnitGroup::class);
     }
 
     /**
@@ -96,6 +119,14 @@ class Item extends Model implements AuditableContract
     public function supplierItems(): HasMany
     {
         return $this->hasMany(SupplierItem::class);
+    }
+
+    /**
+     * @return HasMany<ItemWarehouseReplenishment, $this>
+     */
+    public function warehouseReplenishments(): HasMany
+    {
+        return $this->hasMany(ItemWarehouseReplenishment::class);
     }
 
     public function vatGroup(): BelongsTo

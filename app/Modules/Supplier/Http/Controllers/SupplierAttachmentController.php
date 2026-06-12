@@ -41,7 +41,7 @@ class SupplierAttachmentController extends Controller
         $file = $request->file('file');
         assert($file !== null);
         $userId = $request->user()?->id;
-        $attachment = $this->attachmentService->store($supplier, $file, $userId !== null ? (int) $userId : null);
+        $attachment = $this->attachmentService->store($supplier, $file, $userId !== null ? (string) $userId : null);
         $urls = $this->urls($supplier, $attachment);
 
         return ApiResponse::created(
@@ -91,7 +91,7 @@ class SupplierAttachmentController extends Controller
     private function ensureMorph(Supplier $supplier, Attachment $attachment): void
     {
         if ($attachment->attachable_type !== $supplier->getMorphClass()
-            || (int) $attachment->attachable_id !== (int) $supplier->id) {
+            || (string) $attachment->attachable_id !== (string) $supplier->id) {
             abort(404, 'Attachment not found for this supplier.', ['X-Error-Code' => 'SUPPLIER_ATTACHMENT_SCOPE_MISMATCH']);
         }
     }

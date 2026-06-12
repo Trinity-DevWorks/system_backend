@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Modules\Inventory\Stock\Enums\StockTransferStatus;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -25,6 +26,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class StockTransfer extends Model implements AuditableContract
 {
     use Auditable;
+    use HasUuids;
 
     public const REFERENCE_TYPE = 'stock_transfer';
 

@@ -71,7 +71,7 @@ class CustomerContactController extends Controller
 
     private function ensureScoped(Customer $customer, CustomerContact $contact): void
     {
-        if ((int) $contact->customer_id !== (int) $customer->id) {
+        if ((string) $contact->customer_id !== (string) $customer->id) {
             abort(404, 'Contact not found for this customer.', ['X-Error-Code' => 'CUSTOMER_CONTACT_SCOPE_MISMATCH']);
         }
     }

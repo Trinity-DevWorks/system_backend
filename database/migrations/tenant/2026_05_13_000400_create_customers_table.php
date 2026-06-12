@@ -11,9 +11,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('customers', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->foreignId('customer_group_id')->nullable()->constrained('customer_groups')->nullOnDelete();
-            $table->foreignId('salesman_id')->nullable()->constrained('salesmen')->nullOnDelete();
+            $table->foreignUuid('salesman_id')->nullable()->constrained('salesmen')->nullOnDelete();
             $table->foreignId('payment_method_id')->nullable()->constrained('payment_methods')->nullOnDelete();
             $table->foreignId('payment_terms_id')->nullable()->constrained('payment_terms')->nullOnDelete();
             $table->foreignId('vat_group_id')->nullable()->constrained('vat_groups')->nullOnDelete();

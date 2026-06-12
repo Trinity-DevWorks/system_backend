@@ -26,7 +26,7 @@ final class BundleItemRules
 
     public static function assertValidChild(Item $bundle, Item $child): void
     {
-        if ((int) $bundle->id === (int) $child->id) {
+        if ((string) $bundle->id === (string) $child->id) {
             abort(422, 'A bundle cannot contain itself.', ['X-Error-Code' => 'BUNDLE_SELF_REFERENCE']);
         }
 

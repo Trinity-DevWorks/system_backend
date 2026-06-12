@@ -20,7 +20,7 @@ readonly class CustomerResponseData
      * @param  array<string, mixed>|null  $vatGroup
      */
     public function __construct(
-        public int $id,
+        public string $id,
         public string $customerCode,
         public string $name,
         public ?string $email,
@@ -28,7 +28,7 @@ readonly class CustomerResponseData
         public string $type,
         public ?int $customerGroupId,
         public ?array $customerGroup,
-        public ?int $salesmanId,
+        public ?string $salesmanId,
         public ?array $salesman,
         public ?int $paymentMethodId,
         public ?array $paymentMethod,

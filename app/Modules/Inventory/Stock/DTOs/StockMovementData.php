@@ -4,32 +4,34 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\DTOs;
 
+use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Http\Requests\StoreStockAdjustmentRequest;
+use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 
 readonly class StockMovementData
 {
     public function __construct(
-        public int $itemId,
+        public string $itemId,
         public int $warehouseId,
         public string $quantityDelta,
         public StockMovementType $type,
         public ?string $referenceType,
-        public ?int $referenceId,
+        public ?string $referenceId,
         public ?int $itemUomId,
         public ?string $notes,
-        public ?int $userId,
+        public ?string $userId,
     ) {}
 
     public static function forTransfer(
-        int $itemId,
+        string $itemId,
         int $warehouseId,
         string $quantityDelta,
         StockMovementType $type,
-        int $stockTransferId,
+        string $stockTransferId,
         ?int $itemUomId,
         ?string $notes,
-        ?int $userId,
+        ?string $userId,
     ): self {
         return new self(
             itemId: $itemId,
@@ -44,14 +46,21 @@ readonly class StockMovementData
         );
     }
 
-    public static function fromAdjustmentRequest(StoreStockAdjustmentRequest $request, ?int $userId): self
+    public static function fromAdjustmentRequest(StoreStockAdjustmentRequest $request, ?string $userId): self
     {
         $data = $request->validated();
+        $item = Item::query()->findOrFail($data['item_id']);
+        $itemUomId = isset($data['item_uom_id']) ? (int) $data['item_uom_id'] : null;
+        $baseDelta = StockAdjustmentQuantity::resolveBaseDelta(
+            $item,
+            (float) $data['quantity_delta'],
+            $itemUomId,
+        );
 
         return new self(
-            itemId: (int) $data['item_id'],
+            itemId: $data['item_id'],
             warehouseId: (int) $data['warehouse_id'],
-            quantityDelta: self::formatDelta($data['quantity_delta']),
+            quantityDelta: $baseDelta,
             type: StockMovementType::Adjustment,
             referenceType: null,
             referenceId: null,

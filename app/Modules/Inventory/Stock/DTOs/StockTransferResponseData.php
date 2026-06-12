@@ -76,7 +76,7 @@ readonly class StockTransferResponseData
     }
 
     /**
-     * @return array{id:int,name:string,email:string}|null
+     * @return array{id:string,name:string,email:string}|null
      */
     private static function userBrief(?User $user): ?array
     {

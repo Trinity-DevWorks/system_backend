@@ -11,7 +11,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('salesmen', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->string('salesman_code')->nullable()->unique();
             $table->string('first_name');
             $table->string('last_name');
@@ -25,7 +25,7 @@ return new class extends Migration
             $table->decimal('target_amount', 20, 4)->nullable();
             $table->date('hire_date')->nullable();
             $table->foreignId('warehouse_id')->nullable()->constrained('warehouses')->nullOnDelete();
-            $table->foreignId('user_id')->nullable()->unique()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('user_id')->nullable()->unique()->constrained('users')->nullOnDelete();
             $table->boolean('is_active')->default(true);
             $table->text('notes')->nullable();
             $table->timestamps();

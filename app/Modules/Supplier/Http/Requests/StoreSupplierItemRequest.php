@@ -27,7 +27,7 @@ class StoreSupplierItemRequest extends FormRequest
         return [
             'item_id' => [
                 'required',
-                'integer',
+                'uuid',
                 'exists:items,id',
                 Rule::unique('supplier_items', 'item_id')->where('supplier_id', $supplierId),
             ],
@@ -46,7 +46,7 @@ class StoreSupplierItemRequest extends FormRequest
                 return;
             }
 
-            $item = Item::query()->find((int) $this->input('item_id'));
+            $item = Item::query()->find($this->input('item_id'));
             if (! $item) {
                 return;
             }

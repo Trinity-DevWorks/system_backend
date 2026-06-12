@@ -3,7 +3,7 @@
 namespace App\Modules\Inventory\Item\Http\Requests;
 
 use App\Modules\Category\Support\CategoryTree;
-use App\Modules\Inventory\Item\Support\ItemTypeDefaults;
+use App\Modules\Inventory\Item\Support\ItemPosFieldValidator;
 use App\Modules\Inventory\ItemType\Models\ItemType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -29,6 +29,13 @@ class UpdateItemRequest extends FormRequest
                 'max:100',
                 Rule::unique('items', 'sku')->ignore($this->route('item')),
             ],
+            'item_code' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:100',
+                Rule::unique('items', 'item_code')->ignore($this->route('item')),
+            ],
             'plu_code' => [
                 'sometimes',
                 'nullable',
@@ -39,9 +46,16 @@ class UpdateItemRequest extends FormRequest
             'item_type_id' => ['sometimes', 'integer', 'exists:item_types,id'],
             'category_id' => ['sometimes', 'integer', 'exists:categories,id'],
             'brand_id' => ['sometimes', 'nullable', 'integer', 'exists:brands,id'],
-            'base_uom_id' => ['sometimes', 'integer', 'exists:unit_of_measurements,id'],
+            'unit_group_id' => ['sometimes', 'integer', 'exists:unit_groups,id'],
             'vat_group_id' => ['sometimes', 'nullable', 'integer', 'exists:vat_groups,id'],
             'description' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'ticket_name' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'kitchen_name' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'send_to_kitchen' => ['sometimes', 'boolean'],
+            'qr_enabled' => ['sometimes', 'boolean'],
+            'qr_description' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'pos_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'color' => ['sometimes', 'nullable', 'string', 'max:32', 'regex:/^#(?:[0-9a-fA-F]{3}){1,2}$/'],
             'track_inventory' => ['sometimes', 'boolean'],
             'allow_sale' => ['sometimes', 'boolean'],
             'allow_purchase' => ['sometimes', 'boolean'],
@@ -51,6 +65,8 @@ class UpdateItemRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
+        ItemPosFieldValidator::validateAfter($validator, $this);
+
         $validator->after(function (Validator $validator): void {
             $item = $this->route('item');
             $typeId = $this->input('item_type_id', $item?->item_type_id);
@@ -64,16 +80,6 @@ class UpdateItemRequest extends FormRequest
                 $validator->errors()->add('item_type_id', 'The selected item type is invalid or inactive.');
 
                 return;
-            }
-
-            $trackInventory = $this->has('track_inventory')
-                ? (bool) $this->boolean('track_inventory')
-                : (bool) ($item?->track_inventory ?? ItemTypeDefaults::flagsForCode($type->code)['track_inventory']);
-
-            $baseUomId = $this->input('base_uom_id', $item?->base_uom_id);
-
-            if ($trackInventory && empty($baseUomId)) {
-                $validator->errors()->add('base_uom_id', 'Base unit of measurement is required when inventory is tracked.');
             }
 
             if ($this->has('category_id')) {

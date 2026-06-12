@@ -90,7 +90,7 @@ class SupplierItemController extends Controller
 
     private function ensureScoped(Supplier $supplier, SupplierItem $supplierItem): void
     {
-        if ((int) $supplierItem->supplier_id !== (int) $supplier->id) {
+        if ((string) $supplierItem->supplier_id !== (string) $supplier->id) {
             abort(404, 'Supplier item not found for this supplier.', ['X-Error-Code' => 'SUPPLIER_ITEM_SCOPE_MISMATCH']);
         }
     }

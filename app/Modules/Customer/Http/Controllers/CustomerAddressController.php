@@ -71,7 +71,7 @@ class CustomerAddressController extends Controller
 
     private function ensureScoped(Customer $customer, CustomerAddress $address): void
     {
-        if ((int) $address->customer_id !== (int) $customer->id) {
+        if ((string) $address->customer_id !== (string) $customer->id) {
             abort(404, 'Address not found for this customer.', ['X-Error-Code' => 'CUSTOMER_ADDRESS_SCOPE_MISMATCH']);
         }
     }

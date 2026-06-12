@@ -39,7 +39,7 @@ class StockTransferService
         return $this->stockTransferQueryService->list($filters);
     }
 
-    public function find(int $id): StockTransfer
+    public function find(string $id): StockTransfer
     {
         return StockTransfer::query()
             ->with([
@@ -59,10 +59,10 @@ class StockTransferService
      *   from_warehouse_id:int,
      *   to_warehouse_id:int,
      *   notes?:?string,
-     *   lines?:list<array{item_id:int,quantity:numeric,item_uom_id?:?int,notes?:?string}>
+     *   lines?:list<array{item_id:string,quantity:numeric,item_uom_id?:?int,notes?:?string}>
      * }  $data
      */
-    public function create(array $data, ?int $userId): StockTransfer
+    public function create(array $data, ?string $userId): StockTransfer
     {
         StockTransferRules::assertWarehouses(
             (int) $data['from_warehouse_id'],
@@ -78,7 +78,7 @@ class StockTransferService
                 'created_by' => $userId,
             ]);
 
-            $transfer->update(['transfer_number' => $this->formatTransferNumber((int) $transfer->id)]);
+            $transfer->update(['transfer_number' => $this->formatTransferNumber()]);
 
             if (! empty($data['lines'])) {
                 $this->replaceLines($transfer, $data['lines']);
@@ -97,31 +97,32 @@ class StockTransferService
      */
     public function updateHeader(StockTransfer $transfer, array $data): StockTransfer
     {
-        StockTransferRules::assertDraft($transfer);
+        return DB::transaction(function () use ($transfer, $data): StockTransfer {
+            $transfer = $this->lockDraftTransfer($transfer);
 
-        $fromId = (int) ($data['from_warehouse_id'] ?? $transfer->from_warehouse_id);
-        $toId = (int) ($data['to_warehouse_id'] ?? $transfer->to_warehouse_id);
-        StockTransferRules::assertWarehouses($fromId, $toId);
+            $fromId = (int) ($data['from_warehouse_id'] ?? $transfer->from_warehouse_id);
+            $toId = (int) ($data['to_warehouse_id'] ?? $transfer->to_warehouse_id);
+            StockTransferRules::assertWarehouses($fromId, $toId);
 
-        $transfer->update([
-            'from_warehouse_id' => $fromId,
-            'to_warehouse_id' => $toId,
-            'notes' => array_key_exists('notes', $data)
-                ? $this->normalizeNotes($data['notes'])
-                : $transfer->notes,
-        ]);
+            $transfer->update([
+                'from_warehouse_id' => $fromId,
+                'to_warehouse_id' => $toId,
+                'notes' => array_key_exists('notes', $data)
+                    ? $this->normalizeNotes($data['notes'])
+                    : $transfer->notes,
+            ]);
 
-        return $this->find($transfer->id);
+            return $this->find($transfer->id);
+        });
     }
 
     /**
-     * @param  list<array{item_id:int,quantity:numeric,item_uom_id?:?int,notes?:?string}>  $lines
+     * @param  list<array{item_id:string,quantity:numeric,item_uom_id?:?int,notes?:?string}>  $lines
      */
     public function syncLines(StockTransfer $transfer, array $lines): Collection
     {
-        StockTransferRules::assertDraft($transfer);
-
         return DB::transaction(function () use ($transfer, $lines): Collection {
+            $transfer = $this->lockDraftTransfer($transfer);
             $this->replaceLines($transfer, $lines);
 
             return StockTransferLine::query()
@@ -134,24 +135,26 @@ class StockTransferService
 
     public function delete(StockTransfer $transfer): void
     {
-        StockTransferRules::assertDraft($transfer);
-        $transfer->delete();
+        DB::transaction(function () use ($transfer): void {
+            $transfer = $this->lockDraftTransfer($transfer);
+            $transfer->delete();
+        });
     }
 
     public function cancel(StockTransfer $transfer): StockTransfer
     {
-        StockTransferRules::assertDraft($transfer);
+        return DB::transaction(function () use ($transfer): StockTransfer {
+            $transfer = $this->lockDraftTransfer($transfer);
+            $transfer->update(['status' => StockTransferStatus::Cancelled]);
 
-        $transfer->update(['status' => StockTransferStatus::Cancelled]);
-
-        return $this->find($transfer->id);
+            return $this->find($transfer->id);
+        });
     }
 
-    public function post(StockTransfer $transfer, ?int $userId): StockTransfer
+    public function post(StockTransfer $transfer, ?string $userId): StockTransfer
     {
         return DB::transaction(function () use ($transfer, $userId): StockTransfer {
-            $transfer = StockTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
-            StockTransferRules::assertDraft($transfer);
+            $transfer = $this->lockDraftTransfer($transfer);
             StockTransferRules::assertWarehouses($transfer->from_warehouse_id, $transfer->to_warehouse_id);
 
             $lines = StockTransferLine::query()
@@ -171,22 +174,22 @@ class StockTransferService
                 $lineNote = $line->notes ? $referenceNote.' — '.$line->notes : $referenceNote;
 
                 $this->stockMovementService->post(StockMovementData::forTransfer(
-                    itemId: (int) $line->item_id,
+                    itemId: (string) $line->item_id,
                     warehouseId: (int) $transfer->from_warehouse_id,
                     quantityDelta: bcmul($baseQty, '-1', 6),
                     type: StockMovementType::TransferOut,
-                    stockTransferId: (int) $transfer->id,
+                    stockTransferId: (string) $transfer->id,
                     itemUomId: $line->item_uom_id ? (int) $line->item_uom_id : null,
                     notes: $lineNote,
                     userId: $userId,
                 ));
 
                 $this->stockMovementService->post(StockMovementData::forTransfer(
-                    itemId: (int) $line->item_id,
+                    itemId: (string) $line->item_id,
                     warehouseId: (int) $transfer->to_warehouse_id,
                     quantityDelta: $baseQty,
                     type: StockMovementType::TransferIn,
-                    stockTransferId: (int) $transfer->id,
+                    stockTransferId: (string) $transfer->id,
                     itemUomId: $line->item_uom_id ? (int) $line->item_uom_id : null,
                     notes: $lineNote,
                     userId: $userId,
@@ -204,14 +207,14 @@ class StockTransferService
     }
 
     /**
-     * @param  list<array{item_id:int,quantity:numeric,item_uom_id?:?int,notes?:?string}>  $lines
+     * @param  list<array{item_id:string,quantity:numeric,item_uom_id?:?int,notes?:?string}>  $lines
      */
     private function replaceLines(StockTransfer $transfer, array $lines): void
     {
         $normalized = [];
 
         foreach ($lines as $row) {
-            $itemId = (int) $row['item_id'];
+            $itemId = (string) $row['item_id'];
             if (isset($normalized[$itemId])) {
                 abort(422, 'Duplicate items are not allowed on a transfer.', ['X-Error-Code' => 'STOCK_TRANSFER_DUPLICATE_ITEM']);
             }
@@ -243,9 +246,19 @@ class StockTransferService
         }
     }
 
-    private function formatTransferNumber(int $id): string
+    private function lockDraftTransfer(StockTransfer $transfer): StockTransfer
     {
-        return 'ST-'.str_pad((string) $id, 6, '0', STR_PAD_LEFT);
+        $locked = StockTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+        StockTransferRules::assertDraft($locked);
+
+        return $locked;
+    }
+
+    private function formatTransferNumber(): string
+    {
+        $seq = StockTransfer::query()->count();
+
+        return 'ST-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
     }
 
     private function normalizeNotes(mixed $value): ?string

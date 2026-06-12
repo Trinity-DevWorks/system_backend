@@ -12,7 +12,7 @@ return new class extends Migration
     {
         Schema::create('customer_balances', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('customer_id')->constrained('customers')->cascadeOnDelete();
+            $table->foreignUuid('customer_id')->constrained('customers')->cascadeOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             /** Snapshot / policy; live AR balance for the currency comes from the ledger */
             $table->decimal('opening_balance', 20, 4)->default(0);

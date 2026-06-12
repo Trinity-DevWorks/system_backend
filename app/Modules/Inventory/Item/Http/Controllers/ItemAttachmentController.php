@@ -41,7 +41,7 @@ class ItemAttachmentController extends Controller
         $file = $request->file('file');
         assert($file !== null);
         $userId = $request->user()?->id;
-        $attachment = $this->attachmentService->store($item, $file, $userId !== null ? (int) $userId : null);
+        $attachment = $this->attachmentService->store($item, $file, $userId !== null ? (string) $userId : null);
         $urls = $this->urls($item, $attachment);
 
         return ApiResponse::created(
@@ -103,7 +103,7 @@ class ItemAttachmentController extends Controller
     private function ensureMorph(Item $item, Attachment $attachment): void
     {
         if ($attachment->attachable_type !== $item->getMorphClass()
-            || (int) $attachment->attachable_id !== (int) $item->id) {
+            || (string) $attachment->attachable_id !== (string) $item->id) {
             abort(404, 'Attachment not found for this item.', ['X-Error-Code' => 'ITEM_ATTACHMENT_SCOPE_MISMATCH']);
         }
     }

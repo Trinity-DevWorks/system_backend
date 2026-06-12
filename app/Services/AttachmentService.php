@@ -27,11 +27,11 @@ class AttachmentService
     {
         return $attachable->attachments()
             ->orderByDesc('is_primary')
-            ->orderByDesc('id')
+            ->orderByDesc('created_at')
             ->get();
     }
 
-    public function store(Customer|Supplier|Salesman|Item $attachable, UploadedFile $file, ?int $uploadedByUserId): Attachment
+    public function store(Customer|Supplier|Salesman|Item $attachable, UploadedFile $file, ?string $uploadedByUserId): Attachment
     {
         return DB::transaction(function () use ($attachable, $file, $uploadedByUserId): Attachment {
             $original = $file->getClientOriginalName() ?: 'upload';
@@ -61,7 +61,7 @@ class AttachmentService
     public function setPrimaryImage(Item $item, Attachment $attachment): Attachment
     {
         if ($attachment->attachable_type !== $item->getMorphClass()
-            || (int) $attachment->attachable_id !== (int) $item->id) {
+            || (string) $attachment->attachable_id !== (string) $item->id) {
             abort(404, 'Attachment not found for this item.', ['X-Error-Code' => 'ITEM_ATTACHMENT_SCOPE_MISMATCH']);
         }
 
@@ -145,7 +145,7 @@ class AttachmentService
     {
         $next = $item->attachments()
             ->where('viewer_category', AttachmentViewerCategory::Image)
-            ->orderByDesc('id')
+            ->orderByDesc('created_at')
             ->first();
 
         if ($next !== null) {

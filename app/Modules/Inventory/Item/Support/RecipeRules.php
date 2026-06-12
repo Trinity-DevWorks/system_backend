@@ -46,7 +46,7 @@ final class RecipeRules
 
     public static function assertValidIngredient(Item $producedItem, Item $ingredient): void
     {
-        if ((int) $producedItem->id === (int) $ingredient->id) {
+        if ((string) $producedItem->id === (string) $ingredient->id) {
             abort(422, 'A recipe cannot use the produced item as an ingredient.', ['X-Error-Code' => 'RECIPE_SELF_REFERENCE']);
         }
 

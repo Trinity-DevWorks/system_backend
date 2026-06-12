@@ -10,15 +10,15 @@ return new class extends Migration
     {
         Schema::create('stock_movements', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('item_id')->constrained('items')->restrictOnDelete();
+            $table->foreignUuid('item_id')->constrained('items')->restrictOnDelete();
             $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
             $table->decimal('quantity_delta', 14, 6);
             $table->string('type', 32);
             $table->string('reference_type', 100)->nullable();
-            $table->unsignedBigInteger('reference_id')->nullable();
+            $table->uuid('reference_id')->nullable();
             $table->foreignId('item_uom_id')->nullable()->constrained('item_uoms')->nullOnDelete();
             $table->text('notes')->nullable();
-            $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
 
             $table->index(['item_id', 'warehouse_id']);

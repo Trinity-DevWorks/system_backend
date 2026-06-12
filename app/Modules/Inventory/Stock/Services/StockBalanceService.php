@@ -28,7 +28,7 @@ class StockBalanceService
         }
 
         if (! empty($filters['item_id'])) {
-            $query->where('item_id', (int) $filters['item_id']);
+            $query->where('item_id', $filters['item_id']);
         }
 
         if (! empty($filters['only_tracked'])) {
@@ -52,7 +52,7 @@ class StockBalanceService
             ->get();
     }
 
-    public function findForItemWarehouse(int $itemId, int $warehouseId): ?StockBalance
+    public function findForItemWarehouse(string $itemId, int $warehouseId): ?StockBalance
     {
         return StockBalance::query()
             ->with([

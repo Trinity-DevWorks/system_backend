@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
 readonly class SalesmanResponseData
 {
     public function __construct(
-        public int $id,
+        public string $id,
         public ?string $salesmanCode,
         public string $firstName,
         public string $lastName,
@@ -25,7 +25,7 @@ readonly class SalesmanResponseData
         public ?string $hireDate,
         public ?int $warehouseId,
         public ?string $warehouseName,
-        public ?int $userId,
+        public ?string $userId,
         public ?string $userName,
         public bool $isActive,
         public ?string $notes,

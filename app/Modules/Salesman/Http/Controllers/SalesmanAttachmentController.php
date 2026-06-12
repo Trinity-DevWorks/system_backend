@@ -41,7 +41,7 @@ class SalesmanAttachmentController extends Controller
         $file = $request->file('file');
         assert($file !== null);
         $userId = $request->user()?->id;
-        $attachment = $this->attachmentService->store($salesman, $file, $userId !== null ? (int) $userId : null);
+        $attachment = $this->attachmentService->store($salesman, $file, $userId !== null ? (string) $userId : null);
         $urls = $this->urls($salesman, $attachment);
 
         return ApiResponse::created(
@@ -91,7 +91,7 @@ class SalesmanAttachmentController extends Controller
     private function ensureMorph(Salesman $salesman, Attachment $attachment): void
     {
         if ($attachment->attachable_type !== $salesman->getMorphClass()
-            || (int) $attachment->attachable_id !== (int) $salesman->id) {
+            || (string) $attachment->attachable_id !== (string) $salesman->id) {
             abort(404, 'Attachment not found for this salesman.', ['X-Error-Code' => 'SALESMAN_ATTACHMENT_SCOPE_MISMATCH']);
         }
     }

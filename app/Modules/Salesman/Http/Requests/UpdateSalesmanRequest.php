@@ -63,7 +63,7 @@ class UpdateSalesmanRequest extends FormRequest
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'user_id' => [
                 'nullable',
-                'integer',
+                'uuid',
                 'exists:users,id',
                 Rule::unique('salesmen', 'user_id')->ignore($salesman->id),
             ],

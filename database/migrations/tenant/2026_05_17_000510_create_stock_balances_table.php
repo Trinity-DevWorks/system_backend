@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('stock_balances', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('item_id')->constrained('items')->restrictOnDelete();
+            $table->foreignUuid('item_id')->constrained('items')->restrictOnDelete();
             $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
             $table->decimal('quantity', 14, 6)->default(0);
             $table->timestamps();

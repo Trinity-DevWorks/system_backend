@@ -180,7 +180,7 @@ class UserService
         return Role::query()->where('name', self::OWNER_ROLE_NAME)->value('id');
     }
 
-    private function activeOwnerCountExcluding(int $excludeUserId): int
+    private function activeOwnerCountExcluding(string $excludeUserId): int
     {
         $ownerRoleId = $this->ownerRoleId();
         if ($ownerRoleId === null) {

@@ -10,8 +10,8 @@ return new class extends Migration
     {
         Schema::create('stock_transfer_lines', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('stock_transfer_id')->constrained('stock_transfers')->cascadeOnDelete();
-            $table->foreignId('item_id')->constrained('items')->restrictOnDelete();
+            $table->foreignUuid('stock_transfer_id')->constrained('stock_transfers')->cascadeOnDelete();
+            $table->foreignUuid('item_id')->constrained('items')->restrictOnDelete();
             $table->decimal('quantity', 14, 6);
             $table->decimal('base_quantity', 14, 6);
             $table->foreignId('item_uom_id')->nullable()->constrained('item_uoms')->nullOnDelete();
