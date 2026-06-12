@@ -18,14 +18,14 @@ class StoreStockAdjustmentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'item_id' => ['required', 'integer', 'exists:items,id'],
+            'item_id' => ['required', 'uuid', 'exists:items,id'],
             'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
             'quantity_delta' => ['required', 'numeric', 'not_in:0'],
             'item_uom_id' => [
                 'nullable',
                 'integer',
                 Rule::exists('item_uoms', 'id')->where(function ($query): void {
-                    $query->where('item_id', (int) $this->input('item_id'));
+                    $query->where('item_id', $this->input('item_id'));
                 }),
             ],
             'notes' => ['nullable', 'string', 'max:1000'],

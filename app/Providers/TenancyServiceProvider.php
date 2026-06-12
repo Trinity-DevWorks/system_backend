@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Jobs\BootstrapTenantItemTypes;
+use App\Jobs\BootstrapTenantUnitCatalog;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -30,6 +31,7 @@ class TenancyServiceProvider extends ServiceProvider
                     Jobs\CreateDatabase::class,
                     Jobs\MigrateDatabase::class,
                     BootstrapTenantItemTypes::class,
+                    BootstrapTenantUnitCatalog::class,
                 ])->send(function (Events\TenantCreated $event) {
                     return $event->tenant;
                 })->shouldBeQueued(false), // `false` by default, but you probably want to make this `true` for production.

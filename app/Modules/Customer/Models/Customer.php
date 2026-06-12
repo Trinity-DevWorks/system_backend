@@ -12,6 +12,7 @@ use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\VatGroup\Models\VatGroup;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -46,6 +47,7 @@ class Customer extends Model implements AuditableContract
 {
     use Auditable;
     use HasFactory;
+    use HasUuids;
     use SoftDeletes;
 
     /**

@@ -46,7 +46,7 @@ class StoreSalesmanRequest extends FormRequest
             'target_amount' => ['nullable', 'numeric', 'min:0'],
             'hire_date' => ['nullable', 'date'],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
-            'user_id' => ['nullable', 'integer', 'exists:users,id', 'unique:salesmen,user_id'],
+            'user_id' => ['nullable', 'uuid', 'exists:users,id', 'unique:salesmen,user_id'],
             'is_active' => ['required', 'boolean'],
             'notes' => ['nullable', 'string'],
         ];

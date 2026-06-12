@@ -12,7 +12,7 @@ return new class extends Migration
     {
         Schema::create('customer_addresses', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('customer_id')->constrained('customers')->cascadeOnDelete();
+            $table->foreignUuid('customer_id')->constrained('customers')->cascadeOnDelete();
             $table->enum('address_type', ['billing', 'shipping'])->default('shipping');
             $table->string('address_line_1');
             $table->string('address_line_2')->nullable();

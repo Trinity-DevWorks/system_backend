@@ -62,4 +62,21 @@ final class ItemTypeDefaults
     {
         return self::flagsForCode($code)['track_inventory'];
     }
+
+    /**
+     * @return array{send_to_kitchen: bool, qr_enabled: bool}
+     */
+    public static function posFlagsForCode(string $code): array
+    {
+        return match (strtoupper(trim($code))) {
+            'SERVICE', 'PRODUCE', 'PLU', 'BUNDLE' => [
+                'send_to_kitchen' => true,
+                'qr_enabled' => false,
+            ],
+            default => [
+                'send_to_kitchen' => false,
+                'qr_enabled' => false,
+            ],
+        };
+    }
 }

@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Stock\DTOs;
 use App\Models\User;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\Models\StockMovement;
+use App\Modules\Inventory\Stock\Support\StockMovementQuantityOnHand;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Support\Collection;
 
@@ -13,7 +14,8 @@ readonly class StockMovementResponseData
     public static function fromModel(StockMovement $movement, ?string $quantityOnHand = null): array
     {
         $movement->loadMissing([
-            'item:id,sku,name',
+            'item:id,sku,name,base_uom_id',
+            'item.baseUom:id,code,name',
             'warehouse:id,name,shortcut_name',
             'itemUom:id,uom_id',
             'itemUom.uom:id,code,name',
@@ -33,14 +35,7 @@ readonly class StockMovementResponseData
             'notes' => $movement->notes,
             'item' => self::itemBrief($movement->item),
             'warehouse' => self::warehouseBrief($movement->warehouse),
-            'item_uom' => $movement->itemUom ? [
-                'id' => $movement->itemUom->id,
-                'uom' => $movement->itemUom->uom ? [
-                    'id' => $movement->itemUom->uom->id,
-                    'code' => $movement->itemUom->uom->code,
-                    'name' => $movement->itemUom->uom->name,
-                ] : null,
-            ] : null,
+            'item_uom' => self::itemUomBrief($movement),
             'user' => self::userBrief($movement->user),
             'created_at' => (string) $movement->created_at,
             'updated_at' => (string) $movement->updated_at,
@@ -53,8 +48,14 @@ readonly class StockMovementResponseData
      */
     public static function collectionToArray(Collection $movements): array
     {
+        $onHandByMovementId = StockMovementQuantityOnHand::mapForMovements($movements);
+
         return $movements
-            ->map(fn (StockMovement $movement): array => self::fromModel($movement))
+            ->map(function (StockMovement $movement) use ($onHandByMovementId): array {
+                $onHand = $onHandByMovementId[$movement->id] ?? null;
+
+                return self::fromModel($movement, $onHand);
+            })
             ->values()
             ->all();
     }
@@ -88,6 +89,39 @@ readonly class StockMovementResponseData
             'id' => $warehouse->id,
             'name' => $warehouse->name,
             'shortcut_name' => $warehouse->shortcut_name,
+        ];
+    }
+
+    /**
+     * Line UOM for display: item UOM when set, otherwise the item's base UOM.
+     *
+     * @return array{id:int|null,uom:array{id:int,code:string,name:string}|null}|null
+     */
+    private static function itemUomBrief(StockMovement $movement): ?array
+    {
+        if ($movement->itemUom) {
+            return [
+                'id' => $movement->itemUom->id,
+                'uom' => $movement->itemUom->uom ? [
+                    'id' => $movement->itemUom->uom->id,
+                    'code' => $movement->itemUom->uom->code,
+                    'name' => $movement->itemUom->uom->name,
+                ] : null,
+            ];
+        }
+
+        $baseUom = $movement->item?->baseUom;
+        if (! $baseUom) {
+            return null;
+        }
+
+        return [
+            'id' => null,
+            'uom' => [
+                'id' => $baseUom->id,
+                'code' => $baseUom->code,
+                'name' => $baseUom->name,
+            ],
         ];
     }
 

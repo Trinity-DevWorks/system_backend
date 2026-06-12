@@ -25,7 +25,8 @@ class StockMovementQueryService
     {
         $query = StockMovement::query()
             ->with([
-                'item:id,sku,name',
+                'item:id,sku,name,base_uom_id',
+                'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name',
                 'itemUom.uom:id,code,name',
                 'user:id,name,email',
@@ -36,7 +37,7 @@ class StockMovementQueryService
         }
 
         if (! empty($filters['item_id'])) {
-            $query->where('item_id', (int) $filters['item_id']);
+            $query->where('item_id', $filters['item_id']);
         }
 
         if (! empty($filters['type'])) {

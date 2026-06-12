@@ -10,6 +10,7 @@ use App\Modules\Salesman\Enums\CommissionType;
 use App\Modules\Warehouse\Models\Warehouse;
 use Database\Factories\SalesmanFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -42,6 +43,7 @@ class Salesman extends Model implements AuditableContract
     /** @use HasFactory<SalesmanFactory> */
     use HasFactory;
 
+    use HasUuids;
     use SoftDeletes;
 
     protected $table = 'salesmen';

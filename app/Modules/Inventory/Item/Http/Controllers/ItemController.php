@@ -38,7 +38,7 @@ class ItemController extends Controller
 
     public function show(Item $item): JsonResponse
     {
-        $item->load(['itemType', 'category', 'brand', 'baseUom']);
+        $item->load(['itemType', 'category', 'brand', 'unitGroup', 'baseUom']);
 
         return ApiResponse::success(
             ItemResponseData::fromModel($item)->toArray(),

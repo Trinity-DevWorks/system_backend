@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\BootstrapTenantItemTypes;
+use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Models\Tenant;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -20,3 +21,15 @@ Artisan::command('tenants:sync-item-types', function () {
 
     $this->info("Done. {$count} tenant(s) processed.");
 })->purpose('Seed the item_types catalog for all existing tenants');
+
+Artisan::command('tenants:sync-unit-catalog', function () {
+    $count = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use (&$count): void {
+        BootstrapTenantUnitCatalog::dispatchSync($tenant);
+        $this->info("Synced unit catalog for tenant [{$tenant->id}]");
+        $count++;
+    });
+
+    $this->info("Done. {$count} tenant(s) processed.");
+})->purpose('Seed default unit groups and UOMs for all existing tenants');

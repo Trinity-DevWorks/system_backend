@@ -23,7 +23,7 @@ readonly class SalesmanData
         public ?string $targetAmount,
         public ?Carbon $hireDate,
         public ?int $warehouseId,
-        public ?int $userId,
+        public ?string $userId,
         public bool $isActive,
         public ?string $notes,
     ) {}
@@ -63,7 +63,7 @@ readonly class SalesmanData
             targetAmount: isset($data['target_amount']) ? (string) $data['target_amount'] : null,
             hireDate: $hire !== null && $hire !== '' ? Carbon::parse((string) $hire) : null,
             warehouseId: isset($data['warehouse_id']) ? (int) $data['warehouse_id'] : null,
-            userId: isset($data['user_id']) ? (int) $data['user_id'] : null,
+            userId: isset($data['user_id']) ? (string) $data['user_id'] : null,
             isActive: (bool) $data['is_active'],
             notes: isset($data['notes']) ? (string) $data['notes'] : null,
         );

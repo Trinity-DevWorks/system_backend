@@ -94,7 +94,7 @@ class SupplierItemService
         }
     }
 
-    private function assertPurchasableItem(int $itemId): void
+    private function assertPurchasableItem(string $itemId): void
     {
         $item = Item::query()->findOrFail($itemId);
 
@@ -107,7 +107,7 @@ class SupplierItemService
         }
     }
 
-    private function clearPreferredForItem(int $itemId, ?int $exceptId = null): void
+    private function clearPreferredForItem(string $itemId, ?int $exceptId = null): void
     {
         $query = SupplierItem::query()->where('item_id', $itemId);
         if ($exceptId !== null) {

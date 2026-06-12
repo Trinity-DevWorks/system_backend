@@ -71,7 +71,7 @@ class SupplierAddressController extends Controller
 
     private function ensureScoped(Supplier $supplier, SupplierAddress $address): void
     {
-        if ((int) $address->supplier_id !== (int) $supplier->id) {
+        if ((string) $address->supplier_id !== (string) $supplier->id) {
             abort(404, 'Address not found for this supplier.', ['X-Error-Code' => 'SUPPLIER_ADDRESS_SCOPE_MISMATCH']);
         }
     }

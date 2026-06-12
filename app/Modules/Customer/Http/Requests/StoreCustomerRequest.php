@@ -50,7 +50,7 @@ class StoreCustomerRequest extends FormRequest
             'email' => ['nullable', 'email', 'max:255', 'unique:customers,email'],
             'phone' => ['nullable', 'string', 'max:32'],
             'customer_group_id' => ['nullable', 'integer', 'exists:customer_groups,id'],
-            'salesman_id' => ['nullable', 'integer', 'exists:salesmen,id'],
+            'salesman_id' => ['nullable', 'uuid', 'exists:salesmen,id'],
             'payment_method_id' => ['nullable', 'integer', 'exists:payment_methods,id'],
             'payment_terms_id' => ['nullable', 'integer', 'exists:payment_terms,id'],
             'vat_group_id' => ['nullable', 'integer', 'exists:vat_groups,id'],

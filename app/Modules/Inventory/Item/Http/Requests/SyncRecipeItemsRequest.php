@@ -18,13 +18,13 @@ class SyncRecipeItemsRequest extends FormRequest
     public function rules(): array
     {
         $item = $this->route('item');
-        $producedItemId = is_object($item) ? (int) $item->id : 0;
+        $producedItemId = is_object($item) ? (string) $item->id : '';
 
         return [
             'ingredients' => ['present', 'array'],
             'ingredients.*.item_id' => [
                 'required',
-                'integer',
+                'uuid',
                 'distinct',
                 'exists:items,id',
                 Rule::notIn([$producedItemId]),

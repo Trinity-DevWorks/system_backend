@@ -19,6 +19,8 @@ use App\Modules\Inventory\Item\Http\Controllers\ItemUomController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeItemController;
 use App\Modules\Inventory\ItemType\Http\Controllers\ItemTypeController;
+use App\Modules\Inventory\Stock\Http\Controllers\ItemWarehouseReplenishmentController;
+use App\Modules\Inventory\Stock\Http\Controllers\PurchasingAlertController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockBalanceController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockMovementController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockTransferController;
@@ -159,6 +161,11 @@ Route::middleware([
         Route::post('stock/adjustments', [StockMovementController::class, 'storeAdjustment'])
             ->middleware('check.permission:stock,edit');
 
+        Route::get('stock/purchasing-alerts/summary', [PurchasingAlertController::class, 'summary'])
+            ->middleware('check.permission:stock,view');
+        Route::get('stock/purchasing-alerts', [PurchasingAlertController::class, 'index'])
+            ->middleware('check.permission:stock,view');
+
         Route::get('stock/transfers', [StockTransferController::class, 'index'])
             ->middleware('check.permission:stock,view');
         Route::post('stock/transfers', [StockTransferController::class, 'store'])
@@ -238,6 +245,15 @@ Route::middleware([
 
         Route::get('items/{item}/supplier-items', [SupplierItemController::class, 'indexForItem'])
             ->middleware('check.permission:items,view');
+
+        Route::get('items/{item}/warehouse-replenishments', [ItemWarehouseReplenishmentController::class, 'index'])
+            ->middleware('check.permission:items,view');
+        Route::post('items/{item}/warehouse-replenishments', [ItemWarehouseReplenishmentController::class, 'store'])
+            ->middleware('check.permission:items,edit');
+        Route::put('items/{item}/warehouse-replenishments/{item_warehouse_replenishment}', [ItemWarehouseReplenishmentController::class, 'update'])
+            ->middleware('check.permission:items,edit');
+        Route::delete('items/{item}/warehouse-replenishments/{item_warehouse_replenishment}', [ItemWarehouseReplenishmentController::class, 'destroy'])
+            ->middleware('check.permission:items,edit');
 
         Route::get('items/{item}/attachments/{attachment}/download', [ItemAttachmentController::class, 'download'])
             ->middleware('check.permission:items,view')

@@ -12,7 +12,7 @@ use App\Modules\Supplier\Models\SupplierItem;
 readonly class SupplierItemData
 {
     public function __construct(
-        public int $itemId,
+        public string $itemId,
         public ?string $supplierSku,
         public ?string $lastPurchasePrice,
         public int $currencyId,
@@ -25,7 +25,7 @@ readonly class SupplierItemData
         $data = $request->validated();
 
         return new self(
-            itemId: (int) $data['item_id'],
+            itemId: $data['item_id'],
             supplierSku: self::normalizeSku($data['supplier_sku'] ?? null),
             lastPurchasePrice: self::normalizePrice($data['last_purchase_price'] ?? null),
             currencyId: self::resolveCurrencyId($data['currency_id'] ?? null),
@@ -39,7 +39,7 @@ readonly class SupplierItemData
         $data = $request->validated();
 
         return new self(
-            itemId: (int) $row->item_id,
+            itemId: (string) $row->item_id,
             supplierSku: array_key_exists('supplier_sku', $data)
                 ? self::normalizeSku($data['supplier_sku'])
                 : $row->supplier_sku,

@@ -17,10 +17,11 @@ class ItemUomService
     public function create(Item $item, array $data): ItemUom
     {
         return DB::transaction(function () use ($item, $data): ItemUom {
+            $item->refresh();
             $uom = UnitOfMeasurement::query()->findOrFail((int) $data['uom_id']);
             $currencyId = $this->resolveCurrencyId($data['currency_id'] ?? null);
 
-            $this->assertSameUnitGroupAsBase($item, $uom);
+            $this->assertUomInItemUnitGroup($item, $uom);
 
             if (ItemUom::query()
                 ->where('item_id', $item->id)
@@ -30,9 +31,19 @@ class ItemUomService
                 abort(422, 'This unit and currency combination already exists for the item.', ['X-Error-Code' => 'ITEM_UOM_ALREADY_EXISTS']);
             }
 
-            $isBase = (bool) ($data['is_base'] ?? false);
+            $hasBase = $this->itemHasBase($item);
+
+            if (! $hasBase) {
+                $isBase = true;
+            } else {
+                $isBase = (bool) ($data['is_base'] ?? false);
+                if ($isBase) {
+                    abort(422, 'Item already has a base unit. Edit the existing base unit row instead.', ['X-Error-Code' => 'ITEM_BASE_UOM_ALREADY_SET']);
+                }
+            }
+
             if ($isBase) {
-                $this->assertBaseUomRow($item, $uom, (float) $data['conversion_factor']);
+                $this->assertBaseConversionFactor((float) $data['conversion_factor']);
             }
 
             $row = ItemUom::query()->create([
@@ -41,14 +52,18 @@ class ItemUomService
                 'currency_id' => $currencyId,
                 'conversion_factor' => $isBase ? 1 : (float) $data['conversion_factor'],
                 'barcode' => $this->normalizeBarcode($data['barcode'] ?? null),
-                'selling_price' => $data['selling_price'] ?? null,
-                'cost_price' => $data['cost_price'] ?? null,
+                'selling_price' => $this->normalizeOptionalPrice($data['selling_price'] ?? null),
+                'cost_price' => $this->normalizeOptionalPrice($data['cost_price'] ?? null),
+                'takeaway_price' => $this->normalizeOptionalPrice($data['takeaway_price'] ?? null),
+                'dine_in_price' => $this->normalizeOptionalPrice($data['dine_in_price'] ?? null),
+                'delivery_price' => $this->normalizeOptionalPrice($data['delivery_price'] ?? null),
                 'is_base' => $isBase,
-                'is_default_sale' => (bool) ($data['is_default_sale'] ?? false),
-                'is_default_purchase' => (bool) ($data['is_default_purchase'] ?? false),
+                'is_default_sale' => (bool) ($data['is_default_sale'] ?? $isBase),
+                'is_default_purchase' => (bool) ($data['is_default_purchase'] ?? $isBase),
             ]);
 
             if ($row->is_base) {
+                $this->syncItemBaseUom($item, $uom);
                 $this->clearOtherBaseFlags($item->id, $row->id);
             }
             if ($row->is_default_sale) {
@@ -67,11 +82,12 @@ class ItemUomService
      */
     public function update(Item $item, ItemUom $itemUom, array $data): ItemUom
     {
-        if ((int) $itemUom->item_id !== (int) $item->id) {
+        if ((string) $itemUom->item_id !== (string) $item->id) {
             abort(404);
         }
 
         return DB::transaction(function () use ($item, $itemUom, $data): ItemUom {
+            $item->refresh();
             $currencyId = array_key_exists('currency_id', $data)
                 ? $this->resolveCurrencyId($data['currency_id'])
                 : (int) $itemUom->currency_id;
@@ -94,8 +110,11 @@ class ItemUomService
 
             if ($isBase) {
                 $uom = UnitOfMeasurement::query()->findOrFail((int) $itemUom->uom_id);
-                $this->assertBaseUomRow($item, $uom, $conversionFactor);
+                $this->assertBaseConversionFactor($conversionFactor);
+                $this->syncItemBaseUom($item, $uom);
                 $conversionFactor = 1;
+            } elseif ($itemUom->is_base && array_key_exists('is_base', $data) && ! $data['is_base']) {
+                abort(422, 'Base unit of measurement cannot be detached.', ['X-Error-Code' => 'ITEM_BASE_UOM_DETACH_FORBIDDEN']);
             }
 
             $itemUom->update([
@@ -105,11 +124,20 @@ class ItemUomService
                     ? $this->normalizeBarcode($data['barcode'])
                     : $itemUom->barcode,
                 'selling_price' => array_key_exists('selling_price', $data)
-                    ? $data['selling_price']
+                    ? $this->normalizeOptionalPrice($data['selling_price'])
                     : $itemUom->selling_price,
                 'cost_price' => array_key_exists('cost_price', $data)
-                    ? $data['cost_price']
+                    ? $this->normalizeOptionalPrice($data['cost_price'])
                     : $itemUom->cost_price,
+                'takeaway_price' => array_key_exists('takeaway_price', $data)
+                    ? $this->normalizeOptionalPrice($data['takeaway_price'])
+                    : $itemUom->takeaway_price,
+                'dine_in_price' => array_key_exists('dine_in_price', $data)
+                    ? $this->normalizeOptionalPrice($data['dine_in_price'])
+                    : $itemUom->dine_in_price,
+                'delivery_price' => array_key_exists('delivery_price', $data)
+                    ? $this->normalizeOptionalPrice($data['delivery_price'])
+                    : $itemUom->delivery_price,
                 'is_base' => $isBase,
                 'is_default_sale' => array_key_exists('is_default_sale', $data)
                     ? (bool) $data['is_default_sale']
@@ -137,7 +165,7 @@ class ItemUomService
 
     public function delete(Item $item, ItemUom $itemUom): void
     {
-        if ((int) $itemUom->item_id !== (int) $item->id) {
+        if ((string) $itemUom->item_id !== (string) $item->id) {
             abort(404);
         }
 
@@ -161,21 +189,27 @@ class ItemUomService
             ->get();
     }
 
-    public function ensureBaseRow(Item $item, int $currencyId): ItemUom
+    private function itemHasBase(Item $item): bool
     {
-        return ItemUom::query()->updateOrCreate(
-            [
-                'item_id' => $item->id,
-                'uom_id' => $item->base_uom_id,
-                'currency_id' => $currencyId,
-            ],
-            [
-                'conversion_factor' => 1,
-                'is_base' => true,
-                'is_default_sale' => true,
-                'is_default_purchase' => true,
-            ]
-        );
+        if ($item->base_uom_id !== null) {
+            return true;
+        }
+
+        return ItemUom::query()
+            ->where('item_id', $item->id)
+            ->where('is_base', true)
+            ->exists();
+    }
+
+    private function syncItemBaseUom(Item $item, UnitOfMeasurement $uom): void
+    {
+        $this->assertUomInItemUnitGroup($item, $uom);
+
+        if ($item->base_uom_id !== null && (int) $item->base_uom_id !== (int) $uom->id) {
+            abort(422, 'Item already has a base unit of measurement.', ['X-Error-Code' => 'ITEM_BASE_UOM_ALREADY_SET']);
+        }
+
+        $item->update(['base_uom_id' => $uom->id]);
     }
 
     private function resolveCurrencyId(mixed $currencyId): int
@@ -192,30 +226,25 @@ class ItemUomService
         return (int) $primary->id;
     }
 
-    private function assertBaseUomRow(Item $item, UnitOfMeasurement $uom, float $conversionFactor): void
+    private function assertBaseConversionFactor(float $conversionFactor): void
     {
-        if ((int) $uom->id !== (int) $item->base_uom_id) {
-            abort(422, 'Base row must use the item base unit of measurement.', ['X-Error-Code' => 'ITEM_BASE_UOM_MISMATCH']);
-        }
-
         if ($conversionFactor !== 1.0) {
             abort(422, 'Base unit conversion factor must be 1.', ['X-Error-Code' => 'ITEM_BASE_UOM_INVALID_CONVERSION']);
         }
     }
 
-    private function assertSameUnitGroupAsBase(Item $item, UnitOfMeasurement $uom): void
+    private function assertUomInItemUnitGroup(Item $item, UnitOfMeasurement $uom): void
     {
-        $base = UnitOfMeasurement::query()->find($item->base_uom_id);
-        if (! $base) {
-            abort(422, 'Item base unit of measurement is missing.', ['X-Error-Code' => 'ITEM_BASE_UOM_MISSING']);
+        if ($item->unit_group_id === null) {
+            abort(422, 'Item unit group is missing.', ['X-Error-Code' => 'ITEM_UNIT_GROUP_REQUIRED']);
         }
 
-        if ((int) $base->unit_group_id !== (int) $uom->unit_group_id) {
-            abort(422, 'Unit of measurement must belong to the same unit group as the item base UOM.', ['X-Error-Code' => 'ITEM_UOM_UNIT_GROUP_MISMATCH']);
+        if ((int) $uom->unit_group_id !== (int) $item->unit_group_id) {
+            abort(422, 'Unit of measurement must belong to the item unit group.', ['X-Error-Code' => 'ITEM_UOM_UNIT_GROUP_MISMATCH']);
         }
     }
 
-    private function clearOtherBaseFlags(int $itemId, int $exceptId): void
+    private function clearOtherBaseFlags(string $itemId, int $exceptId): void
     {
         ItemUom::query()
             ->where('item_id', $itemId)
@@ -223,7 +252,7 @@ class ItemUomService
             ->update(['is_base' => false]);
     }
 
-    private function clearOtherDefaultSaleFlags(int $itemId, int $currencyId, int $exceptId): void
+    private function clearOtherDefaultSaleFlags(string $itemId, int $currencyId, int $exceptId): void
     {
         ItemUom::query()
             ->where('item_id', $itemId)
@@ -232,7 +261,7 @@ class ItemUomService
             ->update(['is_default_sale' => false]);
     }
 
-    private function clearOtherDefaultPurchaseFlags(int $itemId, int $currencyId, int $exceptId): void
+    private function clearOtherDefaultPurchaseFlags(string $itemId, int $currencyId, int $exceptId): void
     {
         ItemUom::query()
             ->where('item_id', $itemId)
@@ -250,5 +279,14 @@ class ItemUomService
         $normalized = trim((string) $value);
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    private function normalizeOptionalPrice(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return number_format((float) $value, 4, '.', '');
     }
 }

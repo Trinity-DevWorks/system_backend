@@ -43,7 +43,7 @@ class StockTransferController extends Controller
         $userId = $request->user()?->id;
         $transfer = $this->stockTransferService->create(
             $request->validated(),
-            $userId !== null ? (int) $userId : null
+            $userId !== null ? (string) $userId : null
         );
 
         return ApiResponse::created(
@@ -98,7 +98,7 @@ class StockTransferController extends Controller
         $userId = $request->user()?->id;
         $transfer = $this->stockTransferService->post(
             $stockTransfer,
-            $userId !== null ? (int) $userId : null
+            $userId !== null ? (string) $userId : null
         );
 
         return ApiResponse::success(

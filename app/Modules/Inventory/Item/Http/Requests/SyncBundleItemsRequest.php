@@ -18,13 +18,13 @@ class SyncBundleItemsRequest extends FormRequest
     public function rules(): array
     {
         $bundle = $this->route('item');
-        $bundleId = is_object($bundle) ? (int) $bundle->id : 0;
+        $bundleId = is_object($bundle) ? (string) $bundle->id : '';
 
         return [
             'components' => ['present', 'array'],
             'components.*.child_item_id' => [
                 'required',
-                'integer',
+                'uuid',
                 'distinct',
                 'exists:items,id',
                 Rule::notIn([$bundleId]),

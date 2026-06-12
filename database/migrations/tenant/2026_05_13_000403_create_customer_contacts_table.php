@@ -12,7 +12,7 @@ return new class extends Migration
     {
         Schema::create('customer_contacts', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('customer_id')->constrained('customers')->cascadeOnDelete();
+            $table->foreignUuid('customer_id')->constrained('customers')->cascadeOnDelete();
             $table->string('name');
             $table->string('phone', 32)->nullable();
             $table->string('email')->nullable();

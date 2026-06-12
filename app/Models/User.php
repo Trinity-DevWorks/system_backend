@@ -7,6 +7,7 @@ use App\Modules\Salesman\Models\Salesman;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -22,9 +23,10 @@ class User extends Authenticatable implements AuditableContract
 {
     use Auditable;
     use HasApiTokens;
-
     /** @use HasFactory<UserFactory> */
     use HasFactory;
+
+    use HasUuids;
 
     use Notifiable;
 

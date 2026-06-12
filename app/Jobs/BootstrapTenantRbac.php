@@ -24,7 +24,7 @@ class BootstrapTenantRbac implements ShouldQueue
 
     public function __construct(
         protected TenantWithDatabase $tenant,
-        protected int $ownerUserId
+        protected string $ownerUserId
     ) {}
 
     public function handle(PermissionService $permissionService, PermissionCatalogService $permissionCatalogService): void

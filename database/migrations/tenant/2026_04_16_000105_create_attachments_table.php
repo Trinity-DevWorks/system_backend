@@ -11,8 +11,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('attachments', function (Blueprint $table) {
-            $table->id();
-            $table->morphs('attachable');
+            $table->uuid('id')->primary();
+            $table->uuidMorphs('attachable');
             $table->string('file_path');
             $table->string('file_name');
             $table->string('mime_type', 127);
@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('viewer_category', 32)->index();
             $table->boolean('can_preview')->default(false);
             $table->boolean('is_primary')->default(false);
-            $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
             $table->index(['attachable_type', 'attachable_id', 'is_primary']);
             $table->timestamps();
         });

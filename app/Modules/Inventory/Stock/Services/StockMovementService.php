@@ -67,7 +67,7 @@ class StockMovementService
 
             $balance->update(['quantity' => $newQuantity]);
 
-            return $movement->load(['item', 'warehouse', 'itemUom.uom', 'user']);
+            return $movement->load(['item.baseUom', 'warehouse', 'itemUom.uom', 'user']);
         });
     }
 

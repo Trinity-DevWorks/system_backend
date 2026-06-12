@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('item_barcodes', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('item_id')->constrained('items')->cascadeOnDelete();
+            $table->foreignUuid('item_id')->constrained('items')->cascadeOnDelete();
             $table->foreignId('item_uom_id')->nullable()->constrained('item_uoms')->cascadeOnDelete();
             $table->string('barcode')->unique();
             $table->boolean('is_primary')->default(false);

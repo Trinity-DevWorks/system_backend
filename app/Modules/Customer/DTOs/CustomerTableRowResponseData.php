@@ -11,15 +11,15 @@ readonly class CustomerTableRowResponseData
 {
     /**
      * @param  array{id: int, name: string}|null  $customerGroup
-     * @param  array{id: int, full_name: string, salesman_code: string|null}|null  $salesman
+     * @param  array{id: string, full_name: string, salesman_code: string|null}|null  $salesman
      */
     public function __construct(
-        public int $id,
+        public string $id,
         public string $customerCode,
         public string $name,
         public ?int $customerGroupId,
         public ?array $customerGroup,
-        public ?int $salesmanId,
+        public ?string $salesmanId,
         public ?array $salesman,
         public ?string $phone,
         public ?string $email,

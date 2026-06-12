@@ -17,8 +17,8 @@ class UpdateStockTransferRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'from_warehouse_id' => ['sometimes', 'integer', 'exists:warehouses,id'],
-            'to_warehouse_id' => ['sometimes', 'integer', 'exists:warehouses,id'],
+            'from_warehouse_id' => ['sometimes', 'integer', 'exists:warehouses,id', 'different:to_warehouse_id'],
+            'to_warehouse_id' => ['sometimes', 'integer', 'exists:warehouses,id', 'different:from_warehouse_id'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }

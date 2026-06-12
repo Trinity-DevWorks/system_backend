@@ -10,8 +10,8 @@ return new class extends Migration
     {
         Schema::create('supplier_items', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('supplier_id')->constrained('suppliers')->cascadeOnDelete();
-            $table->foreignId('item_id')->constrained('items')->restrictOnDelete();
+            $table->foreignUuid('supplier_id')->constrained('suppliers')->cascadeOnDelete();
+            $table->foreignUuid('item_id')->constrained('items')->restrictOnDelete();
             $table->string('supplier_sku', 100)->nullable();
             $table->decimal('last_purchase_price', 14, 4)->nullable();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();

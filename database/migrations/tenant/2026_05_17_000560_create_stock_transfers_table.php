@@ -9,14 +9,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('stock_transfers', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->string('transfer_number', 32)->nullable()->unique();
             $table->foreignId('from_warehouse_id')->constrained('warehouses')->restrictOnDelete();
             $table->foreignId('to_warehouse_id')->constrained('warehouses')->restrictOnDelete();
             $table->string('status', 20)->default('draft');
             $table->text('notes')->nullable();
-            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignId('posted_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('posted_at')->nullable();
             $table->timestamps();
 

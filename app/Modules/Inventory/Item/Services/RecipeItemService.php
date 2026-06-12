@@ -41,19 +41,19 @@ class RecipeItemService
     public function addIngredient(Item $item, array $data): RecipeItem
     {
         $recipe = $this->recipeService->ensureForItem($item);
-        $ingredient = Item::query()->findOrFail((int) $data['item_id']);
+        $ingredient = Item::query()->findOrFail($data['item_id']);
 
         RecipeRules::assertValidIngredient($item, $ingredient);
         ItemUomValidation::assertUomAllowedForItem($ingredient, (int) $data['uom_id']);
 
-        if (RecipeItem::query()->where('recipe_id', $recipe->id)->where('item_id', (int) $data['item_id'])->exists()) {
+        if (RecipeItem::query()->where('recipe_id', $recipe->id)->where('item_id', $data['item_id'])->exists()) {
             abort(422, 'Ingredient is already on this recipe.', ['X-Error-Code' => 'RECIPE_INGREDIENT_DUPLICATE']);
         }
 
         return DB::transaction(function () use ($recipe, $data): RecipeItem {
             return RecipeItem::query()->create([
                 'recipe_id' => $recipe->id,
-                'item_id' => (int) $data['item_id'],
+                'item_id' => $data['item_id'],
                 'quantity' => number_format((float) $data['quantity'], 6, '.', ''),
                 'uom_id' => (int) $data['uom_id'],
             ])->load(['ingredientItem.itemType', 'uom']);
@@ -68,7 +68,7 @@ class RecipeItemService
         $recipe = $this->recipeService->getForItem($item);
         $this->assertScoped($recipe, $row);
 
-        $ingredient = Item::query()->findOrFail((int) $row->item_id);
+        $ingredient = Item::query()->findOrFail($row->item_id);
         RecipeRules::assertValidIngredient($item, $ingredient);
         ItemUomValidation::assertUomAllowedForItem($ingredient, (int) $data['uom_id']);
 
@@ -97,7 +97,7 @@ class RecipeItemService
         return DB::transaction(function () use ($item, $recipe, $ingredients): Collection {
             $lines = [];
             foreach ($ingredients as $row) {
-                $ingredientId = (int) $row['item_id'];
+                $ingredientId = (string) $row['item_id'];
                 $lines[$ingredientId] = [
                     'quantity' => number_format((float) $row['quantity'], 6, '.', ''),
                     'uom_id' => (int) $row['uom_id'],

@@ -12,7 +12,7 @@ return new class extends Migration
     {
         Schema::create('customer_ledger_entries', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('customer_id')->constrained('customers')->cascadeOnDelete();
+            $table->foreignUuid('customer_id')->constrained('customers')->cascadeOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             $table->decimal('debit', 20, 4)->default(0);
             $table->decimal('credit', 20, 4)->default(0);

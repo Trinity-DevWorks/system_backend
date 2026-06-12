@@ -13,7 +13,7 @@ return new class extends Migration
             $table->string('name', 100)->unique();
             $table->text('description')->nullable();
             $table->boolean('active')->default(true);
-            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
         });
 

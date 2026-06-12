@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('recipe_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('recipe_id')->constrained('recipes')->cascadeOnDelete();
-            $table->foreignId('item_id')->constrained('items')->restrictOnDelete();
+            $table->foreignUuid('item_id')->constrained('items')->restrictOnDelete();
             $table->decimal('quantity', 14, 6);
             $table->foreignId('uom_id')->constrained('unit_of_measurements')->restrictOnDelete();
             $table->timestamps();

@@ -12,7 +12,7 @@ readonly class SupplierTableRowResponseData
      * @param  array{id: int, name: string}|null  $supplierGroup
      */
     public function __construct(
-        public int $id,
+        public string $id,
         public string $supplierCode,
         public string $name,
         public ?string $companyName,

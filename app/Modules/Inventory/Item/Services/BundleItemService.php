@@ -28,13 +28,13 @@ class BundleItemService
     {
         BundleItemRules::assertIsBundleItem($bundle);
 
-        $child = Item::query()->findOrFail((int) $data['child_item_id']);
+        $child = Item::query()->findOrFail($data['child_item_id']);
         BundleItemRules::assertValidChild($bundle, $child);
 
         return DB::transaction(function () use ($bundle, $data): BundleItem {
             return BundleItem::query()->create([
                 'bundle_item_id' => $bundle->id,
-                'child_item_id' => (int) $data['child_item_id'],
+                'child_item_id' => $data['child_item_id'],
                 'quantity' => number_format((float) $data['quantity'], 6, '.', ''),
             ])->load(['childItem.itemType']);
         });
@@ -69,7 +69,7 @@ class BundleItemService
         return DB::transaction(function () use ($bundle, $components): Collection {
             $lines = [];
             foreach ($components as $row) {
-                $childId = (int) $row['child_item_id'];
+                $childId = (string) $row['child_item_id'];
                 $lines[$childId] = number_format((float) $row['quantity'], 6, '.', '');
             }
 
@@ -106,7 +106,7 @@ class BundleItemService
     {
         BundleItemRules::assertIsBundleItem($bundle);
 
-        if ((int) $row->bundle_item_id !== (int) $bundle->id) {
+        if ((string) $row->bundle_item_id !== (string) $bundle->id) {
             abort(404, 'Bundle component not found for this item.', ['X-Error-Code' => 'BUNDLE_ITEM_SCOPE_MISMATCH']);
         }
     }

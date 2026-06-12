@@ -149,7 +149,7 @@ class ItemBarcodeService
 
     private function assertBelongsToItem(Item $item, ItemBarcode $barcode): void
     {
-        if ((int) $barcode->item_id !== (int) $item->id) {
+        if ((string) $barcode->item_id !== (string) $item->id) {
             abort(404);
         }
     }
@@ -168,7 +168,7 @@ class ItemBarcodeService
                 ->first();
     }
 
-    private function clearPrimaryForItem(int $itemId, ?int $exceptId = null): void
+    private function clearPrimaryForItem(string $itemId, ?int $exceptId = null): void
     {
         $query = ItemBarcode::query()->where('item_id', $itemId);
         if ($exceptId !== null) {
