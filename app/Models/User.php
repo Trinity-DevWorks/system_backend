@@ -23,11 +23,11 @@ class User extends Authenticatable implements AuditableContract
 {
     use Auditable;
     use HasApiTokens;
+
     /** @use HasFactory<UserFactory> */
     use HasFactory;
 
     use HasUuids;
-
     use Notifiable;
 
     /**
