@@ -19,6 +19,7 @@ use App\Modules\Inventory\Item\Http\Controllers\ItemUomController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeItemController;
 use App\Modules\Inventory\ItemType\Http\Controllers\ItemTypeController;
+use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseOrderController;
 use App\Modules\Inventory\Stock\Http\Controllers\ItemWarehouseReplenishmentController;
 use App\Modules\Inventory\Stock\Http\Controllers\PurchasingAlertController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockBalanceController;
@@ -181,6 +182,29 @@ Route::middleware([
         Route::post('stock/transfers/{stock_transfer}/post', [StockTransferController::class, 'post'])
             ->middleware('check.permission:stock,edit');
         Route::post('stock/transfers/{stock_transfer}/cancel', [StockTransferController::class, 'cancel'])
+            ->middleware('check.permission:stock,edit');
+
+        Route::get('stock/purchase-orders', [PurchaseOrderController::class, 'index'])
+            ->middleware('check.permission:stock,view');
+        Route::post('stock/purchase-orders', [PurchaseOrderController::class, 'store'])
+            ->middleware('check.permission:stock,edit');
+        Route::post('stock/purchase-orders/from-alerts', [PurchaseOrderController::class, 'fromAlerts'])
+            ->middleware('check.permission:stock,edit');
+        Route::get('stock/purchase-orders/{purchase_order}', [PurchaseOrderController::class, 'show'])
+            ->middleware('check.permission:stock,view');
+        Route::put('stock/purchase-orders/{purchase_order}', [PurchaseOrderController::class, 'update'])
+            ->middleware('check.permission:stock,edit');
+        Route::delete('stock/purchase-orders/{purchase_order}', [PurchaseOrderController::class, 'destroy'])
+            ->middleware('check.permission:stock,edit');
+        Route::put('stock/purchase-orders/{purchase_order}/lines/sync', [PurchaseOrderController::class, 'syncLines'])
+            ->middleware('check.permission:stock,edit');
+        Route::post('stock/purchase-orders/{purchase_order}/confirm', [PurchaseOrderController::class, 'confirm'])
+            ->middleware('check.permission:stock,edit');
+        Route::post('stock/purchase-orders/{purchase_order}/cancel', [PurchaseOrderController::class, 'cancel'])
+            ->middleware('check.permission:stock,edit');
+        Route::get('stock/purchase-orders/{purchase_order}/pdf', [PurchaseOrderController::class, 'pdf'])
+            ->middleware('check.permission:stock,view');
+        Route::post('stock/purchase-orders/{purchase_order}/mark-sent', [PurchaseOrderController::class, 'markAsSent'])
             ->middleware('check.permission:stock,edit');
 
         Route::get('salesmen/{salesman}/attachments/{attachment}/download', [SalesmanAttachmentController::class, 'download'])
