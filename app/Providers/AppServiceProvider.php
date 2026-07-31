@@ -18,6 +18,8 @@ use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
+use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
+use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferLine;
@@ -87,6 +89,8 @@ class AppServiceProvider extends ServiceProvider
             'recipe_item' => RecipeItem::class,
             'stock_transfer' => StockTransfer::class,
             'stock_transfer_line' => StockTransferLine::class,
+            'purchase_order' => PurchaseOrder::class,
+            'purchase_order_line' => PurchaseOrderLine::class,
             'item_warehouse_replenishment' => ItemWarehouseReplenishment::class,
             'unit_group' => UnitGroup::class,
             'unit_of_measurement' => UnitOfMeasurement::class,

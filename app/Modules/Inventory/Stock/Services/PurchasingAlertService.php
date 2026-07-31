@@ -90,6 +90,54 @@ class PurchasingAlertService
         return $results;
     }
 
+    /**
+     * @param  list<int>  $replenishmentIds
+     * @return array<int, array<string, mixed>>
+     */
+    public function findByReplenishmentIds(array $replenishmentIds): array
+    {
+        $replenishmentIds = array_values(array_unique(array_map('intval', $replenishmentIds)));
+
+        if ($replenishmentIds === []) {
+            return [];
+        }
+
+        /** @var Collection<int, ItemWarehouseReplenishment&object{on_hand_quantity: string|float|int}> $rows */
+        $rows = $this->baseAlertQuery()
+            ->whereIn('item_warehouse_replenishments.id', $replenishmentIds)
+            ->get()
+            ->keyBy('id');
+
+        $preferredSuppliers = $this->preferredSuppliersByItemId(
+            $rows->pluck('item_id')->unique()->all(),
+        );
+
+        $results = [];
+
+        foreach ($replenishmentIds as $replenishmentId) {
+            $row = $rows->get($replenishmentId);
+            if ($row === null) {
+                continue;
+            }
+
+            $onHand = (float) $row->on_hand_quantity;
+            $status = ReplenishmentAlertRules::status(
+                $onHand,
+                (float) $row->reorder_point_qty,
+                (float) $row->safety_stock_qty,
+            );
+
+            $results[$replenishmentId] = PurchasingAlertResponseData::fromRow(
+                $row,
+                $onHand,
+                $status,
+                $preferredSuppliers,
+            );
+        }
+
+        return $results;
+    }
+
     public function alertCount(): int
     {
         return $this->baseAlertQuery()

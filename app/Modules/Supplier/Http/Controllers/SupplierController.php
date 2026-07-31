@@ -105,10 +105,16 @@ class SupplierController extends Controller
 
         $attachmentsPreview = AttachmentResponseData::collectionToArray(
             $supplier->attachments()->orderByDesc('id')->limit(20)->get(),
-            fn (Attachment $a): string => route('suppliers.attachments.download', [
-                'supplier' => $supplier->getKey(),
-                'attachment' => $a->getKey(),
-            ])
+            fn (Attachment $a): array => [
+                'download' => route('suppliers.attachments.download', [
+                    'supplier' => $supplier->getKey(),
+                    'attachment' => $a->getKey(),
+                ]),
+                'view' => route('suppliers.attachments.view', [
+                    'supplier' => $supplier->getKey(),
+                    'attachment' => $a->getKey(),
+                ]),
+            ]
         );
 
         return ApiResponse::success(
