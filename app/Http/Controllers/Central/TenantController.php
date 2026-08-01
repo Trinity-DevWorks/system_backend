@@ -9,6 +9,7 @@ use App\Http\Responses\ApiResponse;
 use App\Jobs\BootstrapTenantRbac;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\ModuleEntitlementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rules\Password;
@@ -19,6 +20,8 @@ class TenantController extends Controller
 {
     /** Subdomains that cannot be tenant workspace ids (central app + common hosts). */
     private const RESERVED_TENANT_SLUGS = ['app', 'www', 'api', 'admin', 'mail', 'ftp', 'cdn', 'static'];
+
+    public function __construct(private readonly ModuleEntitlementService $modules) {}
 
     public function lookupByName(string $name): JsonResponse
     {
@@ -127,9 +130,11 @@ class TenantController extends Controller
         }
 
         BootstrapTenantRbac::dispatchSync($tenant, $ownerUserId);
+        $this->modules->assignDefaults($tenant);
 
         return ApiResponse::created([
             'tenant' => $tenant->load('domains'),
+            'modules' => $this->modules->codesForTenant($tenant->id),
             'owner' => [
                 'name' => "{$validated['name']}_owner",
                 'email' => $validated['email'],

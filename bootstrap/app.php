@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CheckPermission;
+use App\Http\Middleware\EnsureModule;
 use App\Http\Responses\ApiResponse;
 use App\Support\Database\QueryExceptionMapper;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // statefulApi() only if you add the SPA flow: GET /sanctum/csrf-cookie then POST with X-XSRF-TOKEN.
         $middleware->alias([
             'check.permission' => CheckPermission::class,
+            'ensure.module' => EnsureModule::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
