@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 use Stancl\Tenancy\Contracts\TenantWithDatabase;
@@ -22,4 +23,16 @@ class Tenant extends BaseTenant implements AuditableContract, TenantWithDatabase
         'name',
         'data',
     ];
+
+    public function modules(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Module::class,
+            'tenant_modules',
+            'tenant_id',
+            'module_code',
+            'id',
+            'code'
+        )->withTimestamps();
+    }
 }

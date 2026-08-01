@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Central\CentralAuthController;
+use App\Http\Controllers\Central\ModuleController;
 use App\Http\Controllers\Central\TenantController;
+use App\Http\Controllers\Central\TenantModuleController;
 use App\Http\Responses\ApiResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -22,5 +24,9 @@ foreach (config('tenancy.central_domains') as $domain) {
         Route::post('/tenants', [TenantController::class, 'store']);
         Route::get('/tenant/get-tenant-by-name/{name}', [TenantController::class, 'lookupByName'])
             ->where('name', '[A-Za-z0-9][A-Za-z0-9_-]*');
+
+        Route::get('/modules', [ModuleController::class, 'index']);
+        Route::get('/tenants/{tenant}/modules', [TenantModuleController::class, 'show']);
+        Route::put('/tenants/{tenant}/modules', [TenantModuleController::class, 'update']);
     });
 }

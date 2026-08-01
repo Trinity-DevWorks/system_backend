@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Modules\Category\Models\Category;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Models\TenantSetting;
+use App\Services\ModuleEntitlementService;
 use Illuminate\Database\Seeder;
 use Stancl\Tenancy\Database\Models\Domain;
 
@@ -106,8 +107,22 @@ class TenantSeeder extends Seeder
 
     public function run(): void
     {
+        $modules = app(ModuleEntitlementService::class);
+
         if (Domain::query()->where('domain', self::TENANT_DOMAIN)->exists()) {
-            $this->command?->info('Tenant domain ['.self::TENANT_DOMAIN.'] already exists - skipping.');
+            $tenant = Tenant::query()->whereKey(self::TENANT_NAME)->first()
+                ?? Tenant::query()
+                    ->whereHas('domains', fn ($q) => $q->where('domain', self::TENANT_DOMAIN))
+                    ->first();
+
+            if ($tenant !== null) {
+                $modules->grantAll($tenant);
+                $this->command?->info(
+                    'Tenant ['.$tenant->id.'] already exists - ensured all modules are assigned.'
+                );
+            } else {
+                $this->command?->info('Tenant domain ['.self::TENANT_DOMAIN.'] already exists - skipping.');
+            }
 
             return;
         }
@@ -144,6 +159,7 @@ class TenantSeeder extends Seeder
         }
 
         BootstrapTenantRbac::dispatchSync($tenant, $ownerUserId);
+        $modules->grantAll($tenant);
 
         $this->command?->info('Tenant ['.self::TENANT_NAME.'] created. Domain: '.self::TENANT_DOMAIN.'. Owner: '.self::OWNER_EMAIL);
     }
