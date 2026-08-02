@@ -1,0 +1,427 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/DTOs/AttachmentResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Category/DTOs/CategoryResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Category/DTOs/CategoryResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Category/DTOs/CategoryResponseData.php
+
+		-
+			message: '#^Method App\\Modules\\Category\\Services\\CategoryService\:\:leaves\(\) should return Illuminate\\Database\\Eloquent\\Collection\<int, App\\Modules\\Category\\Models\\Category\> but returns Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Modules/Category/Services/CategoryService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Modules/Currency/Services/CurrencyService.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 6
+			path: app/Modules/Currency/Services/ExchangeRateService.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Modules/Customer/DTOs/CustomerLedgerEntryResponseData.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Modules/Customer/DTOs/CustomerResponseData.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Modules/Customer/Http/Controllers/CustomerLedgerController.php
+
+		-
+			message: '#^Access to an undefined property App\\Modules\\Customer\\Models\\CustomerLedgerEntry\:\:\$bal\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Customer/Services/CustomerLedgerService.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Modules/Customer/Services/CustomerService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/BundleItemResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/BundleItemResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/BundleItemResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/DTOs/ItemBarcodeResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/DTOs/ItemBarcodeResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/ItemBarcodeResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$symbol\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/ItemBarcodeResponseData.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Support\\Collection\<int, App\\Modules\\Inventory\\Item\\Models\\Item\>\:\:loadMissing\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/ItemResponseData.php
+
+		-
+			message: '#^Method App\\Modules\\Inventory\\Item\\DTOs\\ItemResponseData\:\:primaryImageBrief\(\) should return array\{id\: int, file_name\: string, mime_type\: string\}\|null but returns array\{id\: string, file_name\: string, mime_type\: string\}\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/ItemResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/DTOs/RecipeItemResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/DTOs/RecipeItemResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/DTOs/RecipeItemResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/RecipeResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/DTOs/RecipeResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_active\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/RecipeResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$itemType\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/RecipeResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/DTOs/RecipeResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$sku\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Item/DTOs/RecipeResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$is_active\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/Services/ItemBarcodeService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/Support/BundleItemRules.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Item/Support/RecipeRules.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$conversion_factor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/DTOs/PurchaseOrderLineResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/DTOs/PurchaseOrderLineResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$uom\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/DTOs/PurchaseOrderLineResponseData.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Modules/Inventory/Purchasing/DTOs/PurchaseOrderResponseData.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Modules/Inventory/Purchasing/DTOs/PurchaseOrderResponseData.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Modules/Inventory/Purchasing/DTOs/PurchaseOrderResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$company_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$item_code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$phone\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$shortcut_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$sku\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$supplier_code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$uom\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Cannot call method format\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Modules/Inventory/Purchasing/Services/PurchaseOrderPdfService.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$baseUom\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockMovementResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockMovementResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$uom\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockMovementResponseData.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockMovementResponseData.php
+
+		-
+			message: '#^Method App\\Modules\\Inventory\\Stock\\DTOs\\StockMovementResponseData\:\:itemBrief\(\) should return array\{id\: int, sku\: string, name\: string\}\|null but returns array\{id\: string, sku\: string, name\: string\}\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockMovementResponseData.php
+
+		-
+			message: '#^Method App\\Modules\\Inventory\\Stock\\DTOs\\StockMovementResponseData\:\:userBrief\(\) should return array\{id\: int, name\: string, email\: string\}\|null but returns array\{id\: string, name\: string, email\: string\|null\}\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockMovementResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$conversion_factor\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockTransferLineResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockTransferLineResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$uom\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockTransferLineResponseData.php
+
+		-
+			message: '#^Method App\\Modules\\Inventory\\Stock\\DTOs\\StockTransferLineResponseData\:\:itemBrief\(\) should return array\{id\: int, sku\: string, name\: string, is_active\: bool\}\|null but returns array\{id\: string, sku\: string, name\: string, is_active\: bool\}\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockTransferLineResponseData.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockTransferResponseData.php
+
+		-
+			message: '#^Cannot call method toIso8601String\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Modules/Inventory/Stock/DTOs/StockTransferResponseData.php
+
+		-
+			message: '#^Access to an undefined property App\\Modules\\Rbac\\Models\\Permission\:\:\$pivot\.$#'
+			identifier: property.notFound
+			count: 6
+			path: app/Modules/Rbac/DTOs/RoleResponseData.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Auth\\AuthManager\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Rbac/Services/RoleService.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Modules/Salesman/DTOs/SalesmanResponseData.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Modules/Supplier/DTOs/SupplierLedgerEntryResponseData.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: app/Modules/Supplier/DTOs/SupplierResponseData.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: app/Modules/Supplier/Http/Controllers/SupplierLedgerController.php
+
+		-
+			message: '#^Access to an undefined property App\\Modules\\Supplier\\Models\\SupplierLedgerEntry\:\:\$bal\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Modules/Supplier/Services/SupplierLedgerService.php
+
+		-
+			message: '#^Cannot call method toDateString\(\) on string\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: app/Modules/Supplier/Services/SupplierService.php
+
+		-
+			message: '#^Method App\\Modules\\Warehouse\\Services\\WarehouseService\:\:defaultWarehouseFor\(\) should return App\\Modules\\Warehouse\\Models\\Warehouse\|null but returns Illuminate\\Database\\Eloquent\\Model\|null\.$#'
+			identifier: return.type
+			count: 2
+			path: app/Modules/Warehouse/Services/WarehouseService.php
+
+		-
+			message: '#^Method App\\Support\\TenantReferenceCache\:\:rememberModels\(\) should return Illuminate\\Database\\Eloquent\\Collection\<int, TModel of Illuminate\\Database\\Eloquent\\Model\> but returns Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Support/TenantReferenceCache.php
