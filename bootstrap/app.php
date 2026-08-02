@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\EnsureModule;
+use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Responses\ApiResponse;
 use App\Support\Database\QueryExceptionMapper;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'check.permission' => CheckPermission::class,
             'ensure.module' => EnsureModule::class,
+            'ensure.active' => EnsureUserIsActive::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

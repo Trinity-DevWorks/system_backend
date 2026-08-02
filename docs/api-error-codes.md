@@ -39,7 +39,7 @@ Core/global:
 Auth:
 
 - `INVALID_CREDENTIALS` (HTTP 422)
-- `ACCOUNT_INACTIVE` (HTTP 403)
+- `ACCOUNT_INACTIVE` (HTTP 403) — login rejected, or authenticated request by a deactivated user (`ensure.active`)
 - `PASSWORD_RESET_FAILED` (HTTP 422)
 - `PASSWORD_UNCHANGED` (HTTP 422) — new password matches the current password
 

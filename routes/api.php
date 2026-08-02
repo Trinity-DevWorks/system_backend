@@ -20,7 +20,7 @@ foreach (config('tenancy.central_domains') as $domain) {
         Route::post('/login', [CentralAuthController::class, 'login'])
             ->middleware('throttle:login');
         Route::post('/logout', [CentralAuthController::class, 'logout'])
-            ->middleware(['auth:sanctum', 'throttle:60,1']);
+            ->middleware(['auth:sanctum', 'ensure.active', 'throttle:60,1']);
         Route::post('/forgot-password', ForgotPasswordController::class)
             ->middleware('throttle:password-reset');
         Route::post('/reset-password', ResetPasswordController::class)

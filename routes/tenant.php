@@ -83,7 +83,7 @@ Route::middleware([
     Route::post('auth/reset-password', ResetPasswordController::class)
         ->middleware('throttle:password-reset');
 
-    Route::middleware(['auth:sanctum'])->group(function () {
+    Route::middleware(['auth:sanctum', 'ensure.active'])->group(function () {
         Route::post('auth/logout', LogoutController::class)
             ->middleware('throttle:60,1');
 
