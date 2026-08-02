@@ -9,7 +9,9 @@ use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use App\Modules\Rbac\Http\Requests\ResetPasswordRequest;
 use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 
@@ -20,6 +22,20 @@ class ResetPasswordController extends Controller
         $status = Password::broker()->reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (User $user, string $password): void {
+                if (Hash::check($password, (string) $user->getAuthPassword())) {
+                    throw new HttpResponseException(
+                        ApiResponse::error(
+                            'The new password must be different from your current password.',
+                            422,
+                            null,
+                            ['password' => ['The new password must be different from your current password.']],
+                            null,
+                            null,
+                            'PASSWORD_UNCHANGED'
+                        )
+                    );
+                }
+
                 $user->forceFill([
                     'password' => $password,
                     'remember_token' => Str::random(60),

@@ -41,6 +41,7 @@ Auth:
 - `INVALID_CREDENTIALS` (HTTP 422)
 - `ACCOUNT_INACTIVE` (HTTP 403)
 - `PASSWORD_RESET_FAILED` (HTTP 422)
+- `PASSWORD_UNCHANGED` (HTTP 422) — new password matches the current password
 
 Central tenant:
 
