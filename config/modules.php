@@ -12,10 +12,10 @@ return [
     'catalog' => [
         'core' => [
             'name' => 'Core Platform',
-            'description' => 'Users, roles, permissions, and base tenant access.',
+            'description' => 'Users, roles, permissions, company profile, and base tenant access.',
             'is_core' => true,
             'sort_order' => 10,
-            'resources' => ['users', 'roles', 'permissions'],
+            'resources' => ['users', 'roles', 'permissions', 'company_profile'],
         ],
         'master_data' => [
             'name' => 'Master Data',

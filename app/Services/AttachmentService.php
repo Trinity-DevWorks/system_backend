@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Enums\AttachmentViewerCategory;
 use App\Models\Attachment;
+use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Salesman\Models\Salesman;
@@ -23,7 +24,7 @@ class AttachmentService
     /**
      * @return Collection<int, Attachment>
      */
-    public function listFor(Customer|Supplier|Salesman|Item $attachable): Collection
+    public function listFor(Customer|Supplier|Salesman|Item|CompanyProfile $attachable): Collection
     {
         return $attachable->attachments()
             ->orderByDesc('is_primary')
@@ -31,7 +32,7 @@ class AttachmentService
             ->get();
     }
 
-    public function store(Customer|Supplier|Salesman|Item $attachable, UploadedFile $file, ?string $uploadedByUserId): Attachment
+    public function store(Customer|Supplier|Salesman|Item|CompanyProfile $attachable, UploadedFile $file, ?string $uploadedByUserId): Attachment
     {
         return DB::transaction(function () use ($attachable, $file, $uploadedByUserId): Attachment {
             $original = $file->getClientOriginalName() ?: 'upload';
@@ -58,19 +59,19 @@ class AttachmentService
         });
     }
 
-    public function setPrimaryImage(Item $item, Attachment $attachment): Attachment
+    public function setPrimaryImage(Item|CompanyProfile $attachable, Attachment $attachment): Attachment
     {
-        if ($attachment->attachable_type !== $item->getMorphClass()
-            || (string) $attachment->attachable_id !== (string) $item->id) {
-            abort(404, 'Attachment not found for this item.', ['X-Error-Code' => 'ITEM_ATTACHMENT_SCOPE_MISMATCH']);
+        if ($attachment->attachable_type !== $attachable->getMorphClass()
+            || (string) $attachment->attachable_id !== (string) $attachable->getKey()) {
+            abort(404, 'Attachment not found for this resource.', ['X-Error-Code' => 'ATTACHMENT_SCOPE_MISMATCH']);
         }
 
         if ($attachment->viewer_category !== AttachmentViewerCategory::Image) {
             abort(422, 'Only image attachments can be set as primary.', ['X-Error-Code' => 'ATTACHMENT_PRIMARY_IMAGE_ONLY']);
         }
 
-        return DB::transaction(function () use ($item, $attachment): Attachment {
-            $item->attachments()
+        return DB::transaction(function () use ($attachable, $attachment): Attachment {
+            $attachable->attachments()
                 ->where('viewer_category', AttachmentViewerCategory::Image)
                 ->whereKeyNot($attachment->id)
                 ->update(['is_primary' => false]);
@@ -94,7 +95,7 @@ class AttachmentService
 
             $attachment->delete();
 
-            if ($wasPrimaryImage && $attachable instanceof Item) {
+            if ($wasPrimaryImage && $this->supportsPrimaryImage($attachable)) {
                 $this->promoteNextPrimaryImage($attachable);
             }
         });
@@ -128,10 +129,10 @@ class AttachmentService
     }
 
     private function shouldMarkAsPrimaryOnStore(
-        Customer|Supplier|Salesman|Item $attachable,
+        Customer|Supplier|Salesman|Item|CompanyProfile $attachable,
         AttachmentViewerCategory $category,
     ): bool {
-        if (! $attachable instanceof Item || $category !== AttachmentViewerCategory::Image) {
+        if (! $this->supportsPrimaryImage($attachable) || $category !== AttachmentViewerCategory::Image) {
             return false;
         }
 
@@ -141,9 +142,14 @@ class AttachmentService
             ->exists();
     }
 
-    private function promoteNextPrimaryImage(Item $item): void
+    private function supportsPrimaryImage(mixed $attachable): bool
     {
-        $next = $item->attachments()
+        return $attachable instanceof Item || $attachable instanceof CompanyProfile;
+    }
+
+    private function promoteNextPrimaryImage(Item|CompanyProfile $attachable): void
+    {
+        $next = $attachable->attachments()
             ->where('viewer_category', AttachmentViewerCategory::Image)
             ->orderByDesc('created_at')
             ->first();

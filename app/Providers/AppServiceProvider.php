@@ -8,6 +8,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Brand\Models\Brand;
 use App\Modules\Category\Models\Category;
+use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
@@ -60,12 +61,14 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureLoginRateLimiting();
+        $this->configurePasswordResetRateLimiting();
 
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,
             'user' => User::class,
             'brand' => Brand::class,
             'category' => Category::class,
+            'company_profile' => CompanyProfile::class,
             'customer' => Customer::class,
             'customer_group' => CustomerGroup::class,
             'customer_address' => CustomerAddress::class,
@@ -105,6 +108,16 @@ class AppServiceProvider extends ServiceProvider
             $perMinute = (int) config('security.login_rate_limit_per_minute', 10);
 
             return Limit::perMinute(max(1, $perMinute))->by($request->ip());
+        });
+    }
+
+    private function configurePasswordResetRateLimiting(): void
+    {
+        RateLimiter::for('password-reset', function (Request $request) {
+            $perMinute = (int) config('security.password_reset_rate_limit_per_minute', 5);
+            $email = strtolower((string) $request->input('email', ''));
+
+            return Limit::perMinute(max(1, $perMinute))->by($request->ip().'|'.$email);
         });
     }
 }

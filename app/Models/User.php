@@ -4,7 +4,10 @@ namespace App\Models;
 
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Salesman\Models\Salesman;
+use App\Notifications\ResetPasswordNotification;
 use Database\Factories\UserFactory;
+use Illuminate\Auth\Passwords\CanResetPassword;
+use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -19,9 +22,10 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 #[Fillable(['name', 'email', 'password', 'active', 'role_id', 'created_by'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable implements AuditableContract
+class User extends Authenticatable implements AuditableContract, CanResetPasswordContract
 {
     use Auditable;
+    use CanResetPassword;
     use HasApiTokens;
 
     /** @use HasFactory<UserFactory> */
@@ -29,6 +33,11 @@ class User extends Authenticatable implements AuditableContract
 
     use HasUuids;
     use Notifiable;
+
+    public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void
+    {
+        $this->notify(new ResetPasswordNotification($token));
+    }
 
     /**
      * @return array<string, string>
