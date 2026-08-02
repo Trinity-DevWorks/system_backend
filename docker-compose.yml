@@ -1,0 +1,140 @@
+# Production-shaped local stack for the Laravel API.
+# Frontend is optional: clone system_frontend as a sibling and use profile `with-frontend`.
+#
+#   docker compose up -d
+#   docker compose --profile with-frontend up -d
+#
+# Database matches the project default driver: PostgreSQL (Stancl uses schemas per tenant).
+# See docs/deployment.md
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: erp_central
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: secret
+    ports:
+      # Host 5433 → container 5432 (avoids clash with local Postgres on :5432)
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp -d erp_central"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Not published to the host — avoids clash with a local Redis on :6379.
+    # App/queue reach it as hostname "redis" on the Compose network.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      # Host 8080 → container 8000 (avoids clash with local `php artisan serve` on :8000)
+      - "8080:8000"
+    environment:
+      APP_NAME: ERP
+      APP_ENV: local
+      APP_DEBUG: "false"
+      APP_URL: http://localhost:8080
+      APP_KEY: ${APP_KEY:-}
+      RUN_MIGRATIONS: "true"
+      CENTRAL_DOMAIN: app.localhost,localhost,127.0.0.1
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: erp_central
+      DB_USERNAME: erp
+      DB_PASSWORD: secret
+      DB_SCHEMA: public
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: redis
+      REDIS_CLIENT: predis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LOG_CHANNEL: stderr
+      SANCTUM_STATEFUL_DOMAINS: localhost,localhost:3000,127.0.0.1,app.localhost,app.localhost:3000,tenant.localhost,tenant.localhost:3000
+    volumes:
+      # Persist tenant files / uploads across restarts
+      - app_storage:/var/www/html/storage/app
+
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Same image as app; override supervisord with the worker process.
+    command: ["php", "artisan", "queue:work", "--sleep=1", "--tries=3", "--timeout=90"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
+    environment:
+      APP_NAME: ERP
+      APP_ENV: local
+      APP_DEBUG: "false"
+      APP_URL: http://localhost:8080
+      APP_KEY: ${APP_KEY:-}
+      RUN_MIGRATIONS: "false"
+      CENTRAL_DOMAIN: app.localhost,localhost,127.0.0.1
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: erp_central
+      DB_USERNAME: erp
+      DB_PASSWORD: secret
+      DB_SCHEMA: public
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: redis
+      REDIS_CLIENT: predis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LOG_CHANNEL: stderr
+    volumes:
+      - app_storage:/var/www/html/storage/app
+
+  frontend:
+    profiles: ["with-frontend"]
+    build:
+      context: ../system_frontend
+      dockerfile: Dockerfile
+      args:
+        # Browser on your laptop talks to the published API port (8080), not container-internal 8000
+        NEXT_PUBLIC_API_URL: http://localhost:8080
+        NEXT_PUBLIC_CENTRAL_API_URL: http://app.localhost:8080/api
+        NEXT_PUBLIC_CENTRAL_DOMAIN: app.localhost
+        NEXT_PUBLIC_TENANT_ROOT_DOMAIN: localhost
+        NEXT_PUBLIC_CENTRAL_API_PORT: "8080"
+        NEXT_PUBLIC_TENANT_API_PORT: "8080"
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  app_storage:

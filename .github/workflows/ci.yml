@@ -1,5 +1,5 @@
 # Backend repository root = Laravel app (this folder).
-# audit + tests + Pint. Run `composer ci:full` locally for PHPStan.
+# Matches `composer ci:full` (audit + Pint + PHPStan + tests).
 name: CI
 
 on:
@@ -52,3 +52,6 @@ jobs:
 
       - name: Laravel Pint
         run: ./vendor/bin/pint --test
+
+      - name: PHPStan
+        run: composer analyse
