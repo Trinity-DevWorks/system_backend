@@ -135,6 +135,7 @@ class AttachmentServiceTest extends TestCase
 
             Attachment::creating(function (Attachment $attachment) use (&$writtenPaths): void {
                 $writtenPaths[] = $attachment->file_path;
+
                 throw new RuntimeException('Forced attachment insert failure.');
             });
 

@@ -100,6 +100,7 @@ class AttachmentService
             });
         } catch (\Throwable $e) {
             $this->deleteStoredFile($disk, $path);
+
             throw $e;
         }
 
@@ -316,6 +317,7 @@ class AttachmentService
         }
 
         $absolute = Storage::disk($attachment->disk)->path($attachment->file_path);
+
         // S3 (and non-local adapters) may not support path(); hash via stream instead.
         try {
             $hash = hash_file($attachment->checksum_algo, $absolute);
@@ -332,6 +334,7 @@ class AttachmentService
         }
 
         $ctx = hash_init($attachment->checksum_algo);
+
         try {
             while (! feof($stream)) {
                 $chunk = fread($stream, 1024 * 1024);
