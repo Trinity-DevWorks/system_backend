@@ -7,6 +7,8 @@ use App\Http\Controllers\Central\ModuleController;
 use App\Http\Controllers\Central\TenantController;
 use App\Http\Controllers\Central\TenantModuleController;
 use App\Http\Responses\ApiResponse;
+use App\Modules\Rbac\Http\Controllers\ForgotPasswordController;
+use App\Modules\Rbac\Http\Controllers\ResetPasswordController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', fn () => ApiResponse::success(['status' => 'ok'], 'OK'))->middleware('api');
@@ -18,7 +20,11 @@ foreach (config('tenancy.central_domains') as $domain) {
         Route::post('/login', [CentralAuthController::class, 'login'])
             ->middleware('throttle:login');
         Route::post('/logout', [CentralAuthController::class, 'logout'])
-            ->middleware(['auth:sanctum', 'throttle:60,1']);
+            ->middleware(['auth:sanctum', 'ensure.active', 'throttle:60,1']);
+        Route::post('/forgot-password', ForgotPasswordController::class)
+            ->middleware('throttle:password-reset');
+        Route::post('/reset-password', ResetPasswordController::class)
+            ->middleware('throttle:password-reset');
 
         Route::get('/tenants', [TenantController::class, 'index']);
         Route::post('/tenants', [TenantController::class, 'store']);

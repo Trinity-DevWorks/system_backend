@@ -16,4 +16,15 @@ return [
 
     'login_rate_limit_per_minute' => max(1, (int) env('LOGIN_RATE_LIMIT_PER_MINUTE', 10)),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Password reset rate limit
+    |--------------------------------------------------------------------------
+    |
+    | Applied to forgot-password and reset-password routes (per IP).
+    |
+    */
+
+    'password_reset_rate_limit_per_minute' => max(1, (int) env('PASSWORD_RESET_RATE_LIMIT_PER_MINUTE', 5)),
+
 ];

@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Http\Controllers\Tenant\AssignedModuleController;
 use App\Modules\Brand\Http\Controllers\BrandController;
 use App\Modules\Category\Http\Controllers\CategoryController;
+use App\Modules\CompanyProfile\Http\Controllers\CompanyProfileAttachmentController;
+use App\Modules\CompanyProfile\Http\Controllers\CompanyProfileController;
 use App\Modules\Currency\Http\Controllers\CurrencyController;
 use App\Modules\Customer\Http\Controllers\CustomerAddressController;
 use App\Modules\Customer\Http\Controllers\CustomerAttachmentController;
@@ -30,8 +32,11 @@ use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
 use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementController;
 use App\Modules\PaymentMethod\Http\Controllers\PaymentMethodController;
 use App\Modules\PaymentTerm\Http\Controllers\PaymentTermController;
+use App\Modules\Rbac\Http\Controllers\ForgotPasswordController;
 use App\Modules\Rbac\Http\Controllers\LoginController;
+use App\Modules\Rbac\Http\Controllers\LogoutController;
 use App\Modules\Rbac\Http\Controllers\PermissionController;
+use App\Modules\Rbac\Http\Controllers\ResetPasswordController;
 use App\Modules\Rbac\Http\Controllers\RoleController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
@@ -73,8 +78,15 @@ Route::middleware([
 
     Route::post('auth/login', LoginController::class)
         ->middleware('throttle:login');
+    Route::post('auth/forgot-password', ForgotPasswordController::class)
+        ->middleware('throttle:password-reset');
+    Route::post('auth/reset-password', ResetPasswordController::class)
+        ->middleware('throttle:password-reset');
 
-    Route::middleware(['auth:sanctum'])->group(function () {
+    Route::middleware(['auth:sanctum', 'ensure.active'])->group(function () {
+        Route::post('auth/logout', LogoutController::class)
+            ->middleware('throttle:60,1');
+
         Route::get('tenant/assigned-modules', AssignedModuleController::class);
 
         Route::middleware(['ensure.module:core'])->group(function () {
@@ -94,6 +106,30 @@ Route::middleware([
                 ->middlewareFor(['destroy'], ['check.permission:users,delete']);
             Route::patch('users/{user}/role', [UserRoleController::class, 'update'])
                 ->middleware('check.permission:users,edit');
+
+            Route::get('company-profile', [CompanyProfileController::class, 'show'])
+                ->middleware('check.permission:company_profile,view');
+            Route::put('company-profile', [CompanyProfileController::class, 'update'])
+                ->middleware('check.permission:company_profile,edit');
+
+            Route::get('company-profile/attachments/{attachment}/download', [CompanyProfileAttachmentController::class, 'download'])
+                ->middleware('check.permission:company_profile,view')
+                ->name('company-profile.attachments.download');
+            Route::get('company-profile/attachments/{attachment}/view', [CompanyProfileAttachmentController::class, 'view'])
+                ->middleware('check.permission:company_profile,view')
+                ->name('company-profile.attachments.view');
+            Route::put('company-profile/attachments/{attachment}/primary', [CompanyProfileAttachmentController::class, 'setPrimary'])
+                ->middleware('check.permission:company_profile,edit')
+                ->name('company-profile.attachments.set-primary');
+
+            Route::get('company-profile/attachments', [CompanyProfileAttachmentController::class, 'index'])
+                ->middleware('check.permission:company_profile,view');
+            Route::post('company-profile/attachments', [CompanyProfileAttachmentController::class, 'store'])
+                ->middleware('check.permission:company_profile,edit');
+            Route::get('company-profile/attachments/{attachment}', [CompanyProfileAttachmentController::class, 'show'])
+                ->middleware('check.permission:company_profile,view');
+            Route::delete('company-profile/attachments/{attachment}', [CompanyProfileAttachmentController::class, 'destroy'])
+                ->middleware('check.permission:company_profile,edit');
         });
 
         Route::middleware(['ensure.module:master_data'])->group(function () {

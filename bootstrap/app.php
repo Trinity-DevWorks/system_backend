@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\EnsureModule;
+use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Responses\ApiResponse;
 use App\Support\Database\QueryExceptionMapper;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'check.permission' => CheckPermission::class,
             'ensure.module' => EnsureModule::class,
+            'ensure.active' => EnsureUserIsActive::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -74,7 +76,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (NotFoundHttpException $e, Request $request) use ($wantsEnvelope) {
             if ($wantsEnvelope($request)) {
-                return ApiResponse::notFound($e->getMessage() ?: 'Resource not found.', 'NOT_FOUND');
+                $code = $e->getHeaders()['X-Error-Code'] ?? $e->getHeaders()['x-error-code'] ?? 'NOT_FOUND';
+
+                return ApiResponse::notFound(
+                    $e->getMessage() !== '' ? $e->getMessage() : 'Resource not found.',
+                    is_string($code) && $code !== '' ? $code : 'NOT_FOUND'
+                );
             }
 
         });
@@ -94,7 +101,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (HttpExceptionInterface $e, Request $request) use ($wantsEnvelope) {
             if ($wantsEnvelope($request)) {
-                $code = $e->getHeaders()['X-Error-Code'] ?? null;
+                $code = $e->getHeaders()['X-Error-Code'] ?? $e->getHeaders()['x-error-code'] ?? null;
 
                 return ApiResponse::error(
                     $e->getMessage() !== '' ? $e->getMessage() : 'Request failed.',

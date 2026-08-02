@@ -13,7 +13,7 @@ use App\Models\Attachment;
 use App\Modules\Customer\Models\Customer;
 use App\Services\AttachmentService;
 use Illuminate\Http\JsonResponse;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerAttachmentController extends Controller
 {
@@ -61,14 +61,14 @@ class CustomerAttachmentController extends Controller
         );
     }
 
-    public function view(Customer $customer, Attachment $attachment): BinaryFileResponse
+    public function view(Customer $customer, Attachment $attachment): StreamedResponse
     {
         $this->ensureMorph($customer, $attachment);
 
         return $this->deliverAttachmentView($attachment);
     }
 
-    public function download(Customer $customer, Attachment $attachment): BinaryFileResponse
+    public function download(Customer $customer, Attachment $attachment): StreamedResponse
     {
         $this->ensureMorph($customer, $attachment);
 

@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Rbac\Services;
 
+use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use App\Modules\Rbac\Models\Role;
 use App\Services\PermissionService;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 class UserService
 {
@@ -80,6 +83,20 @@ class UserService
             ];
 
             if (! empty($data['password'])) {
+                if (Hash::check((string) $data['password'], (string) $user->getAuthPassword())) {
+                    throw new HttpResponseException(
+                        ApiResponse::error(
+                            'The new password must be different from your current password.',
+                            422,
+                            null,
+                            ['password' => ['The new password must be different from your current password.']],
+                            null,
+                            null,
+                            'PASSWORD_UNCHANGED'
+                        )
+                    );
+                }
+
                 $payload['password'] = $data['password'];
             }
 

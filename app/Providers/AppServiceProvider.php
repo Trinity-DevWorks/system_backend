@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\VirusScanner;
+use App\Models\Attachment;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Brand\Models\Brand;
 use App\Modules\Category\Models\Category;
+use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
@@ -38,6 +41,8 @@ use App\Modules\Supplier\Models\SupplierGroup;
 use App\Modules\Supplier\Models\SupplierItem;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Services\VirusScanning\ClamAvVirusScanner;
+use App\Services\VirusScanning\NullVirusScanner;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
@@ -51,7 +56,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(VirusScanner::class, function (): VirusScanner {
+            return match ((string) config('attachments.virus_scan.driver', 'null')) {
+                'clamav' => new ClamAvVirusScanner,
+                default => new NullVirusScanner,
+            };
+        });
     }
 
     /**
@@ -60,12 +70,15 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureLoginRateLimiting();
+        $this->configurePasswordResetRateLimiting();
 
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,
             'user' => User::class,
+            'attachment' => Attachment::class,
             'brand' => Brand::class,
             'category' => Category::class,
+            'company_profile' => CompanyProfile::class,
             'customer' => Customer::class,
             'customer_group' => CustomerGroup::class,
             'customer_address' => CustomerAddress::class,
@@ -105,6 +118,16 @@ class AppServiceProvider extends ServiceProvider
             $perMinute = (int) config('security.login_rate_limit_per_minute', 10);
 
             return Limit::perMinute(max(1, $perMinute))->by($request->ip());
+        });
+    }
+
+    private function configurePasswordResetRateLimiting(): void
+    {
+        RateLimiter::for('password-reset', function (Request $request) {
+            $perMinute = (int) config('security.password_reset_rate_limit_per_minute', 5);
+            $email = strtolower((string) $request->input('email', ''));
+
+            return Limit::perMinute(max(1, $perMinute))->by($request->ip().'|'.$email);
         });
     }
 }
