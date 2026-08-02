@@ -24,6 +24,8 @@ Laravel is accessible, powerful, and provides tools required for large, robust a
 ## Project Docs
 
 - API error code contract: `docs/api-error-codes.md`
+- Deployment / Docker (Option B): `docs/deployment.md`
+- CI: `docs/ci.md`
 
 ## Learning Laravel
 

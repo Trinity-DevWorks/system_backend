@@ -1,0 +1,42 @@
+# Manual deploy scaffolding — no live host wired yet (Option B).
+# When a staging host exists: add secrets, push images, and SSH/registry steps.
+#
+# Ref: Trinity-DevWorks/Issues#29
+name: Deploy staging (stub)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate-compose:
+    name: Validate Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate compose file
+        run: docker compose -f docker-compose.yml config
+
+      - name: Build API image
+        run: docker compose build app
+
+      # Future (Option C):
+      # - docker login / push to registry
+      # - migrate central DB
+      # - restart app + queue on host
+      # - smoke-test /health
+      - name: Stub note
+        run: |
+          echo "Compose validated and API image built."
+          echo "No remote deploy target configured yet (Option B)."
