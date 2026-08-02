@@ -6,16 +6,16 @@ namespace App\Http\Controllers\Concerns;
 
 use App\Models\Attachment;
 use App\Services\AttachmentService;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 trait DeliversAttachmentFiles
 {
-    protected function deliverAttachmentDownload(Attachment $attachment): BinaryFileResponse
+    protected function deliverAttachmentDownload(Attachment $attachment): StreamedResponse
     {
         return $this->resolveAttachmentService()->downloadResponse($attachment);
     }
 
-    protected function deliverAttachmentView(Attachment $attachment): BinaryFileResponse
+    protected function deliverAttachmentView(Attachment $attachment): StreamedResponse
     {
         return $this->resolveAttachmentService()->inlineResponse($attachment);
     }

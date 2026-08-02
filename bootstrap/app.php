@@ -76,7 +76,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (NotFoundHttpException $e, Request $request) use ($wantsEnvelope) {
             if ($wantsEnvelope($request)) {
-                return ApiResponse::notFound($e->getMessage() ?: 'Resource not found.', 'NOT_FOUND');
+                $code = $e->getHeaders()['X-Error-Code'] ?? $e->getHeaders()['x-error-code'] ?? 'NOT_FOUND';
+
+                return ApiResponse::notFound(
+                    $e->getMessage() !== '' ? $e->getMessage() : 'Resource not found.',
+                    is_string($code) && $code !== '' ? $code : 'NOT_FOUND'
+                );
             }
 
         });
@@ -96,7 +101,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (HttpExceptionInterface $e, Request $request) use ($wantsEnvelope) {
             if ($wantsEnvelope($request)) {
-                $code = $e->getHeaders()['X-Error-Code'] ?? null;
+                $code = $e->getHeaders()['X-Error-Code'] ?? $e->getHeaders()['x-error-code'] ?? null;
 
                 return ApiResponse::error(
                     $e->getMessage() !== '' ? $e->getMessage() : 'Request failed.',

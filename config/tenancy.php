@@ -96,7 +96,7 @@ return [
         'disks' => [
             'local',
             'public',
-            // 's3',
+            's3',
         ],
 
         /**
@@ -108,6 +108,8 @@ return [
             // Disks whose roots should be overridden after storage_path() is suffixed.
             'local' => '%storage_path%/app/',
             'public' => '%storage_path%/app/public/',
+            // S3: object-key prefix per tenant (Flysystem uses `root` as prefix on S3).
+            's3' => 'tenants/%tenant%',
         ],
 
         /**

@@ -13,7 +13,7 @@ use App\Models\Attachment;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Services\AttachmentService;
 use Illuminate\Http\JsonResponse;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CompanyProfileAttachmentController extends Controller
 {
@@ -68,7 +68,7 @@ class CompanyProfileAttachmentController extends Controller
         );
     }
 
-    public function view(Attachment $attachment): BinaryFileResponse
+    public function view(Attachment $attachment): StreamedResponse
     {
         $profile = CompanyProfile::singleton();
         $this->ensureMorph($profile, $attachment);
@@ -76,7 +76,7 @@ class CompanyProfileAttachmentController extends Controller
         return $this->deliverAttachmentView($attachment);
     }
 
-    public function download(Attachment $attachment): BinaryFileResponse
+    public function download(Attachment $attachment): StreamedResponse
     {
         $profile = CompanyProfile::singleton();
         $this->ensureMorph($profile, $attachment);

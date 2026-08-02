@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\VirusScanner;
+use App\Models\Attachment;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Brand\Models\Brand;
@@ -39,6 +41,8 @@ use App\Modules\Supplier\Models\SupplierGroup;
 use App\Modules\Supplier\Models\SupplierItem;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Services\VirusScanning\ClamAvVirusScanner;
+use App\Services\VirusScanning\NullVirusScanner;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
@@ -52,7 +56,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(VirusScanner::class, function (): VirusScanner {
+            return match ((string) config('attachments.virus_scan.driver', 'null')) {
+                'clamav' => new ClamAvVirusScanner,
+                default => new NullVirusScanner,
+            };
+        });
     }
 
     /**
@@ -66,6 +75,7 @@ class AppServiceProvider extends ServiceProvider
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,
             'user' => User::class,
+            'attachment' => Attachment::class,
             'brand' => Brand::class,
             'category' => Category::class,
             'company_profile' => CompanyProfile::class,

@@ -18,8 +18,10 @@ class StoreAttachmentRequest extends FormRequest
      */
     public function rules(): array
     {
+        $maxKb = max(1, (int) config('attachments.max_file_kilobytes', 15360));
+
         return [
-            'file' => ['required', 'file', 'max:15360'],
+            'file' => ['required', 'file', 'max:'.$maxKb],
         ];
     }
 
@@ -28,11 +30,13 @@ class StoreAttachmentRequest extends FormRequest
      */
     public function messages(): array
     {
+        $maxMb = max(1, (int) ceil(((int) config('attachments.max_file_kilobytes', 15360)) / 1024));
+
         return [
             'file.required' => 'Please choose a file to upload.',
             'file.file' => 'The upload must be a valid file.',
-            'file.max' => 'The file may not be greater than 15 MB.',
-            'file.uploaded' => 'The file may not be greater than 15 MB.',
+            'file.max' => "The file may not be greater than {$maxMb} MB.",
+            'file.uploaded' => "The file may not be greater than {$maxMb} MB.",
         ];
     }
 }
