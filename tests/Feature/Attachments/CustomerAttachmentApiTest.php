@@ -8,15 +8,18 @@ use App\Modules\Customer\Models\Customer;
 use App\Services\AttachmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Concerns\InteractsWithTenant;
 use Tests\TestCase;
 
 /**
  * HTTP tests for customer attachment routes (upload, list, download, view, delete, auth, scope).
  *
- * Hits the real tenant API with Host + Bearer token. Run with:
- * php artisan test --filter=CustomerAttachmentApiTest
+ * Hits the real tenant API with Host + Bearer token.
+ * Requires local Postgres (Stancl tenant schemas). Skipped in CI via --exclude-group=attachments.
+ * Run with: php artisan test --group=attachments
  */
+#[Group('attachments')]
 class CustomerAttachmentApiTest extends TestCase
 {
     use InteractsWithTenant;
