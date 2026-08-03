@@ -1,10 +1,14 @@
 <?php
 
 use App\Jobs\BootstrapTenantItemTypes;
+use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -33,3 +37,68 @@ Artisan::command('tenants:sync-unit-catalog', function () {
 
     $this->info("Done. {$count} tenant(s) processed.");
 })->purpose('Seed default unit groups and UOMs for all existing tenants');
+
+Artisan::command('tenants:sync-rbac', function () {
+    $count = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use (&$count): void {
+        $ownerId = $tenant->run(function (): ?string {
+            $owner = User::query()->orderBy('created_at')->value('id');
+
+            return $owner !== null ? (string) $owner : null;
+        });
+
+        if ($ownerId === null) {
+            $this->warn("Skipped tenant [{$tenant->id}] — no users.");
+
+            return;
+        }
+
+        BootstrapTenantRbac::dispatchSync($tenant, $ownerId);
+        $this->info("Synced RBAC catalog for tenant [{$tenant->id}]");
+        $count++;
+    });
+
+    $this->info("Done. {$count} tenant(s) processed.");
+})->purpose('Sync permission catalog (including audits) for all existing tenants');
+
+/*
+|--------------------------------------------------------------------------
+| audits:prune
+|--------------------------------------------------------------------------
+|
+| What: Deletes audit rows older than retention_days from each tenant DB.
+| Where: Invoked manually or by the nightly schedule in bootstrap/app.php.
+| Why: Compliance retention without allowing Eloquent delete on immutable Audit rows.
+|
+*/
+Artisan::command('audits:prune {--days= : Override retention days from config}', function (): void {
+    $daysOption = $this->option('days');
+    $days = $daysOption !== null && $daysOption !== ''
+        ? max(1, (int) $daysOption)
+        : max(1, (int) config('audit.retention_days', 730));
+
+    $cutoff = now()->subDays($days);
+    $table = config('audit.drivers.database.table', 'audits');
+    $total = 0;
+    $command = $this;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use ($cutoff, $table, $command, &$total): void {
+        $tenant->run(function () use ($cutoff, $table, $tenant, $command, &$total): void {
+            if (! Schema::hasTable($table)) {
+                $command->warn("Skipped tenant [{$tenant->id}] — audits table missing.");
+
+                return;
+            }
+
+            $deleted = DB::table($table)
+                ->where('created_at', '<', $cutoff)
+                ->delete();
+
+            $total += $deleted;
+            $command->info("Tenant [{$tenant->id}]: deleted {$deleted} audit row(s).");
+        });
+    });
+
+    $this->info("Done. Retention={$days} day(s). Total deleted={$total}.");
+})->purpose('Delete audit rows older than the configured retention period (per tenant DB)');

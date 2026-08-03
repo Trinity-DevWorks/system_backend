@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use App\Modules\Rbac\Http\Requests\ResetPasswordRequest;
+use App\Services\AuditWriter;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +18,10 @@ use Illuminate\Support\Str;
 
 class ResetPasswordController extends Controller
 {
+    public function __construct(
+        private readonly AuditWriter $auditWriter,
+    ) {}
+
     public function __invoke(ResetPasswordRequest $request): JsonResponse
     {
         $status = Password::broker()->reset(
@@ -42,6 +47,13 @@ class ResetPasswordController extends Controller
                 ])->save();
 
                 $user->tokens()->delete();
+
+                $this->auditWriter->write(
+                    event: 'password_reset',
+                    auditable: $user,
+                    user: $user,
+                    tags: 'auth,security',
+                );
 
                 event(new PasswordReset($user));
             }

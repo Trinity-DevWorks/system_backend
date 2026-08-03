@@ -9,7 +9,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Category\Models\Category;
 use App\Modules\Currency\Models\Currency;
-use App\Modules\Currency\Models\TenantSetting;
+use App\Modules\TenantSetting\Models\TenantSetting;
 use App\Services\ModuleEntitlementService;
 use Illuminate\Database\Seeder;
 use Stancl\Tenancy\Database\Models\Domain;

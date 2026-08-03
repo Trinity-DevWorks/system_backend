@@ -7,6 +7,7 @@ use App\Http\Responses\ApiResponse;
 use App\Support\Database\QueryExceptionMapper;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
@@ -26,6 +27,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withSchedule(function (Schedule $schedule): void {
+        // Nightly retention purge for tenant audit logs (see audits:prune in routes/console.php).
+        $schedule->command('audits:prune')->dailyAt('02:30')->withoutOverlapping();
+    })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(HandleCors::class);
         // Omit statefulApi(): it applies session + CSRF to /api for SANCTUM_STATEFUL_DOMAINS.

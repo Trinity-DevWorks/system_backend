@@ -34,6 +34,9 @@ return new class extends Migration
             $blueprint->timestamps();
 
             $blueprint->index(["{$morphPrefix}_id", "{$morphPrefix}_type"]);
+            $blueprint->index(['auditable_type', 'auditable_id']);
+            $blueprint->index(['event']);
+            $blueprint->index(['created_at']);
         });
     }
 
