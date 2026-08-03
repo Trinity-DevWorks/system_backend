@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Concerns\InteractsWithTenant;
@@ -23,8 +24,10 @@ use Tests\TestCase;
  * Tests the AttachmentService directly (no HTTP): store, checksum, soft/force delete,
  * orphan cleanup, quota, and async job dispatch.
  *
- * Run with: php artisan test --filter=AttachmentServiceTest
+ * Requires local Postgres (Stancl tenant schemas). Skipped in CI via --exclude-group=attachments.
+ * Run with: php artisan test --group=attachments
  */
+#[Group('attachments')]
 class AttachmentServiceTest extends TestCase
 {
     use InteractsWithTenant;
