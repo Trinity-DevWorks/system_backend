@@ -16,6 +16,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property AttachmentViewerCategory $viewer_category
+ * @property AttachmentProcessingStatus $processing_status
+ * @property AttachmentScanStatus $scan_status
+ */
 #[Fillable([
     'disk',
     'file_path',
