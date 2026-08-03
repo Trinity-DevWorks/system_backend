@@ -9,6 +9,7 @@ use App\Modules\TenantSetting\Enums\DateFormat;
 use App\Modules\TenantSetting\Enums\NumberFormat;
 use App\Modules\TenantSetting\Enums\PreferredLanguage;
 use App\Modules\TenantSetting\Enums\PriceRoundingMode;
+use App\Modules\TenantSetting\Services\TenantSettingService;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -34,7 +35,7 @@ class TenantSetting extends Model implements AuditableContract
     protected $table = 'tenant_settings';
 
     /**
-     * Single row per tenant database.
+     * Single row per tenant database (DB read — prefer current() for hot paths).
      */
     public static function singleton(): self
     {
@@ -49,6 +50,14 @@ class TenantSetting extends Model implements AuditableContract
             'price_rounding_mode' => PriceRoundingMode::HalfUp,
             'price_decimal_places' => 2,
         ]);
+    }
+
+    /**
+     * Cached singleton for domain reads (Redis when CACHE_STORE=redis).
+     */
+    public static function current(): self
+    {
+        return app(TenantSettingService::class)->get();
     }
 
     /**

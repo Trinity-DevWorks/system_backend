@@ -11,6 +11,7 @@ use App\Http\Requests\StoreAttachmentRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\Attachment;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
+use App\Modules\CompanyProfile\Services\CompanyProfileService;
 use App\Services\AttachmentService;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -20,7 +21,8 @@ class CompanyProfileAttachmentController extends Controller
     use DeliversAttachmentFiles;
 
     public function __construct(
-        private readonly AttachmentService $attachmentService
+        private readonly AttachmentService $attachmentService,
+        private readonly CompanyProfileService $companyProfileService,
     ) {}
 
     public function index(): JsonResponse
@@ -48,6 +50,7 @@ class CompanyProfileAttachmentController extends Controller
             $file,
             $userId !== null ? (string) $userId : null
         );
+        $this->companyProfileService->forgetCache();
         $urls = $this->urls($attachment);
 
         return ApiResponse::created(
@@ -89,6 +92,7 @@ class CompanyProfileAttachmentController extends Controller
         $profile = CompanyProfile::singleton();
         $this->ensureMorph($profile, $attachment);
         $updated = $this->attachmentService->setPrimaryImage($profile, $attachment);
+        $this->companyProfileService->forgetCache();
         $urls = $this->urls($updated);
 
         return ApiResponse::success(
@@ -102,6 +106,7 @@ class CompanyProfileAttachmentController extends Controller
         $profile = CompanyProfile::singleton();
         $this->ensureMorph($profile, $attachment);
         $this->attachmentService->delete($attachment);
+        $this->companyProfileService->forgetCache();
 
         return ApiResponse::success(null, 'Attachment deleted successfully.');
     }

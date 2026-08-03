@@ -7,12 +7,16 @@ namespace App\Services;
 use App\Models\Module;
 use App\Models\Tenant;
 use App\Models\TenantModule;
+use App\Support\TenantReferenceCache;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final class ModuleEntitlementService
 {
+    public const CACHE_KEY = 'modules.assigned';
+
     /** @var array<string, list<string>> */
     private array $codesByTenant = [];
 
@@ -43,6 +47,27 @@ final class ModuleEntitlementService
             return $this->codesByTenant[$tenantId];
         }
 
+        return $this->codesByTenant[$tenantId] = $this->rememberCodesForTenant($tenantId);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function rememberCodesForTenant(string $tenantId): array
+    {
+        /** @var list<string> */
+        return Cache::remember(
+            TenantReferenceCache::scopedForTenant($tenantId, self::CACHE_KEY),
+            TenantReferenceCache::ttlSeconds(),
+            fn (): array => $this->loadCodesFromDatabase($tenantId)
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function loadCodesFromDatabase(string $tenantId): array
+    {
         $codes = TenantModule::query()
             ->where('tenant_id', $tenantId)
             ->orderBy('module_code')
@@ -56,7 +81,7 @@ final class ModuleEntitlementService
             sort($codes);
         }
 
-        return $this->codesByTenant[$tenantId] = $codes;
+        return $codes;
     }
 
     public function tenantHas(string $tenantId, string $moduleCode): bool
@@ -118,6 +143,7 @@ final class ModuleEntitlementService
         });
 
         unset($this->codesByTenant[$tenant->id]);
+        TenantReferenceCache::forgetForTenant((string) $tenant->id, self::CACHE_KEY);
 
         return $this->codesForTenant($tenant->id);
     }
