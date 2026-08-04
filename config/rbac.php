@@ -11,6 +11,7 @@ return [
         'users' => 'User Management',
         'roles' => 'Role Management',
         'permissions' => 'Permission Management',
+        'audits' => 'Audit Log',
         'company_profile' => 'Company Profile Management',
         'tenant_settings' => 'Tenant Settings Management',
         'branches' => 'Branch Management',

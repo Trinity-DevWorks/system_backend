@@ -9,8 +9,10 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Category\Models\Category;
 use App\Modules\Currency\Models\Currency;
-use App\Modules\Currency\Models\TenantSetting;
+use App\Modules\TenantSetting\Models\TenantSetting;
+use App\Modules\TenantSetting\Services\TenantSettingService;
 use App\Services\ModuleEntitlementService;
+use App\Support\TenantReferenceCache;
 use Illuminate\Database\Seeder;
 use Stancl\Tenancy\Database\Models\Domain;
 
@@ -198,5 +200,6 @@ class TenantSeeder extends Seeder
         );
 
         TenantSetting::singleton()->update(['primary_currency_id' => $currency->id]);
+        TenantReferenceCache::forget(TenantSettingService::CACHE_KEY);
     }
 }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AssignedModuleController;
+use App\Modules\Audit\Http\Controllers\AuditController;
 use App\Modules\Branch\Http\Controllers\BranchController;
 use App\Modules\Brand\Http\Controllers\BrandController;
 use App\Modules\Category\Http\Controllers\CategoryController;
@@ -50,6 +51,7 @@ use App\Modules\Supplier\Http\Controllers\SupplierController;
 use App\Modules\Supplier\Http\Controllers\SupplierGroupController;
 use App\Modules\Supplier\Http\Controllers\SupplierItemController;
 use App\Modules\Supplier\Http\Controllers\SupplierLedgerController;
+use App\Modules\TenantSetting\Http\Controllers\TenantSettingController;
 use App\Modules\VatGroup\Http\Controllers\VatGroupController;
 use App\Modules\Warehouse\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
@@ -94,6 +96,13 @@ Route::middleware([
             Route::get('permissions', [PermissionController::class, 'index'])
                 ->middleware('check.permission:permissions,view');
 
+            Route::get('audits', [AuditController::class, 'index'])
+                ->middleware('check.permission:audits,view');
+            Route::get('audits/export', [AuditController::class, 'export'])
+                ->middleware('check.permission:audits,export');
+            Route::get('audits/{audit}', [AuditController::class, 'show'])
+                ->middleware('check.permission:audits,view');
+
             Route::apiResource('roles', RoleController::class)
                 ->middlewareFor(['index', 'show'], ['check.permission:roles,view'])
                 ->middlewareFor(['store'], ['check.permission:roles,add'])
@@ -118,6 +127,9 @@ Route::middleware([
                 ->middlewareFor(['store'], ['check.permission:branches,add'])
                 ->middlewareFor(['update'], ['check.permission:branches,edit'])
                 ->middlewareFor(['destroy'], ['check.permission:branches,delete']);
+            Route::get('tenant-settings', [TenantSettingController::class, 'show']);
+            Route::put('tenant-settings', [TenantSettingController::class, 'update'])
+                ->middleware('check.permission:tenant_settings,edit');
 
             Route::get('company-profile/attachments/{attachment}/download', [CompanyProfileAttachmentController::class, 'download'])
                 ->middleware('check.permission:company_profile,view')

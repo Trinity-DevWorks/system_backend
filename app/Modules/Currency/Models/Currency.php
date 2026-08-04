@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Currency\Models;
 
 use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\TenantSetting\Models\TenantSetting;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -46,14 +47,14 @@ class Currency extends Model implements AuditableContract
 
     public function isPrimary(): bool
     {
-        $settings = TenantSetting::singleton();
+        $settings = TenantSetting::current();
 
         return $settings->primary_currency_id === $this->id;
     }
 
     public static function getPrimary(): ?self
     {
-        $settings = TenantSetting::singleton();
+        $settings = TenantSetting::current();
         if (! $settings->primary_currency_id) {
             return null;
         }
