@@ -20,6 +20,7 @@ class BranchService
             self::CACHE_LIST,
             Branch::class,
             fn (): Collection => Branch::query()
+                ->with('manager:id,name')
                 ->orderByDesc('is_default')
                 ->orderBy('name')
                 ->get()
@@ -34,7 +35,7 @@ class BranchService
             $created = Branch::query()->create($data->toArray());
             TenantReferenceCache::forget(self::CACHE_LIST);
 
-            return $created;
+            return $created->load('manager:id,name');
         });
     }
 
@@ -46,7 +47,7 @@ class BranchService
             $branch->update($data->toArray());
             TenantReferenceCache::forget(self::CACHE_LIST);
 
-            return $branch->refresh();
+            return $branch->refresh()->load('manager:id,name');
         });
     }
 

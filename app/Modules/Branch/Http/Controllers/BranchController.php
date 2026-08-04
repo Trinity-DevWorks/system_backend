@@ -42,6 +42,8 @@ class BranchController extends Controller
 
     public function show(Branch $branch): JsonResponse
     {
+        $branch->loadMissing(['manager:id,name']);
+
         return ApiResponse::success(
             BranchResponseData::fromModel($branch)->toArray(),
             'Branch fetched successfully.'

@@ -6,6 +6,7 @@ namespace App\Modules\Branch\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateBranchRequest extends FormRequest
 {
@@ -34,10 +35,29 @@ class UpdateBranchRequest extends FormRequest
             ],
             'address' => ['nullable', 'string', 'max:2000'],
             'phone' => ['nullable', 'string', 'max:50'],
+            'email' => ['nullable', 'email', 'max:255'],
             'timezone' => ['nullable', 'string', 'max:64', 'timezone:all'],
-            'manager_name' => ['nullable', 'string', 'max:255'],
+            'opening_time' => ['nullable', 'date_format:H:i'],
+            'closing_time' => ['nullable', 'date_format:H:i'],
+            'manager_id' => ['nullable', 'uuid', 'exists:users,id'],
             'is_active' => ['required', 'boolean'],
             'is_default' => ['required', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $opening = $this->input('opening_time');
+            $closing = $this->input('closing_time');
+
+            if (! is_string($opening) || ! is_string($closing) || $opening === '' || $closing === '') {
+                return;
+            }
+
+            if ($closing === $opening) {
+                $validator->errors()->add('closing_time', 'Closing time must be different from opening time.');
+            }
+        });
     }
 }

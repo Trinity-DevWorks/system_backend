@@ -16,8 +16,11 @@ return new class extends Migration
             $table->string('shortcut_name', 50);
             $table->text('address')->nullable();
             $table->string('phone', 50)->nullable();
+            $table->string('email')->nullable();
             $table->string('timezone', 64)->nullable();
-            $table->string('manager_name')->nullable();
+            $table->time('opening_time')->nullable();
+            $table->time('closing_time')->nullable();
+            $table->foreignUuid('manager_id')->nullable()->constrained('users')->nullOnDelete();
             $table->boolean('is_active')->default(true);
             $table->boolean('is_default')->default(false);
             $table->timestamps();

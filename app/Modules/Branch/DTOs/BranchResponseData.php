@@ -15,7 +15,11 @@ readonly class BranchResponseData
         public string $shortcutName,
         public ?string $address,
         public ?string $phone,
+        public ?string $email,
         public ?string $timezone,
+        public ?string $openingTime,
+        public ?string $closingTime,
+        public ?string $managerId,
         public ?string $managerName,
         public bool $isActive,
         public bool $isDefault,
@@ -25,14 +29,20 @@ readonly class BranchResponseData
 
     public static function fromModel(Branch $branch): self
     {
+        $manager = $branch->relationLoaded('manager') ? $branch->manager : null;
+
         return new self(
             id: $branch->id,
             name: $branch->name,
             shortcutName: $branch->shortcut_name,
             address: $branch->address,
             phone: $branch->phone,
+            email: $branch->email,
             timezone: $branch->timezone,
-            managerName: $branch->manager_name,
+            openingTime: self::formatTime($branch->opening_time),
+            closingTime: self::formatTime($branch->closing_time),
+            managerId: $branch->manager_id,
+            managerName: $manager?->name,
             isActive: (bool) $branch->is_active,
             isDefault: (bool) $branch->is_default,
             createdAt: (string) $branch->created_at,
@@ -40,21 +50,24 @@ readonly class BranchResponseData
         );
     }
 
+    private static function formatTime(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $raw = (string) $value;
+
+        if (preg_match('/^(\d{2}:\d{2})/', $raw, $matches) === 1) {
+            return $matches[1];
+        }
+
+        return $raw;
+    }
+
     /**
      * @param  Collection<int, Branch>  $branches
-     * @return list<array{
-     *     id:int,
-     *     name:string,
-     *     shortcut_name:string,
-     *     address:?string,
-     *     phone:?string,
-     *     timezone:?string,
-     *     manager_name:?string,
-     *     is_active:bool,
-     *     is_default:bool,
-     *     created_at:string,
-     *     updated_at:string
-     * }>
+     * @return list<array<string, mixed>>
      */
     public static function collectionToArray(Collection $branches): array
     {
@@ -65,19 +78,7 @@ readonly class BranchResponseData
     }
 
     /**
-     * @return array{
-     *     id:int,
-     *     name:string,
-     *     shortcut_name:string,
-     *     address:?string,
-     *     phone:?string,
-     *     timezone:?string,
-     *     manager_name:?string,
-     *     is_active:bool,
-     *     is_default:bool,
-     *     created_at:string,
-     *     updated_at:string
-     * }
+     * @return array<string, mixed>
      */
     public function toArray(): array
     {
@@ -87,7 +88,11 @@ readonly class BranchResponseData
             'shortcut_name' => $this->shortcutName,
             'address' => $this->address,
             'phone' => $this->phone,
+            'email' => $this->email,
             'timezone' => $this->timezone,
+            'opening_time' => $this->openingTime,
+            'closing_time' => $this->closingTime,
+            'manager_id' => $this->managerId,
             'manager_name' => $this->managerName,
             'is_active' => $this->isActive,
             'is_default' => $this->isDefault,

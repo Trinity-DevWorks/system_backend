@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AssignedModuleController;
-use App\Modules\Audit\Http\Controllers\AuditController;
 use App\Modules\Branch\Http\Controllers\BranchController;
 use App\Modules\Brand\Http\Controllers\BrandController;
 use App\Modules\Category\Http\Controllers\CategoryController;
