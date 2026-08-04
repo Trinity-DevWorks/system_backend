@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AssignedModuleController;
+use App\Modules\Audit\Http\Controllers\AuditController;
+use App\Modules\Branch\Http\Controllers\BranchController;
 use App\Modules\Brand\Http\Controllers\BrandController;
 use App\Modules\Category\Http\Controllers\CategoryController;
 use App\Modules\CompanyProfile\Http\Controllers\CompanyProfileAttachmentController;
@@ -111,6 +113,12 @@ Route::middleware([
                 ->middleware('check.permission:company_profile,view');
             Route::put('company-profile', [CompanyProfileController::class, 'update'])
                 ->middleware('check.permission:company_profile,edit');
+
+            Route::apiResource('branches', BranchController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:branches,view'])
+                ->middlewareFor(['store'], ['check.permission:branches,add'])
+                ->middlewareFor(['update'], ['check.permission:branches,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:branches,delete']);
 
             Route::get('company-profile/attachments/{attachment}/download', [CompanyProfileAttachmentController::class, 'download'])
                 ->middleware('check.permission:company_profile,view')

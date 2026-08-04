@@ -12,6 +12,8 @@ return [
         'roles' => 'Role Management',
         'permissions' => 'Permission Management',
         'company_profile' => 'Company Profile Management',
+        'tenant_settings' => 'Tenant Settings Management',
+        'branches' => 'Branch Management',
 
         'brands' => 'Brand Management',
         'categories' => 'Category Management',
