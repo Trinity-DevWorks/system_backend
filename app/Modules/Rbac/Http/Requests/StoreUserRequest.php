@@ -25,6 +25,8 @@ class StoreUserRequest extends FormRequest
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
             'active' => ['required', 'boolean'],
             'role_id' => ['required', 'integer', 'exists:roles,id'],
+            'branch_ids' => ['nullable', 'array'],
+            'branch_ids.*' => ['integer', 'exists:branches,id'],
         ];
     }
 }

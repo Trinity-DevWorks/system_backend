@@ -40,6 +40,9 @@ class WarehouseController extends Controller
 
     public function show(Warehouse $warehouse): JsonResponse
     {
+        $this->warehouseService->assertVisible($warehouse);
+        $warehouse->loadMissing(['branch:id,name', 'manager:id,name']);
+
         return ApiResponse::success(
             WarehouseResponseData::fromModel($warehouse)->toArray(),
             'Warehouse fetched successfully.'

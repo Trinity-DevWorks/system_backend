@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\BootstrapTenantDefaultBranch;
 use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
@@ -37,6 +38,44 @@ Artisan::command('tenants:sync-unit-catalog', function () {
 
     $this->info("Done. {$count} tenant(s) processed.");
 })->purpose('Seed default unit groups and UOMs for all existing tenants');
+
+Artisan::command('tenants:sync-default-branch', function () {
+    $count = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use (&$count): void {
+        BootstrapTenantDefaultBranch::dispatchSync($tenant);
+        $this->info("Ensured default branch for tenant [{$tenant->id}]");
+        $count++;
+    });
+
+    $this->info("Done. {$count} tenant(s) processed.");
+})->purpose('Ensure each tenant has a default Main branch');
+
+Artisan::command('tenants:sync-user-branches', function () {
+    $count = 0;
+    $assigned = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use (&$count, &$assigned): void {
+        $tenant->run(function () use ($tenant, &$assigned): void {
+            $branchService = app(\App\Modules\Branch\Services\BranchService::class);
+            $defaultId = $branchService->defaultBranchId();
+
+            User::query()->orderBy('created_at')->each(function (User $user) use ($defaultId, &$assigned): void {
+                if ($user->branches()->exists()) {
+                    return;
+                }
+
+                $user->branches()->attach($defaultId);
+                $assigned++;
+            });
+        });
+
+        $this->info("Synced user branches for tenant [{$tenant->id}]");
+        $count++;
+    });
+
+    $this->info("Done. {$count} tenant(s) processed. {$assigned} user assignment(s) created.");
+})->purpose('Assign the default branch to users without any branch');
 
 Artisan::command('tenants:sync-rbac', function () {
     $count = 0;

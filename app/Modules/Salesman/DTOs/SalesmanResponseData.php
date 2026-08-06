@@ -23,6 +23,8 @@ readonly class SalesmanResponseData
         public ?string $commissionValue,
         public ?string $targetAmount,
         public ?string $hireDate,
+        public int $branchId,
+        public ?string $branchName,
         public ?int $warehouseId,
         public ?string $warehouseName,
         public ?string $userId,
@@ -39,6 +41,7 @@ readonly class SalesmanResponseData
             ? $salesman->commission_type
             : CommissionType::from((string) $salesman->commission_type);
 
+        $branch = $salesman->relationLoaded('branch') ? $salesman->branch : null;
         $warehouse = $salesman->relationLoaded('warehouse') ? $salesman->warehouse : null;
         $user = $salesman->relationLoaded('user') ? $salesman->user : null;
 
@@ -55,6 +58,8 @@ readonly class SalesmanResponseData
             commissionValue: $salesman->commission_value !== null ? (string) $salesman->commission_value : null,
             targetAmount: $salesman->target_amount !== null ? (string) $salesman->target_amount : null,
             hireDate: $salesman->hire_date?->toDateString(),
+            branchId: (int) $salesman->branch_id,
+            branchName: $branch?->name,
             warehouseId: $salesman->warehouse_id,
             warehouseName: $warehouse?->name,
             userId: $salesman->user_id,
@@ -96,6 +101,8 @@ readonly class SalesmanResponseData
             'commission_value' => $this->commissionValue,
             'target_amount' => $this->targetAmount,
             'hire_date' => $this->hireDate,
+            'branch_id' => $this->branchId,
+            'branch_name' => $this->branchName,
             'warehouse_id' => $this->warehouseId,
             'warehouse_name' => $this->warehouseName,
             'user_id' => $this->userId,

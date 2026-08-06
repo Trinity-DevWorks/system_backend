@@ -6,6 +6,7 @@ namespace App\Modules\Salesman\Models;
 
 use App\Models\Attachment;
 use App\Models\User;
+use App\Modules\Branch\Models\Branch;
 use App\Modules\Salesman\Enums\CommissionType;
 use App\Modules\Warehouse\Models\Warehouse;
 use Database\Factories\SalesmanFactory;
@@ -31,6 +32,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'commission_value',
     'target_amount',
     'hire_date',
+    'branch_id',
     'warehouse_id',
     'user_id',
     'is_active',
@@ -60,6 +62,14 @@ class Salesman extends Model implements AuditableContract
             'hire_date' => 'date',
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * @return BelongsTo<Branch, $this>
+     */
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 
     /**

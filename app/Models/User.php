@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Modules\Branch\Models\Branch;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Salesman\Models\Salesman;
 use App\Notifications\ResetPasswordNotification;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -83,5 +85,13 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     public function salesmanProfile(): HasOne
     {
         return $this->hasOne(Salesman::class);
+    }
+
+    /**
+     * @return BelongsToMany<Branch, $this>
+     */
+    public function branches(): BelongsToMany
+    {
+        return $this->belongsToMany(Branch::class, 'branch_user')->withTimestamps();
     }
 }

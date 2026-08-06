@@ -42,7 +42,8 @@ class SalesmanController extends Controller
 
     public function show(Salesman $salesman): JsonResponse
     {
-        $salesman->loadMissing(['warehouse:id,name', 'user:id,name']);
+        $this->salesmanService->assertVisible($salesman);
+        $salesman->loadMissing(['branch:id,name', 'warehouse:id,name', 'user:id,name']);
 
         return ApiResponse::success(
             SalesmanResponseData::fromModel($salesman)->toArray(),

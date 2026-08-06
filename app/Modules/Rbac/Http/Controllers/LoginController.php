@@ -55,6 +55,11 @@ class LoginController extends Controller
             tags: 'auth,security',
         );
 
+        $user->loadMissing(['role:id,name', 'branches:id,name,shortcut_name,is_default']);
+
+        $branchContext = app(\App\Modules\Branch\Services\BranchContextService::class)
+            ->contextPayload($user);
+
         return ApiResponse::success([
             'access_token' => $plainToken,
             'token' => $plainToken,
@@ -64,7 +69,12 @@ class LoginController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role_id' => $user->role_id,
+                'role' => $user->role_id !== null
+                    ? ['id' => (int) $user->role_id, 'name' => $user->role?->name]
+                    : null,
+                'branch_ids' => $user->branches->pluck('id')->map(fn ($id): int => (int) $id)->values()->all(),
             ],
+            'branch_context' => $branchContext,
         ], 'Logged in successfully.');
     }
 }

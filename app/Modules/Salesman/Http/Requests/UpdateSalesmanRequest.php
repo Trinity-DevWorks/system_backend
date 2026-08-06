@@ -9,9 +9,12 @@ use App\Modules\Salesman\Models\Salesman;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
+use Illuminate\Validation\Validator;
 
 class UpdateSalesmanRequest extends FormRequest
 {
+    use ValidatesSalesmanWarehouseForBranch;
+
     public function authorize(): bool
     {
         return true;
@@ -60,6 +63,7 @@ class UpdateSalesmanRequest extends FormRequest
             ],
             'target_amount' => ['nullable', 'numeric', 'min:0'],
             'hire_date' => ['nullable', 'date'],
+            'branch_id' => ['required', 'integer', 'exists:branches,id'],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'user_id' => [
                 'nullable',
@@ -70,5 +74,12 @@ class UpdateSalesmanRequest extends FormRequest
             'is_active' => ['required', 'boolean'],
             'notes' => ['nullable', 'string'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $this->validateWarehouseForBranch($validator);
+        });
     }
 }

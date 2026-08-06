@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Models\User;
+use App\Modules\Branch\Services\BranchService;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\RolePermission;
@@ -27,11 +28,14 @@ class BootstrapTenantRbac implements ShouldQueue
         protected string $ownerUserId
     ) {}
 
-    public function handle(PermissionService $permissionService, PermissionCatalogService $permissionCatalogService): void
-    {
+    public function handle(
+        PermissionService $permissionService,
+        PermissionCatalogService $permissionCatalogService,
+        BranchService $branchService,
+    ): void {
         $ownerUserId = $this->ownerUserId;
 
-        $this->tenant->run(function () use ($ownerUserId, $permissionService, $permissionCatalogService): void {
+        $this->tenant->run(function () use ($ownerUserId, $permissionService, $permissionCatalogService, $branchService): void {
             $resources = config('rbac.resources', []);
 
             foreach ($resources as $resourceKey => $label) {
@@ -89,6 +93,7 @@ class BootstrapTenantRbac implements ShouldQueue
             $owner = User::query()->find($ownerUserId);
             if ($owner) {
                 $owner->update(['role_id' => $ownerRole->id]);
+                $branchService->assignUserToDefaultBranch($owner);
                 $permissionService->invalidateCacheForUser($owner->fresh());
             }
 

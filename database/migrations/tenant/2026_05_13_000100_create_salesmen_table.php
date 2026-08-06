@@ -24,6 +24,7 @@ return new class extends Migration
             $table->decimal('commission_value', 20, 4)->nullable();
             $table->decimal('target_amount', 20, 4)->nullable();
             $table->date('hire_date')->nullable();
+            $table->foreignId('branch_id')->constrained('branches')->restrictOnDelete();
             $table->foreignId('warehouse_id')->nullable()->constrained('warehouses')->nullOnDelete();
             $table->foreignUuid('user_id')->nullable()->unique()->constrained('users')->nullOnDelete();
             $table->boolean('is_active')->default(true);

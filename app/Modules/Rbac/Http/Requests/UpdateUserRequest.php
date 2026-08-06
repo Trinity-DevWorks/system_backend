@@ -42,6 +42,8 @@ class UpdateUserRequest extends FormRequest
             'password' => ['nullable', 'string', 'confirmed', Password::defaults()],
             'active' => ['required', 'boolean'],
             'role_id' => ['required', 'integer', 'exists:roles,id'],
+            'branch_ids' => ['required', 'array', 'min:1'],
+            'branch_ids.*' => ['integer', 'exists:branches,id'],
         ];
     }
 }

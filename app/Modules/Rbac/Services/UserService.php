@@ -6,6 +6,7 @@ namespace App\Modules\Rbac\Services;
 
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
+use App\Modules\Branch\Services\BranchService;
 use App\Modules\Rbac\Models\Role;
 use App\Services\PermissionService;
 use Illuminate\Database\Eloquent\Collection;
@@ -18,7 +19,8 @@ class UserService
     private const OWNER_ROLE_NAME = 'Owner';
 
     public function __construct(
-        private readonly PermissionService $permissionService
+        private readonly PermissionService $permissionService,
+        private readonly BranchService $branchService,
     ) {}
 
     /**
@@ -27,20 +29,20 @@ class UserService
     public function list(): Collection
     {
         return User::query()
-            ->with('role:id,name')
+            ->with(['role:id,name', 'branches:id,name'])
             ->orderBy('name')
             ->get();
     }
 
     public function find(User $user): User
     {
-        $user->loadMissing('role:id,name');
+        $user->loadMissing(['role:id,name', 'branches:id,name']);
 
         return $user;
     }
 
     /**
-     * @param  array{name: string, email: string, password: string, active: bool, role_id: int}  $data
+     * @param  array{name: string, email: string, password: string, active: bool, role_id: int, branch_ids?: array<int>|null}  $data
      */
     public function create(array $data): User
     {
@@ -54,6 +56,8 @@ class UserService
                 'created_by' => auth()->id(),
             ]);
 
+            $this->syncBranches($user, $data['branch_ids'] ?? []);
+
             $this->permissionService->invalidateCacheForUser($user->fresh());
 
             return $this->find($user);
@@ -61,7 +65,7 @@ class UserService
     }
 
     /**
-     * @param  array{name: string, email: string, active: bool, role_id: int, password?: string|null}  $data
+     * @param  array{name: string, email: string, active: bool, role_id: int, password?: string|null, branch_ids: array<int>}  $data
      */
     public function update(User $user, array $data): User
     {
@@ -104,6 +108,8 @@ class UserService
             $wasActive = (bool) $user->active;
 
             $user->update($payload);
+
+            $this->syncBranches($user, $data['branch_ids']);
 
             if ($roleChanged) {
                 $this->permissionService->invalidateCacheForUser($user->fresh());
@@ -209,5 +215,36 @@ class UserService
             ->where('active', true)
             ->where('id', '!=', $excludeUserId)
             ->count();
+    }
+
+    /**
+     * @param  array<int>|null  $branchIds
+     */
+    private function syncBranches(User $user, ?array $branchIds): void
+    {
+        $resolved = $this->resolveBranchIds($branchIds ?? []);
+
+        if ($resolved === []) {
+            abort(422, 'Each user must be assigned to at least one branch.', [
+                'X-Error-Code' => 'USER_BRANCH_REQUIRED',
+            ]);
+        }
+
+        $user->branches()->sync($resolved);
+    }
+
+    /**
+     * @param  array<int>|null  $branchIds
+     * @return array<int>
+     */
+    private function resolveBranchIds(array $branchIds): array
+    {
+        $ids = array_values(array_unique(array_map('intval', array_filter($branchIds))));
+
+        if ($ids !== []) {
+            return $ids;
+        }
+
+        return [$this->branchService->defaultBranchId()];
     }
 }

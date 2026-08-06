@@ -40,6 +40,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'check.permission' => CheckPermission::class,
             'ensure.module' => EnsureModule::class,
             'ensure.active' => EnsureUserIsActive::class,
+            'resolve.branch' => \App\Http\Middleware\ResolveActiveBranch::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

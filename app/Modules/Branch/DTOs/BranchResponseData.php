@@ -29,7 +29,8 @@ readonly class BranchResponseData
 
     public static function fromModel(Branch $branch): self
     {
-        $manager = $branch->relationLoaded('manager') ? $branch->manager : null;
+        $branch->loadMissing('manager:id,name');
+        $manager = $branch->manager;
 
         return new self(
             id: $branch->id,

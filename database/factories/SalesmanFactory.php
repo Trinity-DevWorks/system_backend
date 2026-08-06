@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Modules\Branch\Models\Branch;
 use App\Modules\Salesman\Enums\CommissionType;
 use App\Modules\Salesman\Models\Salesman;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -35,10 +36,26 @@ class SalesmanFactory extends Factory
             'commission_value' => null,
             'target_amount' => fake()->optional(0.3)->randomFloat(4, 1000, 50000),
             'hire_date' => fake()->optional(0.5)->date(),
+            'branch_id' => fn (): int => $this->defaultBranchId(),
             'warehouse_id' => null,
             'user_id' => null,
             'is_active' => true,
             'notes' => null,
         ];
+    }
+
+    private function defaultBranchId(): int
+    {
+        $existing = Branch::query()->orderBy('id')->value('id');
+        if ($existing !== null) {
+            return (int) $existing;
+        }
+
+        return Branch::query()->create([
+            'name' => 'Main',
+            'shortcut_name' => 'MAIN',
+            'is_active' => true,
+            'is_default' => true,
+        ])->id;
     }
 }
