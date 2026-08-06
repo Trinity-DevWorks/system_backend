@@ -61,7 +61,7 @@ readonly class StockMovementResponseData
     }
 
     /**
-     * @return array{id:int,sku:string,name:string}|null
+     * @return array{id:string,sku:string,name:string}|null
      */
     private static function itemBrief(?Item $item): ?array
     {

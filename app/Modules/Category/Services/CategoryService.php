@@ -12,6 +12,9 @@ class CategoryService
 {
     private const CACHE_LIST = 'categories.list';
 
+    /**
+     * @return Collection<int, Category>
+     */
     public function list(bool $forceRefresh = false): Collection
     {
         if ($forceRefresh) {
@@ -36,12 +39,16 @@ class CategoryService
     {
         $all = $this->list($forceRefresh);
 
-        return $all
+        $leaves = $all
             ->filter(fn (Category $category): bool => (int) ($category->children_count ?? 0) === 0)
             ->when($activeOnly, fn (Collection $categories) => $categories->filter(
                 fn (Category $category): bool => (bool) $category->is_active
             ))
             ->values();
+
+        /** @var Collection<int, Category> $leaves */
+
+        return $leaves;
     }
 
     public function create(CategoryData $data): Category

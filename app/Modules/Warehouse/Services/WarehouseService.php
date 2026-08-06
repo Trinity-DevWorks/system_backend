@@ -15,6 +15,9 @@ class WarehouseService
 {
     private const CACHE_LIST = 'warehouses.list';
 
+    /**
+     * @return Collection<int, Warehouse>
+     */
     public function list(): Collection
     {
         return TenantReferenceCache::rememberModels(
@@ -40,6 +43,7 @@ class WarehouseService
         $resolved = WarehouseDefaultKind::parse($kind);
         $warehouses = $this->list();
 
+        /** @var Warehouse|null $match */
         $match = $warehouses->first(
             fn (Warehouse $warehouse): bool => (bool) $warehouse->{$resolved->column()}
                 && (bool) $warehouse->is_active
@@ -49,9 +53,12 @@ class WarehouseService
             return $match;
         }
 
-        return $warehouses->first(
+        /** @var Warehouse|null $fallback */
+        $fallback = $warehouses->first(
             fn (Warehouse $warehouse): bool => (bool) $warehouse->is_default && (bool) $warehouse->is_active
         );
+
+        return $fallback;
     }
 
     public function defaultWarehouseIdFor(string $kind): ?int

@@ -114,7 +114,7 @@ On every push/PR to `main`:
 - Composer validate + audit
 - PHPUnit
 - Pint
-- PHPStan (existing findings baselined in `phpstan-baseline.neon`; new errors fail CI)
+- PHPStan (fails CI on any finding)
 
 Local equivalent: `composer ci:full`
 

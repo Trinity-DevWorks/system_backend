@@ -2,6 +2,7 @@
 
 namespace App\Modules\Rbac\DTOs;
 
+use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use Illuminate\Support\Collection;
 
@@ -25,7 +26,7 @@ readonly class RoleResponseData
         $perms = null;
         if ($withPermissions) {
             $role->load(['permissions' => fn ($q) => $q->orderBy('resource_key')]);
-            $perms = $role->permissions->map(function ($p): array {
+            $perms = $role->permissions->map(function (Permission $p): array {
                 return [
                     'permission_id' => $p->id,
                     'resource_key' => $p->resource_key,

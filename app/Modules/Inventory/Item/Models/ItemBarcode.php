@@ -19,11 +19,17 @@ class ItemBarcode extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<Item, $this>
+     */
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);
     }
 
+    /**
+     * @return BelongsTo<ItemUom, $this>
+     */
     public function itemUom(): BelongsTo
     {
         return $this->belongsTo(ItemUom::class);

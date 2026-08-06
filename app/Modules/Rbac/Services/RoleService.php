@@ -8,6 +8,7 @@ use App\Modules\Rbac\Models\RolePermission;
 use App\Services\PermissionService;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class RoleService
@@ -37,7 +38,7 @@ class RoleService
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
                 'active' => $data['active'],
-                'created_by' => auth()->id,
+                'created_by' => Auth::id(),
             ]);
 
             $permissions = $data['permissions'] ?? $this->defaultDeniedPermissionRows();
