@@ -34,6 +34,16 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     use HasUuids;
     use Notifiable;
 
+    /**
+     * Never persist secrets into the audits table (owen-it local exclude wins over config).
+     *
+     * @var list<string>
+     */
+    protected array $auditExclude = [
+        'password',
+        'remember_token',
+    ];
+
     public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void
     {
         $this->notify(new ResetPasswordNotification($token));
