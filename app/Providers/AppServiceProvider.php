@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Contracts\VirusScanner;
 use App\Models\Attachment;
+use App\Models\Audit;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Brand\Models\Brand;
@@ -39,6 +40,7 @@ use App\Modules\Supplier\Models\SupplierBalance;
 use App\Modules\Supplier\Models\SupplierContact;
 use App\Modules\Supplier\Models\SupplierGroup;
 use App\Modules\Supplier\Models\SupplierItem;
+use App\Modules\TenantSetting\Models\TenantSetting;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\VirusScanning\ClamAvVirusScanner;
@@ -75,6 +77,7 @@ class AppServiceProvider extends ServiceProvider
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,
             'user' => User::class,
+            'audit' => Audit::class,
             'attachment' => Attachment::class,
             'brand' => Brand::class,
             'category' => Category::class,
@@ -109,6 +112,7 @@ class AppServiceProvider extends ServiceProvider
             'unit_of_measurement' => UnitOfMeasurement::class,
             'supplier_balance' => SupplierBalance::class,
             'supplier_item' => SupplierItem::class,
+            'tenant_setting' => TenantSetting::class,
         ]);
     }
 

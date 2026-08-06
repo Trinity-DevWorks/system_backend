@@ -9,6 +9,7 @@ use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
 use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerContact;
+use App\Support\SequentialCodeGenerator;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -62,7 +63,7 @@ class CustomerService
                 'payment_method_id' => $validated['payment_method_id'] ?? null,
                 'payment_terms_id' => $validated['payment_terms_id'] ?? null,
                 'vat_group_id' => $validated['vat_group_id'] ?? null,
-                'customer_code' => null,
+                'customer_code' => SequentialCodeGenerator::next(Customer::class, 'customer_code', 'CUST-', 6),
                 'name' => $validated['name'],
                 'email' => $validated['email'] ?? null,
                 'phone' => $validated['phone'] ?? null,
@@ -77,11 +78,6 @@ class CustomerService
                 'vat_number' => $validated['vat_number'] ?? null,
                 'notes' => $validated['notes'] ?? null,
             ]);
-
-            $customer->update([
-                'customer_code' => 'CUST-'.str_pad((string) $customer->id, 6, '0', STR_PAD_LEFT),
-            ]);
-            $customer->refresh();
 
             $addresses = $validated['addresses'] ?? [];
             if ($addresses !== []) {

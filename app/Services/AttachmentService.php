@@ -26,6 +26,7 @@ class AttachmentService
 {
     public function __construct(
         private readonly VirusScanner $virusScanner,
+        private readonly AuditWriter $auditWriter,
     ) {}
 
     /**
@@ -257,6 +258,17 @@ class AttachmentService
     public function downloadResponse(Attachment $attachment): StreamedResponse
     {
         $this->assertDownloadable($attachment);
+
+        $this->auditWriter->write(
+            event: 'download',
+            auditable: $attachment,
+            newValues: [
+                'file_name' => $attachment->file_name,
+                'attachable_type' => $attachment->attachable_type,
+                'attachable_id' => $attachment->attachable_id,
+            ],
+            tags: 'attachment,download',
+        );
 
         return Storage::disk($attachment->disk)->download(
             $attachment->file_path,

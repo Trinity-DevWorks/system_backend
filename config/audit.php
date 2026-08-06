@@ -1,6 +1,6 @@
 <?php
 
-use OwenIt\Auditing\Models\Audit;
+use App\Models\Audit;
 use OwenIt\Auditing\Resolvers\IpAddressResolver;
 use OwenIt\Auditing\Resolvers\UrlResolver;
 use OwenIt\Auditing\Resolvers\UserAgentResolver;
@@ -9,6 +9,18 @@ use OwenIt\Auditing\Resolvers\UserResolver;
 return [
 
     'enabled' => env('AUDITING_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Retention (days)
+    |--------------------------------------------------------------------------
+    |
+    | Used by `audits:prune` to delete rows older than this many days.
+    | Default: 730 days (2 years).
+    |
+    */
+
+    'retention_days' => (int) env('AUDIT_RETENTION_DAYS', 730),
 
     /*
     |--------------------------------------------------------------------------
@@ -91,7 +103,12 @@ return [
     |
     */
 
-    'exclude' => [],
+    'exclude' => [
+        'password',
+        'remember_token',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -108,9 +125,15 @@ return [
     |
     */
 
-    'empty_values' => true,
+    'empty_values' => false,
     'allowed_empty_values' => [
         'retrieved',
+        'login',
+        'logout',
+        'login_failed',
+        'password_reset',
+        'download',
+        'export',
     ],
 
     /*
@@ -201,5 +224,5 @@ return [
     |
     */
 
-    'console' => false,
+    'console' => (bool) env('AUDIT_CONSOLE', false),
 ];

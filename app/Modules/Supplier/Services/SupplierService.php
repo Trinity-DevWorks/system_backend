@@ -8,6 +8,7 @@ use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
 use App\Modules\Supplier\Models\SupplierBalance;
 use App\Modules\Supplier\Models\SupplierContact;
+use App\Support\SequentialCodeGenerator;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -65,7 +66,7 @@ class SupplierService
                 'payment_method_id' => $validated['payment_method_id'] ?? null,
                 'payment_terms_id' => $validated['payment_terms_id'] ?? null,
                 'vat_group_id' => $validated['vat_group_id'] ?? null,
-                'supplier_code' => null,
+                'supplier_code' => SequentialCodeGenerator::next(Supplier::class, 'supplier_code', 'SUP-', 6),
                 'name' => $validated['name'],
                 'company_name' => $validated['company_name'] ?? null,
                 'email' => $validated['email'] ?? null,
@@ -79,11 +80,6 @@ class SupplierService
                 'vat_number' => $validated['vat_number'] ?? null,
                 'notes' => $validated['notes'] ?? null,
             ]);
-
-            $supplier->update([
-                'supplier_code' => 'SUP-'.str_pad((string) $supplier->id, 4, '0', STR_PAD_LEFT),
-            ]);
-            $supplier->refresh();
 
             $addresses = $validated['addresses'] ?? [];
             if ($addresses !== []) {
