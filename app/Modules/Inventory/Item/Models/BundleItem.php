@@ -23,11 +23,17 @@ class BundleItem extends Model implements AuditableContract
         ];
     }
 
+    /**
+     * @return BelongsTo<Item, $this>
+     */
     public function bundleItem(): BelongsTo
     {
         return $this->belongsTo(Item::class, 'bundle_item_id');
     }
 
+    /**
+     * @return BelongsTo<Item, $this>
+     */
     public function childItem(): BelongsTo
     {
         return $this->belongsTo(Item::class, 'child_item_id');

@@ -1,0 +1,96 @@
+---
+description: Place business logic, orchestration, transactions, and domain operations in service-layer classes.
+alwaysApply: true
+---
+
+# Services and Transactions
+
+Services are the primary business-logic layer in this repository.
+
+## Service responsibilities
+
+Services own:
+
+- Business rules.
+- Entity creation and updates.
+- Domain-state transitions.
+- Multi-model orchestration.
+- Database transactions.
+- Cache invalidation.
+- Coordination with attachments, stock movements, permissions, and other services.
+
+## Transactions
+
+Place transaction boundaries inside services, not controllers.
+
+Use `DB::transaction()` when an operation:
+
+- Modifies multiple related records.
+- Represents one atomic domain action.
+- Must fully succeed or fully fail.
+
+Do not add transactions around read-only queries.
+
+Avoid unnecessary nested transactions.
+
+Central-database mutations that must stay atomic should use the central connection explicitly, for example:
+
+`DB::connection(config('tenancy.database.central_connection'))->transaction(...)`
+
+## Caching
+
+Use `App\Support\TenantReferenceCache` for tenant-scoped cache remember/forget when similar services in the domain already do.
+
+Do not invent a parallel cache-key scheme for tenant reference data.
+
+## Domain failures
+
+Domain rule failures commonly use:
+
+    abort($status, $message, ['X-Error-Code' => 'SCREAMING_SNAKE_CODE']);
+
+Those codes flow into the API envelope through exception rendering in `bootstrap/app.php`.
+
+Prefer an existing nearby error-code pattern over inventing a one-off shape.
+
+## Query services
+
+Use a dedicated `*QueryService` when a comparable module separates:
+
+- Filtering.
+- Searching.
+- Sorting.
+- Listing.
+- Complex read-only projections.
+
+Do not create a Query Service for trivial retrieval unless it matches the dominant pattern in that domain.
+
+## Support classes
+
+Use `Support` classes for reusable domain rules or calculations when similar mature modules already use that structure.
+
+Examples include:
+
+- Document workflow rules.
+- Quantity calculations.
+- State assertions.
+- Reusable domain validation.
+
+## Avoid unsupported architectural layers
+
+Do not introduce new application-layer abstractions such as:
+
+- Repository layers.
+- Action classes.
+- Manager classes.
+- Handler classes.
+- Command-bus abstractions.
+
+This refers to project architecture layers, not Laravel framework types.
+
+An additional layer is acceptable only when:
+
+1. The relevant area already uses that pattern, or
+2. The user explicitly requests an architectural migration.
+
+Prefer consistency with existing services over generic framework conventions.

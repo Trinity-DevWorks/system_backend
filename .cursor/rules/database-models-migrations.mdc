@@ -1,0 +1,86 @@
+---
+description: Preserve central vs tenant migration scope, Stancl DB/schema isolation, and model conventions.
+alwaysApply: false
+---
+# Database, Models, and Migrations
+
+## Tenancy model
+
+Tenant business data is isolated by Stancl tenancy via `DatabaseTenancyBootstrapper`.
+
+Depending on the database driver, that means separate tenant databases or PostgreSQL schemas.
+
+Do not add a `tenant_id` column to every tenant business table unless an existing feature explicitly requires one.
+
+Central tables and tenant tables are separate architectural concerns.
+
+## Migration locations
+
+Central migrations belong under:
+
+`database/migrations/`
+
+Tenant business migrations belong under:
+
+`database/migrations/tenant/`
+
+Verify the correct scope before creating a migration.
+
+## Inspect before changing the schema
+
+Before adding a table, column, index, or relationship:
+
+1. Inspect relevant existing migrations.
+2. Inspect related Eloquent models.
+3. Inspect similar domain features.
+4. When connected to PostgreSQL and the Postgres MCP is available, inspect the live schema through that read-only tool.
+5. Check whether equivalent data or structure already exists.
+6. Determine whether the change is central or tenant-scoped.
+
+Do not modify the live database directly as a replacement for migrations.
+
+## Naming
+
+Follow existing conventions:
+
+- snake_case plural table names.
+- snake_case column names.
+- Explicit foreign-key names when required.
+- Appropriate unique constraints.
+- Appropriate indexes.
+- Explicit foreign-key delete behavior.
+
+Choose `restrict`, `cascade`, or `nullOnDelete` according to domain ownership and comparable migrations.
+
+## Primary keys
+
+The repository uses both UUID and bigint primary keys.
+
+Do not standardize one primary-key type globally.
+
+Inspect similar entities in the same domain before selecting a key type.
+
+## Models
+
+Follow nearby model conventions for:
+
+- `#[Fillable]` (dominant in modules) or `$fillable` where central models still use it
+- Casts
+- Relationships
+- Traits
+- Auditing (`OwenIt\Auditing` where nearby models already audit)
+- UUID behavior
+- Soft deletes
+- Scopes
+- Explicit foreign-key names
+- Observers where applicable
+
+Do not assume that all models use auditing or soft deletes.
+
+## Constraints and validation
+
+Use database constraints for structural integrity.
+
+Use application validation for user-facing errors and domain rules.
+
+Do not rely only on application validation when a foreign key, unique constraint, index, or check constraint should protect the data.

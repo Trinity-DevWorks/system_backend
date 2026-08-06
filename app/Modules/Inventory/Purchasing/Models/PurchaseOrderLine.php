@@ -41,16 +41,25 @@ class PurchaseOrderLine extends Model implements AuditableContract
         ];
     }
 
+    /**
+     * @return BelongsTo<PurchaseOrder, $this>
+     */
     public function purchaseOrder(): BelongsTo
     {
         return $this->belongsTo(PurchaseOrder::class);
     }
 
+    /**
+     * @return BelongsTo<Item, $this>
+     */
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);
     }
 
+    /**
+     * @return BelongsTo<ItemUom, $this>
+     */
     public function itemUom(): BelongsTo
     {
         return $this->belongsTo(ItemUom::class);

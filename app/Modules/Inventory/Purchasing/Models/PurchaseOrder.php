@@ -13,9 +13,17 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property PurchaseOrderStatus $status
+ * @property Carbon|null $order_date
+ * @property Carbon|null $expected_date
+ * @property Carbon|null $confirmed_at
+ * @property Carbon|null $sent_at
+ */
 #[Fillable([
     'po_number',
     'supplier_id',
@@ -51,26 +59,41 @@ class PurchaseOrder extends Model implements AuditableContract
         ];
     }
 
+    /**
+     * @return BelongsTo<Supplier, $this>
+     */
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
     }
 
+    /**
+     * @return BelongsTo<Warehouse, $this>
+     */
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function createdByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function confirmedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'confirmed_by');
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function sentByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'sent_by');

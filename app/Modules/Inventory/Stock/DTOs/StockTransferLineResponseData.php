@@ -52,7 +52,7 @@ readonly class StockTransferLineResponseData
     }
 
     /**
-     * @return array{id:int,sku:string,name:string,is_active:bool}|null
+     * @return array{id:string,sku:string,name:string,is_active:bool}|null
      */
     private static function itemBrief(?Item $item): ?array
     {

@@ -9,7 +9,12 @@ use App\Modules\Customer\Enums\LedgerReferenceType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property Carbon|null $transaction_date
+ * @property mixed $bal Present only when selected via aggregate selectRaw.
+ */
 #[Fillable([
     'customer_id',
     'currency_id',

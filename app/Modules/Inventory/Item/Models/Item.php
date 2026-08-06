@@ -69,16 +69,25 @@ class Item extends Model implements AuditableContract
         ];
     }
 
+    /**
+     * @return BelongsTo<ItemType, $this>
+     */
     public function itemType(): BelongsTo
     {
         return $this->belongsTo(ItemType::class);
     }
 
+    /**
+     * @return BelongsTo<Category, $this>
+     */
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
     }
 
+    /**
+     * @return BelongsTo<Brand, $this>
+     */
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
@@ -116,6 +125,9 @@ class Item extends Model implements AuditableContract
         return $this->hasMany(ItemBarcode::class);
     }
 
+    /**
+     * @return HasMany<SupplierItem, $this>
+     */
     public function supplierItems(): HasMany
     {
         return $this->hasMany(SupplierItem::class);
@@ -129,6 +141,9 @@ class Item extends Model implements AuditableContract
         return $this->hasMany(ItemWarehouseReplenishment::class);
     }
 
+    /**
+     * @return BelongsTo<VatGroup, $this>
+     */
     public function vatGroup(): BelongsTo
     {
         return $this->belongsTo(VatGroup::class);
