@@ -1,0 +1,83 @@
+---
+description: Use ApiResponse envelopes and existing ResponseData DTO conventions for backend responses.
+alwaysApply: true
+---
+
+# API Responses and DTOs
+
+Use the repository's established API response architecture.
+
+## Response envelope
+
+Return new tenant product API results through `App\Http\Responses\ApiResponse`.
+
+Successful responses follow the existing envelope containing fields such as:
+
+- `success`
+- `status`
+- `message`
+- `data`
+- `meta` when applicable
+
+Errors must follow the established error envelope and error-code conventions.
+
+Do not “fix” exceptional public probes (for example tenant `GET /`) onto the product envelope unless explicitly requested.
+
+## Response DTOs
+
+Use module `*ResponseData` DTOs to shape domain output.
+
+Existing examples include:
+
+- `BrandResponseData`
+- `CustomerResponseData`
+- `StockTransferResponseData`
+
+Response DTOs define the external API shape.
+
+Do not expose arbitrary model serialization when a response DTO is appropriate.
+
+## JSON naming
+
+Use snake_case JSON keys when consistent with the existing endpoint family.
+
+Do not silently rename request or response fields.
+
+## Laravel JsonResource
+
+Laravel `JsonResource` is not the dominant response architecture in this repository.
+
+Do not introduce Resource classes unless explicitly requested as part of an API architecture migration.
+
+## Lists and pagination
+
+Follow the existing endpoint family's list convention.
+
+Some features return full collections.
+
+Some ledger or high-volume endpoints use pagination.
+
+Before adding, removing, or changing pagination:
+
+1. Inspect similar backend endpoints.
+2. Inspect their response DTOs.
+3. Check frontend usage in the sibling `system_frontend/` app.
+
+## Errors
+
+Use existing `ApiResponse` helpers and established SCREAMING_SNAKE error codes.
+
+Domain services often signal failures with:
+
+    abort($status, $message, ['X-Error-Code' => 'CODE']);
+
+Those map into the envelope `code` field via exception rendering in `bootstrap/app.php`.
+
+Before creating a new error structure, inspect:
+
+- `ApiResponse`
+- Global exception rendering in `bootstrap/app.php`
+- `App\Support\Database\QueryExceptionMapper`
+- Similar service failures
+
+Do not return an incompatible one-off JSON shape from new tenant product endpoints.

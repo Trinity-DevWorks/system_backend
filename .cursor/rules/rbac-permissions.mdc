@@ -1,0 +1,84 @@
+---
+description: Follow the custom tenant RBAC resource and action conventions defined in config/rbac.php.
+alwaysApply: false
+---
+# RBAC Permissions
+
+The repository uses custom route-level tenant RBAC.
+
+## Source of truth
+
+Permission resource keys are defined in:
+
+`config/rbac.php`
+
+Tenant permissions are synchronized through `App\Jobs\BootstrapTenantRbac`, with catalog help from `App\Modules\Rbac\Services\PermissionCatalogService`.
+
+Do not invent a resource key without checking this configuration and the sync path.
+
+## Established actions
+
+Use the existing permission actions:
+
+- `view`
+- `add`
+- `edit`
+- `delete`
+- `import`
+- `export`
+
+Runtime checks go through `App\Services\PermissionService`.
+
+## Route enforcement
+
+Use:
+
+`check.permission:<resource_key>,<action>`
+
+on protected tenant routes.
+
+For standard CRUD resources, attach permissions through `middlewareFor()` on `apiResource`:
+
+- `index` and `show` → `view`
+- `store` → `add`
+- `update` → `edit`
+- `destroy` → `delete`
+
+## Resource naming
+
+RBAC resource keys use snake_case.
+
+Examples include:
+
+- `vat_groups`
+- `payment_methods`
+- `unit_of_measurements`
+
+Do not derive a resource key mechanically from a controller or route name without checking `config/rbac.php`.
+
+## Nested resources
+
+Nested addresses, contacts, attachments, and similar child resources often reuse their parent resource key.
+
+Child mutations frequently use `edit`.
+
+Inspect a comparable aggregate before assigning a resource and action.
+
+## Workflow routes
+
+Workflow endpoints may intentionally use `edit` for actions such as:
+
+- Posting.
+- Cancelling.
+- Synchronizing lines.
+- Attaching files.
+- Removing attachments.
+- State transitions.
+
+Do not infer permission actions only from the HTTP method.
+
+Follow the established domain route pattern.
+
+## Authorization architecture
+
+Do not introduce Laravel Policies, Gates, or Spatie Permission for normal tenant product authorization unless explicitly requested as an architectural migration.
