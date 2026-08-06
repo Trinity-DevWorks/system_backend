@@ -1,0 +1,91 @@
+---
+description: Preserve the backend API contract expected by the Next.js frontend.
+alwaysApply: false
+---
+# Frontend API Contract
+
+The backend serves a separate Next.js frontend in the sibling app:
+
+`system_frontend/`
+
+Useful contract consumers include:
+
+- `system_frontend/lib/api-envelope.js`
+- `system_frontend/lib/axios.js`
+- `system_frontend/lib/api-error-notify.js`
+
+Backend changes must preserve the established frontend contract unless coordinated frontend changes are explicitly included.
+
+## Host separation
+
+Central and tenant APIs use different hosts and route surfaces.
+
+Central endpoints use the central domain with the `/api` prefix.
+
+Tenant endpoints use the tenant domain and generally do not use an `/api` prefix.
+
+Do not move endpoints between these surfaces without reviewing frontend usage.
+
+## Authentication
+
+The frontend uses Sanctum bearer tokens (`Authorization: Bearer …`).
+
+Preserve existing:
+
+- Authentication endpoints.
+- Token behavior.
+- Authentication response keys.
+- Authorization header expectations.
+
+Do not switch to cookie-based SPA authentication unless explicitly requested as an architectural migration.
+
+## Response envelope
+
+Preserve the `ApiResponse` structure expected by the frontend.
+
+Do not return raw model JSON or introduce a different envelope for new tenant product endpoints.
+
+## JSON field naming
+
+Use snake_case request and response keys when consistent with the existing endpoint family.
+
+Do not silently rename API fields.
+
+## Query conventions
+
+Before changing any of the following, inspect both backend implementation and frontend consumers:
+
+- Filters.
+- Search parameters.
+- Sorting.
+- Pagination.
+- `section`.
+- `refresh`.
+- Date-range parameters.
+- Page-size parameters.
+- Status values.
+
+## Existing endpoint compatibility
+
+When changing an existing API:
+
+1. Search `system_frontend/` for all consumers.
+2. Identify request payload dependencies.
+3. Identify response-field dependencies.
+4. Include coordinated frontend changes where required.
+5. Document any breaking changes explicitly.
+
+Do not remove fields or change their meaning without checking every known frontend consumer.
+
+## Errors
+
+Preserve established error codes, status codes, and response behavior so the frontend can handle:
+
+- Authentication failures.
+- Forbidden permissions.
+- Missing module entitlement (`MODULE_NOT_ENTITLED`).
+- Validation failures.
+- Database constraint failures.
+- Domain workflow errors (`X-Error-Code` / envelope `code`).
+
+Do not introduce new error shapes without first inspecting frontend error handling.

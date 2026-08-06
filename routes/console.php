@@ -6,6 +6,7 @@ use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Branch\Services\BranchService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -56,8 +57,8 @@ Artisan::command('tenants:sync-user-branches', function () {
     $assigned = 0;
 
     Tenant::query()->cursor()->each(function (Tenant $tenant) use (&$count, &$assigned): void {
-        $tenant->run(function () use ($tenant, &$assigned): void {
-            $branchService = app(\App\Modules\Branch\Services\BranchService::class);
+        $tenant->run(function () use (&$assigned): void {
+            $branchService = app(BranchService::class);
             $defaultId = $branchService->defaultBranchId();
 
             User::query()->orderBy('created_at')->each(function (User $user) use ($defaultId, &$assigned): void {

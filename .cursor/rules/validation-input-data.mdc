@@ -1,0 +1,61 @@
+---
+description: Follow existing Form Request validation and module input-data conventions.
+alwaysApply: false
+---
+# Validation and Input Data
+
+## Form Requests
+
+Use Laravel Form Request classes for tenant module write operations.
+
+Place them under:
+
+`app/Modules/<Feature>/Http/Requests/`
+
+Use separate Store and Update requests when their rules differ.
+
+Authorization is normally handled through route middleware.
+
+Module Form Requests commonly use:
+
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+Follow the relevant module's existing style.
+
+## Avoid controller validation
+
+Do not place substantial validation arrays directly inside tenant product controllers.
+
+Inline validation may exist in exceptional central provisioning flows, but it is not the dominant tenant-module pattern.
+
+## Input DTOs
+
+The repository currently has two accepted input styles:
+
+- Readonly `*Data` DTOs.
+- Validated arrays passed to services.
+
+Before selecting either style:
+
+1. Inspect at least two similar modules.
+2. Follow the dominant pattern in the relevant domain.
+3. Do not introduce a DTO only for theoretical purity.
+4. Do not remove an existing DTO approach without an explicit refactoring request.
+
+## Database-aware validation
+
+Align validation with:
+
+- Existing database constraints.
+- Tenant schema context.
+- Foreign-key behavior.
+- Soft-delete behavior where relevant.
+- Existing uniqueness rules.
+- Current domain rules.
+
+Application validation should provide useful errors and enforce domain behavior.
+
+It should complement database constraints rather than replace them.

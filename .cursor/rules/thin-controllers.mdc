@@ -1,0 +1,73 @@
+---
+description: Keep HTTP controllers focused on request handling, service delegation, and response construction.
+alwaysApply: true
+---
+
+# Thin Controllers
+
+Controllers should stay thin and follow the repository's established style.
+
+## Controller responsibilities
+
+Controllers should:
+
+- Receive Form Requests or simple request parameters.
+- Obtain the authenticated user when needed.
+- Delegate business operations to injected services.
+- Pass filters and simple options to query services.
+- Convert results through existing `ResponseData` DTOs.
+- Return responses using `ApiResponse`.
+
+## Responsibilities that do not belong in controllers
+
+Controllers should not own:
+
+- Business rules.
+- Multi-step orchestration.
+- Database transactions.
+- Direct cache invalidation.
+- Complex Eloquent queries.
+- Domain-state transitions.
+- Reusable validation logic.
+
+## Shared controller concerns
+
+When matching nearby endpoints, reuse existing concerns under `app/Http/Controllers/Concerns/`:
+
+- `ResolvesListSection`
+- `ResolvesShowSection`
+- `DeliversAttachmentFiles`
+
+Do not reinvent `section` / attachment delivery behavior in new controllers.
+
+## Dependency injection
+
+Use constructor injection consistent with nearby controllers.
+
+Prefer promoted readonly dependencies where that is the existing module style.
+
+Example structure:
+
+    public function __construct(
+        private readonly CustomerService $customerService,
+    ) {
+    }
+
+Do not resolve services manually from the container unless an established nearby pattern requires it.
+
+## Before modifying a controller
+
+Inspect at least two similar controllers from mature modules.
+
+Follow their:
+
+- Constructor style.
+- Method naming.
+- Request classes.
+- Service calls.
+- Response DTOs.
+- `ApiResponse` usage.
+
+Central provisioning controllers may contain exceptional orchestration.
+
+Do not treat exceptional central controllers as the default pattern for tenant modules.

@@ -8,9 +8,13 @@ use App\Modules\Currency\Models\Currency;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property Carbon|null $opening_date
+ */
 #[Fillable([
     'customer_id',
     'currency_id',

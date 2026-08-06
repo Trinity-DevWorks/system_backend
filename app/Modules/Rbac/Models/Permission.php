@@ -9,6 +9,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property-read object{
+ *     can_view: bool,
+ *     can_add: bool,
+ *     can_edit: bool,
+ *     can_delete: bool,
+ *     can_import: bool,
+ *     can_export: bool
+ * } $pivot
+ */
 #[Fillable(['resource_key', 'resource_label'])]
 class Permission extends Model implements AuditableContract
 {

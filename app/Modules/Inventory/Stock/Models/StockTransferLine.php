@@ -33,16 +33,25 @@ class StockTransferLine extends Model implements AuditableContract
         ];
     }
 
+    /**
+     * @return BelongsTo<StockTransfer, $this>
+     */
     public function stockTransfer(): BelongsTo
     {
         return $this->belongsTo(StockTransfer::class);
     }
 
+    /**
+     * @return BelongsTo<Item, $this>
+     */
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);
     }
 
+    /**
+     * @return BelongsTo<ItemUom, $this>
+     */
     public function itemUom(): BelongsTo
     {
         return $this->belongsTo(ItemUom::class);

@@ -1,0 +1,69 @@
+---
+description: Keep sellable module access consistent with config/modules.php and ModuleEntitlementService.
+alwaysApply: false
+---
+# Module Entitlement
+
+Sellable ERP module access is controlled independently from user RBAC permissions.
+
+## Source of truth
+
+Use `config/modules.php` for module definitions and module codes.
+
+Use `App\Services\ModuleEntitlementService` for tenant module-access checks.
+
+Tenant entitlement data is stored centrally through the existing tenant-module architecture.
+
+Valid module codes include:
+
+- `core`
+- `master_data`
+- `inventory`
+- `sales`
+- `purchasing`
+
+## Core module
+
+`ModuleEntitlementService` treats the `core` module as always available.
+
+Do not add redundant entitlement logic for `core`.
+
+## Route enforcement
+
+Tenant product routes must be placed inside the appropriate module middleware group:
+
+`ensure.module:<module_code>`
+
+Implemented by `App\Http\Middleware\EnsureModule`.
+
+Failed checks return forbidden responses with codes such as:
+
+- `MODULE_NOT_ENTITLED`
+- `TENANT_REQUIRED`
+
+Choose the module by inspecting:
+
+- `config/modules.php`
+- `routes/tenant.php`
+- Similar existing features
+
+Purchase orders belong under `inventory`, not `purchasing`. See `routing-tenancy-permissions.mdc`.
+
+## Module resources
+
+The resource arrays inside `config/modules.php` describe which RBAC resources belong to a sellable module.
+
+Do not assume these arrays directly perform runtime permission enforcement.
+
+Runtime user authorization still uses `check.permission`.
+
+## Keep entitlement and RBAC separate
+
+The intended authorization sequence is:
+
+1. Verify that the tenant has access to the module.
+2. Verify that the authenticated user has permission for the resource and action.
+
+Do not merge these concepts into one mechanism.
+
+Do not replace this architecture unless explicitly requested as an architectural migration.

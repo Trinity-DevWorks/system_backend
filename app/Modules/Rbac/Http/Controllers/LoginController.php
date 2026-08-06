@@ -5,6 +5,7 @@ namespace App\Modules\Rbac\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
+use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Rbac\Http\Requests\LoginRequest;
 use App\Services\AuditWriter;
 use Illuminate\Http\JsonResponse;
@@ -57,7 +58,7 @@ class LoginController extends Controller
 
         $user->loadMissing(['role:id,name', 'branches:id,name,shortcut_name,is_default']);
 
-        $branchContext = app(\App\Modules\Branch\Services\BranchContextService::class)
+        $branchContext = app(BranchContextService::class)
             ->contextPayload($user);
 
         return ApiResponse::success([

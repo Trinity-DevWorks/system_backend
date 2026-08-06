@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Branch\Services;
 
+use App\Models\User;
 use App\Modules\Branch\DTOs\BranchData;
 use App\Modules\Branch\Models\Branch;
-use App\Models\User;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
