@@ -1,0 +1,84 @@
+---
+description: Preserve central and tenant routing, tenancy initialization, and middleware sequencing.
+alwaysApply: false
+---
+# Routing, Tenancy, and Permissions
+
+## Route surfaces
+
+Central platform routes belong in `routes/api.php`.
+
+They use Laravel's `/api` prefix and central-domain routing.
+
+Tenant product routes belong in `routes/tenant.php`.
+
+Tenant routes are loaded without an `/api` prefix and are served from tenant domains.
+
+`routes/tenant.php` is registered by `app/Providers/TenancyServiceProvider.php`, not by `bootstrap/app.php` `withRouting()`.
+
+Do not place tenant product routes in `routes/api.php`.
+
+Do not place central platform routes in `routes/tenant.php`.
+
+## Tenant middleware
+
+Protected tenant product routes must preserve the established middleware sequence:
+
+1. `api`
+2. `InitializeTenancyByDomain`
+3. `PreventAccessFromCentralDomains`
+4. `auth:sanctum`
+5. `ensure.module:<module_code>`
+6. `check.permission:<resource_key>,<action>`
+
+Public tenant routes are exceptional and must be intentional.
+
+Existing public examples include:
+
+- `GET /`
+- `POST /auth/login`
+
+Some authenticated routes intentionally omit `ensure.module`, for example `GET tenant/assigned-modules`.
+
+Do not expose new tenant product endpoints publicly unless explicitly requested.
+
+## Module entitlement and RBAC
+
+`ensure.module` and `check.permission` are separate mechanisms.
+
+Follow `module-entitlement.mdc` for module codes and entitlement checks.
+
+Follow `rbac-permissions.mdc` for resource keys, actions, and `middlewareFor()` usage.
+
+## Module placement pitfall
+
+Purchase-order routes and code live under inventory:
+
+- Route group: `ensure.module:inventory`
+- Code: `app/Modules/Inventory/Purchasing/`
+
+The `purchasing` module covers suppliers and supplier groups, not purchase orders.
+
+Place new features by inspecting `routes/tenant.php` and `config/modules.php`, not by name alone.
+
+## Naming
+
+Use:
+
+- kebab-case for route paths
+- snake_case for RBAC resource keys
+- snake_case for module codes
+
+Example:
+
+- Route path: `payment-methods`
+- Permission key: `payment_methods`
+- Module code: `master_data`
+
+## Nested and workflow routes
+
+Nested child resources usually reuse their parent permission resource.
+
+Child mutations and workflow operations may intentionally use `edit`, regardless of HTTP method.
+
+Before assigning a permission, inspect comparable existing routes and `config/rbac.php`.

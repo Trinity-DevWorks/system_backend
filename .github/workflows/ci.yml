@@ -48,8 +48,8 @@ jobs:
         run: composer audit
 
       # Attachment feature tests need a local Postgres + tenant schema; skip in CI.
-      # - name: PHPUnit
-      #   run: php artisan test --exclude-group=attachments
+      - name: PHPUnit
+        run: php artisan test --exclude-group=attachments
 
       - name: Laravel Pint
         run: ./vendor/bin/pint --test

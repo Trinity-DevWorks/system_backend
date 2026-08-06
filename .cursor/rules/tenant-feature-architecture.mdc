@@ -1,0 +1,49 @@
+---
+description: Follow the established tenant feature architecture in system_backend
+alwaysApply: true
+---
+
+# Tenant Feature Architecture
+
+When implementing or modifying tenant ERP features, follow the architecture already established in this repository.
+
+## Feature location
+
+Tenant product features belong under:
+
+- `app/Modules/<Feature>/`
+- `app/Modules/Inventory/<SubFeature>/` for inventory-related domains
+
+Do not introduce new top-level architectural folders unless explicitly requested.
+
+Central or platform-level functionality may remain under:
+
+- `app/Http/Controllers/Central`
+- `app/Services`
+- `app/Models`
+
+Do not force central platform flows into tenant modules.
+
+## Request lifecycle
+
+Route → Middleware → Form Request → Controller → Service or Query Service → Model → ResponseData DTO → ApiResponse
+
+Detailed conventions live in the focused rules:
+
+- Controllers: `thin-controllers.mdc`
+- Validation: `validation-input-data.mdc`
+- Services and transactions: `services-transactions.mdc`
+- Responses: `api-responses-dtos.mdc`
+- Routing, modules, RBAC: `routing-tenancy-permissions.mdc`, `module-entitlement.mdc`, `rbac-permissions.mdc`
+
+## Consistency
+
+Before implementing a tenant feature:
+
+1. Inspect at least two similar existing modules under `app/Modules/` (and `Inventory/<SubFeature>/` when relevant).
+2. Reuse their folder structure, naming, dependency-injection style, and response pattern.
+3. Prefer the dominant current pattern over generic Laravel conventions.
+4. Prefer `declare(strict_types=1);` to match nearby PHP files.
+5. Clearly identify exceptions instead of treating them as the default.
+
+Do not introduce repository, manager, handler, policy, or action layers unless the relevant area already uses that pattern or the user explicitly requests an architectural change.
