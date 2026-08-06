@@ -16,6 +16,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property PreferredLanguage $preferred_language
+ * @property DateFormat $date_format
+ * @property NumberFormat $number_format
+ * @property PriceRoundingMode $price_rounding_mode
+ */
 #[Fillable([
     'primary_currency_id',
     'country',

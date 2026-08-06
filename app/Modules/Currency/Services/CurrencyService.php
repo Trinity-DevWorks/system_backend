@@ -7,6 +7,7 @@ namespace App\Modules\Currency\Services;
 use App\Modules\Currency\DTOs\CurrencyData;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Models\CurrencyPairRate;
+use App\Modules\TenantSetting\Models\TenantSetting;
 use App\Modules\TenantSetting\Services\TenantSettingService;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
