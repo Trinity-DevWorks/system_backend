@@ -24,16 +24,25 @@ class RecipeItem extends Model implements AuditableContract
         ];
     }
 
+    /**
+     * @return BelongsTo<Recipe, $this>
+     */
     public function recipe(): BelongsTo
     {
         return $this->belongsTo(Recipe::class);
     }
 
+    /**
+     * @return BelongsTo<Item, $this>
+     */
     public function ingredientItem(): BelongsTo
     {
         return $this->belongsTo(Item::class, 'item_id');
     }
 
+    /**
+     * @return BelongsTo<UnitOfMeasurement, $this>
+     */
     public function uom(): BelongsTo
     {
         return $this->belongsTo(UnitOfMeasurement::class, 'uom_id');

@@ -25,11 +25,17 @@ class Recipe extends Model implements AuditableContract
         ];
     }
 
+    /**
+     * @return BelongsTo<Item, $this>
+     */
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);
     }
 
+    /**
+     * @return BelongsTo<UnitOfMeasurement, $this>
+     */
     public function uom(): BelongsTo
     {
         return $this->belongsTo(UnitOfMeasurement::class, 'uom_id');

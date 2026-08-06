@@ -10,7 +10,8 @@ use App\Modules\Inventory\ItemType\Models\ItemType;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\VatGroup\Models\VatGroup;
-use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 
 readonly class ItemResponseData
 {
@@ -46,7 +47,10 @@ readonly class ItemResponseData
         public string $updatedAt,
     ) {}
 
-    public static function fromModel(Item $item, ?Collection $categoryLookup = null): self
+    /**
+     * @param  SupportCollection<int, Category>|null  $categoryLookup
+     */
+    public static function fromModel(Item $item, ?SupportCollection $categoryLookup = null): self
     {
         $item->loadMissing(['itemType', 'category', 'brand', 'unitGroup', 'baseUom', 'vatGroup', 'primaryImageAttachment']);
 
@@ -144,7 +148,7 @@ readonly class ItemResponseData
     }
 
     /**
-     * @return array{id: int, file_name: string, mime_type: string}|null
+     * @return array{id: string, file_name: string, mime_type: string}|null
      */
     private static function primaryImageBrief(Item $item): ?array
     {
@@ -177,10 +181,10 @@ readonly class ItemResponseData
     }
 
     /**
-     * @param  Collection<int, Category>  $categoryLookup
+     * @param  SupportCollection<int, Category>  $categoryLookup
      * @return array{id: int, code: string, name: string, path_label: string}|null
      */
-    private static function categoryBrief(?Category $category, Collection $categoryLookup): ?array
+    private static function categoryBrief(?Category $category, SupportCollection $categoryLookup): ?array
     {
         if (! $category) {
             return null;
@@ -198,9 +202,9 @@ readonly class ItemResponseData
 
     /**
      * @param  Collection<int, Item>  $items
-     * @return Collection<int, Category>
+     * @return SupportCollection<int, Category>
      */
-    private static function categoryLookupForItems(Collection $items): Collection
+    private static function categoryLookupForItems(Collection $items): SupportCollection
     {
         return self::categoryLookupForIds($items->pluck('category_id'));
     }
@@ -209,9 +213,9 @@ readonly class ItemResponseData
      * Load only categories referenced by items plus ancestors needed for path labels.
      *
      * @param  iterable<int|null>  $categoryIds
-     * @return Collection<int, Category>
+     * @return SupportCollection<int, Category>
      */
-    private static function categoryLookupForIds(iterable $categoryIds): Collection
+    private static function categoryLookupForIds(iterable $categoryIds): SupportCollection
     {
         $ids = collect($categoryIds)
             ->filter()
@@ -223,7 +227,7 @@ readonly class ItemResponseData
             return collect();
         }
 
-        /** @var Collection<int, Category> $byId */
+        /** @var SupportCollection<int, Category> $byId */
         $byId = Category::query()
             ->whereIn('id', $ids)
             ->get(['id', 'code', 'name', 'parent_id'])

@@ -12,4 +12,4 @@ GitHub Actions workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.ym
 
 Local full gate: `composer ci:full`
 
-PHPStan ignores currently known issues via `phpstan-baseline.neon`. Do not grow the baseline casually — prefer fixing new findings.
+PHPStan must stay clean at level 3 (`composer analyse`). Prefer fixing findings over adding ignore rules.

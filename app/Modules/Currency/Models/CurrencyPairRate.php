@@ -6,7 +6,13 @@ namespace App\Modules\Currency\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property Carbon|null $effective_from
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ */
 class CurrencyPairRate extends Model
 {
     protected $fillable = [

@@ -51,7 +51,10 @@ final class TenantReferenceCache
             }
         );
 
-        return $modelClass::hydrate($rows);
+        /** @var EloquentCollection<int, TModel> $models */
+        $models = $modelClass::hydrate($rows);
+
+        return $models;
     }
 
     public static function forget(string ...$keys): void
