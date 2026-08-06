@@ -47,6 +47,11 @@ jobs:
       - name: Composer audit
         run: composer audit
 
+      - name: Prepare app env for tests
+        run: |
+          touch .env
+          php -r "file_put_contents('.env', 'APP_KEY='.PHP_EOL);"
+          php artisan key:generate --force
       # Attachment feature tests need a local Postgres + tenant schema; skip in CI.
       - name: PHPUnit
         run: php artisan test --exclude-group=attachments
