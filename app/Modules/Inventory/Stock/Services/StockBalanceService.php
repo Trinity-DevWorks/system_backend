@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Services;
 
 use App\Modules\Inventory\Stock\Models\StockBalance;
-use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;

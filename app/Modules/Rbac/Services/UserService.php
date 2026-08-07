@@ -241,6 +241,7 @@ class UserService
             foreach ($nextAssignments as $row) {
                 if ((int) $row['role_id'] === $ownerRoleId) {
                     $stillOwner = true;
+
                     break;
                 }
             }

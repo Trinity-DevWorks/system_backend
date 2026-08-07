@@ -19,6 +19,7 @@ class PurchasingAlertService
     public function __construct(
         private readonly WarehouseService $warehouseService,
     ) {}
+
     /**
      * @param  array{
      *   warehouse_id?: int|null,

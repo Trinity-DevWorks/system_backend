@@ -17,6 +17,7 @@ class ItemWarehouseReplenishmentService
     public function __construct(
         private readonly WarehouseService $warehouseService,
     ) {}
+
     /**
      * @return Collection<int, ItemWarehouseReplenishment>
      */

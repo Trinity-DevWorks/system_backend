@@ -6,6 +6,7 @@ namespace App\Modules\Rbac\DTOs;
 
 use App\Models\User;
 use App\Modules\Branch\Models\Branch;
+use App\Modules\Rbac\Models\Role;
 use Illuminate\Support\Collection;
 
 readonly class UserResponseData
@@ -59,7 +60,7 @@ readonly class UserResponseData
             ->all();
 
         if ($missingRoleIds !== []) {
-            $names = \App\Modules\Rbac\Models\Role::query()
+            $names = Role::query()
                 ->whereIn('id', $missingRoleIds)
                 ->pluck('name', 'id');
 
@@ -87,6 +88,7 @@ readonly class UserResponseData
             foreach ($branches as $branch) {
                 if ((int) ($branch['role_id'] ?? 0) === $sharedRoleId) {
                     $sharedRoleName = $branch['role']['name'] ?? null;
+
                     break;
                 }
             }

@@ -9,7 +9,9 @@ use App\Modules\Warehouse\DTOs\WarehouseData;
 use App\Modules\Warehouse\Enums\WarehouseDefaultKind;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Support\TenantReferenceCache;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 class WarehouseService
@@ -113,7 +115,7 @@ class WarehouseService
     /**
      * Constrain a query to warehouses visible in the active branch.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<\Illuminate\Database\Eloquent\Model>|\Illuminate\Database\Query\Builder  $query
+     * @param  Builder<Model>|\Illuminate\Database\Query\Builder  $query
      */
     public function applyVisibleWarehouseConstraint($query, string $column = 'warehouse_id'): void
     {

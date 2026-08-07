@@ -9,6 +9,7 @@ use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Modules\Warehouse\Services\WarehouseService;
 
 final class PurchaseOrderRules
 {
@@ -56,7 +57,7 @@ final class PurchaseOrderRules
             abort(422, 'Warehouse must be active.', ['X-Error-Code' => 'PURCHASE_ORDER_WAREHOUSE_INACTIVE']);
         }
 
-        app(\App\Modules\Warehouse\Services\WarehouseService::class)->assertVisible($warehouse);
+        app(WarehouseService::class)->assertVisible($warehouse);
     }
 
     public static function assertPurchasableItem(Item $item): void

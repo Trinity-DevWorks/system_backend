@@ -6,6 +6,8 @@ use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Branch\Services\BranchService;
+use App\Modules\Rbac\Models\Role;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -59,12 +61,12 @@ Artisan::command('tenants:sync-user-branches', function () {
         $skipReason = null;
 
         $tenant->run(function () use (&$assigned, &$skipReason): void {
-            $branchService = app(\App\Modules\Branch\Services\BranchService::class);
+            $branchService = app(BranchService::class);
             $defaultId = $branchService->defaultBranchId();
-            $fallbackRoleId = \App\Modules\Rbac\Models\Role::query()
+            $fallbackRoleId = Role::query()
                 ->where('name', 'Admin')
                 ->value('id')
-                ?? \App\Modules\Rbac\Models\Role::query()->orderBy('id')->value('id');
+                ?? Role::query()->orderBy('id')->value('id');
 
             if ($fallbackRoleId === null) {
                 $skipReason = 'no roles seeded yet. Run tenants:sync-rbac first.';
