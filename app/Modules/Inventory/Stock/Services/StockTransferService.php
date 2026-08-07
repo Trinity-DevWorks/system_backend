@@ -41,7 +41,7 @@ class StockTransferService
 
     public function find(string $id): StockTransfer
     {
-        return StockTransfer::query()
+        $transfer = StockTransfer::query()
             ->with([
                 'fromWarehouse',
                 'toWarehouse',
@@ -52,6 +52,10 @@ class StockTransferService
                 'lines.itemUom.uom',
             ])
             ->findOrFail($id);
+
+        StockTransferRules::assertTransferVisible($transfer);
+
+        return $transfer;
     }
 
     /**
@@ -249,6 +253,7 @@ class StockTransferService
     private function lockDraftTransfer(StockTransfer $transfer): StockTransfer
     {
         $locked = StockTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+        StockTransferRules::assertTransferVisible($locked);
         StockTransferRules::assertDraft($locked);
 
         return $locked;

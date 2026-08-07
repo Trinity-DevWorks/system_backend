@@ -5,11 +5,17 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Services;
 
 use App\Modules\Inventory\Stock\Models\StockBalance;
+use App\Modules\Warehouse\Models\Warehouse;
+use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 class StockBalanceService
 {
+    public function __construct(
+        private readonly WarehouseService $warehouseService,
+    ) {}
+
     /**
      * @param  array{warehouse_id?:int,item_id?:int,search?:string,only_tracked?:bool,only_with_stock?:bool}  $filters
      * @return Collection<int, StockBalance>
@@ -23,8 +29,12 @@ class StockBalanceService
                 'warehouse:id,name,shortcut_name,is_active',
             ]);
 
+        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+
         if (! empty($filters['warehouse_id'])) {
-            $query->where('warehouse_id', (int) $filters['warehouse_id']);
+            $warehouseId = (int) $filters['warehouse_id'];
+            $this->warehouseService->assertVisibleById($warehouseId);
+            $query->where('warehouse_id', $warehouseId);
         }
 
         if (! empty($filters['item_id'])) {
@@ -54,6 +64,8 @@ class StockBalanceService
 
     public function findForItemWarehouse(string $itemId, int $warehouseId): ?StockBalance
     {
+        $this->warehouseService->assertVisibleById($warehouseId);
+
         return StockBalance::query()
             ->with([
                 'item:id,sku,name,base_uom_id,track_inventory,is_active',

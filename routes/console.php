@@ -6,7 +6,6 @@ use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Models\Tenant;
 use App\Models\User;
-use App\Modules\Branch\Services\BranchService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -57,26 +56,44 @@ Artisan::command('tenants:sync-user-branches', function () {
     $assigned = 0;
 
     Tenant::query()->cursor()->each(function (Tenant $tenant) use (&$count, &$assigned): void {
-        $tenant->run(function () use (&$assigned): void {
-            $branchService = app(BranchService::class);
-            $defaultId = $branchService->defaultBranchId();
+        $skipReason = null;
 
-            User::query()->orderBy('created_at')->each(function (User $user) use ($defaultId, &$assigned): void {
+        $tenant->run(function () use (&$assigned, &$skipReason): void {
+            $branchService = app(\App\Modules\Branch\Services\BranchService::class);
+            $defaultId = $branchService->defaultBranchId();
+            $fallbackRoleId = \App\Modules\Rbac\Models\Role::query()
+                ->where('name', 'Admin')
+                ->value('id')
+                ?? \App\Modules\Rbac\Models\Role::query()->orderBy('id')->value('id');
+
+            if ($fallbackRoleId === null) {
+                $skipReason = 'no roles seeded yet. Run tenants:sync-rbac first.';
+
+                return;
+            }
+
+            User::query()->orderBy('created_at')->each(function (User $user) use ($defaultId, $fallbackRoleId, &$assigned): void {
                 if ($user->branches()->exists()) {
                     return;
                 }
 
-                $user->branches()->attach($defaultId);
+                $user->branches()->attach($defaultId, ['role_id' => (int) $fallbackRoleId]);
                 $assigned++;
             });
         });
+
+        if ($skipReason !== null) {
+            $this->warn("Skipped tenant [{$tenant->id}] — {$skipReason}");
+
+            return;
+        }
 
         $this->info("Synced user branches for tenant [{$tenant->id}]");
         $count++;
     });
 
     $this->info("Done. {$count} tenant(s) processed. {$assigned} user assignment(s) created.");
-})->purpose('Assign the default branch to users without any branch');
+})->purpose('Assign the default branch (with a role) to users without any branch');
 
 Artisan::command('tenants:sync-rbac', function () {
     $count = 0;

@@ -7,12 +7,16 @@ namespace App\Modules\Inventory\Stock\Services;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ItemWarehouseReplenishmentService
 {
+    public function __construct(
+        private readonly WarehouseService $warehouseService,
+    ) {}
     /**
      * @return Collection<int, ItemWarehouseReplenishment>
      */
@@ -27,6 +31,16 @@ class ItemWarehouseReplenishmentService
                 'warehouse:id,name,shortcut_name,is_active',
             ])
             ->where('item_id', $item->id)
+            ->when(
+                ($ids = $this->warehouseService->visibleWarehouseIds()) !== null,
+                function ($query) use ($ids): void {
+                    if ($ids === []) {
+                        $query->whereRaw('0 = 1');
+                    } else {
+                        $query->whereIn('warehouse_id', $ids);
+                    }
+                }
+            )
             ->orderBy('warehouse_id')
             ->get();
     }
@@ -85,6 +99,7 @@ class ItemWarehouseReplenishmentService
     ): ItemWarehouseReplenishment {
         $this->assertBelongsToItem($item, $replenishment);
         $this->assertReplenishableItem($item);
+        $this->warehouseService->assertVisibleById((int) $replenishment->warehouse_id);
 
         return DB::transaction(function () use ($item, $replenishment, $data): ItemWarehouseReplenishment {
             if (array_key_exists('warehouse_id', $data)) {
@@ -150,6 +165,7 @@ class ItemWarehouseReplenishmentService
     public function delete(Item $item, ItemWarehouseReplenishment $replenishment): void
     {
         $this->assertBelongsToItem($item, $replenishment);
+        $this->warehouseService->assertVisibleById((int) $replenishment->warehouse_id);
         $replenishment->delete();
     }
 
@@ -188,6 +204,8 @@ class ItemWarehouseReplenishmentService
                 'warehouse_id' => ['The selected warehouse is inactive.'],
             ]);
         }
+
+        $this->warehouseService->assertVisible($warehouse);
     }
 
     private function assertThresholds(float $safetyStock, float $reorderPoint, ?float $maxQty): void

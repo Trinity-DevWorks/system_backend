@@ -6,10 +6,15 @@ namespace App\Modules\Inventory\Stock\Services;
 
 use App\Modules\Inventory\Stock\Enums\StockTransferStatus;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
+use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Collection;
 
 class StockTransferQueryService
 {
+    public function __construct(
+        private readonly WarehouseService $warehouseService,
+    ) {}
+
     /**
      * @param  array{
      *   status?:string,
@@ -33,6 +38,16 @@ class StockTransferQueryService
             ])
             ->withCount('lines');
 
+        $visibleIds = $this->warehouseService->visibleWarehouseIds();
+        if ($visibleIds !== null) {
+            if ($visibleIds === []) {
+                $query->whereRaw('0 = 1');
+            } else {
+                $query->whereIn('from_warehouse_id', $visibleIds)
+                    ->whereIn('to_warehouse_id', $visibleIds);
+            }
+        }
+
         if (! empty($filters['status'])) {
             $status = StockTransferStatus::tryFrom((string) $filters['status']);
             if ($status) {
@@ -41,11 +56,15 @@ class StockTransferQueryService
         }
 
         if (! empty($filters['from_warehouse_id'])) {
-            $query->where('from_warehouse_id', (int) $filters['from_warehouse_id']);
+            $fromId = (int) $filters['from_warehouse_id'];
+            $this->warehouseService->assertVisibleById($fromId);
+            $query->where('from_warehouse_id', $fromId);
         }
 
         if (! empty($filters['to_warehouse_id'])) {
-            $query->where('to_warehouse_id', (int) $filters['to_warehouse_id']);
+            $toId = (int) $filters['to_warehouse_id'];
+            $this->warehouseService->assertVisibleById($toId);
+            $query->where('to_warehouse_id', $toId);
         }
 
         if (! empty($filters['search'])) {

@@ -6,10 +6,15 @@ namespace App\Modules\Inventory\Stock\Services;
 
 use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\StockMovement;
+use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Collection;
 
 class StockMovementQueryService
 {
+    public function __construct(
+        private readonly WarehouseService $warehouseService,
+    ) {}
+
     /**
      * @param  array{
      *   warehouse_id?:int,
@@ -32,8 +37,12 @@ class StockMovementQueryService
                 'user:id,name,email',
             ]);
 
+        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+
         if (! empty($filters['warehouse_id'])) {
-            $query->where('warehouse_id', (int) $filters['warehouse_id']);
+            $warehouseId = (int) $filters['warehouse_id'];
+            $this->warehouseService->assertVisibleById($warehouseId);
+            $query->where('warehouse_id', $warehouseId);
         }
 
         if (! empty($filters['item_id'])) {

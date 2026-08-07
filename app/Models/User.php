@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Modules\Branch\Models\Branch;
+use App\Modules\Branch\Models\BranchUser;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Salesman\Models\Salesman;
 use App\Notifications\ResetPasswordNotification;
@@ -22,7 +23,7 @@ use Laravel\Sanctum\HasApiTokens;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name', 'email', 'password', 'active', 'role_id', 'created_by'])]
+#[Fillable(['name', 'email', 'password', 'active', 'created_by'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements AuditableContract, CanResetPasswordContract
 {
@@ -64,14 +65,6 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     }
 
     /**
-     * @return BelongsTo<Role, $this>
-     */
-    public function role(): BelongsTo
-    {
-        return $this->belongsTo(Role::class);
-    }
-
-    /**
      * @return BelongsTo<User, $this>
      */
     public function creator(): BelongsTo
@@ -88,10 +81,43 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     }
 
     /**
+     * Branch memberships with the role assigned in each branch.
+     *
      * @return BelongsToMany<Branch, $this>
      */
     public function branches(): BelongsToMany
     {
-        return $this->belongsToMany(Branch::class, 'branch_user')->withTimestamps();
+        return $this->belongsToMany(Branch::class, 'branch_user')
+            ->using(BranchUser::class)
+            ->withPivot('role_id')
+            ->withTimestamps();
+    }
+
+    /**
+     * Roles assigned across branches (may include the same role more than once).
+     *
+     * @return BelongsToMany<Role, $this>
+     */
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'branch_user')
+            ->using(BranchUser::class)
+            ->withPivot('branch_id')
+            ->withTimestamps();
+    }
+
+    public function roleIdForBranch(int $branchId): ?int
+    {
+        $this->loadMissing('branches');
+
+        $branch = $this->branches->first(
+            fn (Branch $b): bool => (int) $b->id === $branchId
+        );
+
+        if ($branch === null || $branch->pivot?->role_id === null) {
+            return null;
+        }
+
+        return (int) $branch->pivot->role_id;
     }
 }

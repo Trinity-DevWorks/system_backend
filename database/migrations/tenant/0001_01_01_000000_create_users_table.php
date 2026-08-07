@@ -18,8 +18,6 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->boolean('active')->default(true);
-            // FK to roles added in create_rbac_tables (roles is created after users).
-            $table->unsignedBigInteger('role_id')->nullable();
             $table->uuid('created_by')->nullable();
             $table->rememberToken();
             $table->timestamps();

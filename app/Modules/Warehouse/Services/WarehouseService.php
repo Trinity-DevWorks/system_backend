@@ -50,7 +50,6 @@ class WarehouseService
         $resolved = WarehouseDefaultKind::parse($kind);
         $warehouses = $this->list();
 
-        /** @var Warehouse|null $match */
         $match = $warehouses->first(
             fn (Warehouse $warehouse): bool => (bool) $warehouse->{$resolved->column()}
                 && (bool) $warehouse->is_active
@@ -60,12 +59,9 @@ class WarehouseService
             return $match;
         }
 
-        /** @var Warehouse|null $fallback */
-        $fallback = $warehouses->first(
+        return $warehouses->first(
             fn (Warehouse $warehouse): bool => (bool) $warehouse->is_default && (bool) $warehouse->is_active
         );
-
-        return $fallback;
     }
 
     public function defaultWarehouseIdFor(string $kind): ?int
@@ -78,6 +74,77 @@ class WarehouseService
         if (! $this->isVisibleInActiveBranch($warehouse)) {
             abort(403, 'This warehouse is not available in the active branch.', [
                 'X-Error-Code' => 'WAREHOUSE_BRANCH_FORBIDDEN',
+            ]);
+        }
+    }
+
+    public function isVisible(Warehouse $warehouse): bool
+    {
+        return $this->isVisibleInActiveBranch($warehouse);
+    }
+
+    public function assertVisibleById(int $warehouseId): Warehouse
+    {
+        $warehouse = Warehouse::query()->findOrFail($warehouseId);
+        $this->assertVisible($warehouse);
+
+        return $warehouse;
+    }
+
+    /**
+     * Warehouse IDs visible in the active branch (including shared).
+     * Null = no active branch resolved; callers should not filter.
+     *
+     * @return list<int>|null
+     */
+    public function visibleWarehouseIds(): ?array
+    {
+        if ($this->branchContext->resolveActiveBranchId() === null) {
+            return null;
+        }
+
+        return $this->list()
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Constrain a query to warehouses visible in the active branch.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<\Illuminate\Database\Eloquent\Model>|\Illuminate\Database\Query\Builder  $query
+     */
+    public function applyVisibleWarehouseConstraint($query, string $column = 'warehouse_id'): void
+    {
+        $ids = $this->visibleWarehouseIds();
+        if ($ids === null) {
+            return;
+        }
+
+        if ($ids === []) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+
+        $query->whereIn($column, $ids);
+    }
+
+    /**
+     * Transfer ends must be visible in the active branch, and must not link two different branch-owned warehouses.
+     */
+    public function assertTransferPair(Warehouse $from, Warehouse $to): void
+    {
+        $this->assertVisible($from);
+        $this->assertVisible($to);
+
+        $fromBranch = $from->branch_id !== null ? (int) $from->branch_id : null;
+        $toBranch = $to->branch_id !== null ? (int) $to->branch_id : null;
+
+        if ($fromBranch !== null && $toBranch !== null && $fromBranch !== $toBranch) {
+            abort(422, 'Cannot transfer stock between warehouses of different branches.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_CROSS_BRANCH_FORBIDDEN',
             ]);
         }
     }

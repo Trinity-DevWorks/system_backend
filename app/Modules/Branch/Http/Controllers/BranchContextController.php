@@ -6,7 +6,9 @@ namespace App\Modules\Branch\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
+use App\Models\User;
 use App\Modules\Branch\Services\BranchContextService;
+use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,12 +16,13 @@ class BranchContextController extends Controller
 {
     public function __construct(
         private readonly BranchContextService $branchContext,
+        private readonly PermissionService $permissionService,
     ) {}
 
     public function show(): JsonResponse
     {
         return ApiResponse::success(
-            $this->branchContext->contextPayload(),
+            $this->payloadWithEffectiveRole(),
             'Branch context fetched successfully.'
         );
     }
@@ -39,18 +42,31 @@ class BranchContextController extends Controller
             );
         }
 
-        $accessible = $this->branchContext->accessibleBranches();
-        $active = $accessible->first(fn ($b): bool => (int) $b->id === $branchId);
+        $payload = $this->payloadWithEffectiveRole($branchId);
 
-        $payload = [
-            'active_branch_id' => $branchId,
-            'active_branch' => $active ? [
+        return ApiResponse::success($payload, 'Branch switched successfully.')
+            ->header(BranchContextService::HEADER, (string) $branchId);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function payloadWithEffectiveRole(?int $forceBranchId = null): array
+    {
+        $payload = $this->branchContext->contextPayload();
+
+        if ($forceBranchId !== null) {
+            $accessible = $this->branchContext->accessibleBranches();
+            $active = $accessible->first(fn ($b): bool => (int) $b->id === $forceBranchId);
+
+            $payload['active_branch_id'] = $forceBranchId;
+            $payload['active_branch'] = $active ? [
                 'id' => (int) $active->id,
                 'name' => (string) $active->name,
                 'shortcut_name' => $active->shortcut_name,
                 'is_default' => (bool) $active->is_default,
-            ] : null,
-            'accessible_branches' => $accessible
+            ] : null;
+            $payload['accessible_branches'] = $accessible
                 ->map(fn ($b): array => [
                     'id' => (int) $b->id,
                     'name' => (string) $b->name,
@@ -58,11 +74,18 @@ class BranchContextController extends Controller
                     'is_default' => (bool) $b->is_default,
                 ])
                 ->values()
-                ->all(),
-            'is_owner' => $this->branchContext->isOwner(),
-        ];
+                ->all();
+        }
 
-        return ApiResponse::success($payload, 'Branch switched successfully.')
-            ->header(BranchContextService::HEADER, (string) $branchId);
+        $user = auth()->user();
+        $activeBranchId = $payload['active_branch_id'] ?? null;
+        $payload['effective_role'] = $user instanceof User
+            ? $this->permissionService->resolveEffectiveRole(
+                $user,
+                is_int($activeBranchId) ? $activeBranchId : null
+            )
+            : null;
+
+        return $payload;
     }
 }

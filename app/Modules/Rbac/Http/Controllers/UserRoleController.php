@@ -20,7 +20,11 @@ class UserRoleController extends Controller
 
     public function update(UpdateUserRoleRequest $request, User $user): JsonResponse
     {
-        $updated = $this->userService->assignRole($user, (int) $request->validated('role_id'));
+        $updated = $this->userService->assignRole(
+            $user,
+            (int) $request->validated('role_id'),
+            $request->validated('branch_id') !== null ? (int) $request->validated('branch_id') : null
+        );
 
         return ApiResponse::success(
             UserResponseData::fromModel($updated)->toArray(),

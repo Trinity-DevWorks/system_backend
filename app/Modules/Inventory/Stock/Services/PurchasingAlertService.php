@@ -9,12 +9,16 @@ use App\Modules\Inventory\Stock\Enums\ReplenishmentAlertStatus;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
 use App\Modules\Inventory\Stock\Support\ReplenishmentAlertRules;
 use App\Modules\Supplier\Models\SupplierItem;
+use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class PurchasingAlertService
 {
+    public function __construct(
+        private readonly WarehouseService $warehouseService,
+    ) {}
     /**
      * @param  array{
      *   warehouse_id?: int|null,
@@ -30,7 +34,9 @@ class PurchasingAlertService
         $query = $this->baseAlertQuery();
 
         if (! empty($filters['warehouse_id'])) {
-            $query->where('item_warehouse_replenishments.warehouse_id', (int) $filters['warehouse_id']);
+            $warehouseId = (int) $filters['warehouse_id'];
+            $this->warehouseService->assertVisibleById($warehouseId);
+            $query->where('item_warehouse_replenishments.warehouse_id', $warehouseId);
         }
 
         if (! empty($filters['item_id'])) {
@@ -163,7 +169,7 @@ class PurchasingAlertService
 
     private function baseAlertQuery(): Builder
     {
-        return ItemWarehouseReplenishment::query()
+        $query = ItemWarehouseReplenishment::query()
             ->select('item_warehouse_replenishments.*')
             ->join('items', 'items.id', '=', 'item_warehouse_replenishments.item_id')
             ->leftJoin('stock_balances', function ($join): void {
@@ -175,6 +181,13 @@ class PurchasingAlertService
             ->where('items.track_inventory', true)
             ->where('items.allow_purchase', true)
             ->where('items.is_active', true);
+
+        $this->warehouseService->applyVisibleWarehouseConstraint(
+            $query,
+            'item_warehouse_replenishments.warehouse_id'
+        );
+
+        return $query;
     }
 
     /**

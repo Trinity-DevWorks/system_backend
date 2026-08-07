@@ -10,10 +10,15 @@ use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Support\Facades\DB;
 
 class StockMovementService
 {
+    public function __construct(
+        private readonly WarehouseService $warehouseService,
+    ) {}
+
     /**
      * Single write path: ledger row + balance snapshot (base UOM quantities only).
      */
@@ -29,6 +34,7 @@ class StockMovementService
 
             $this->assertStockableItem($item);
             $this->assertActiveWarehouse($warehouse);
+            $this->warehouseService->assertVisible($warehouse);
 
             if ($data->itemUomId !== null) {
                 $itemUom = ItemUom::query()

@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\Validator;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -41,9 +42,37 @@ class UpdateUserRequest extends FormRequest
             ],
             'password' => ['nullable', 'string', 'confirmed', Password::defaults()],
             'active' => ['required', 'boolean'],
-            'role_id' => ['required', 'integer', 'exists:roles,id'],
-            'branch_ids' => ['required', 'array', 'min:1'],
-            'branch_ids.*' => ['integer', 'exists:branches,id'],
+            'branch_assignments' => ['required', 'array', 'min:1'],
+            'branch_assignments.*.branch_id' => ['required', 'integer', 'exists:branches,id', 'distinct'],
+            'branch_assignments.*.role_id' => ['required', 'integer', 'exists:roles,id'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $assignments = $this->input('branch_assignments');
+            if (! is_array($assignments) || $assignments === []) {
+                return;
+            }
+
+            $branchIds = [];
+            foreach ($assignments as $index => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $branchId = (int) ($row['branch_id'] ?? 0);
+                if ($branchId < 1) {
+                    continue;
+                }
+                if (isset($branchIds[$branchId])) {
+                    $validator->errors()->add(
+                        "branch_assignments.{$index}.branch_id",
+                        'Each branch may only appear once in branch_assignments.'
+                    );
+                }
+                $branchIds[$branchId] = true;
+            }
+        });
     }
 }

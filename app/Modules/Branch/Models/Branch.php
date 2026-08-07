@@ -72,6 +72,9 @@ class Branch extends Model implements AuditableContract
      */
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'branch_user')->withTimestamps();
+        return $this->belongsToMany(User::class, 'branch_user')
+            ->using(BranchUser::class)
+            ->withPivot('role_id')
+            ->withTimestamps();
     }
 }

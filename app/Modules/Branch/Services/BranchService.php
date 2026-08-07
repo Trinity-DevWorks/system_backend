@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Branch\Services;
 
-use App\Models\User;
 use App\Modules\Branch\DTOs\BranchData;
 use App\Modules\Branch\Models\Branch;
+use App\Models\User;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -78,10 +78,12 @@ class BranchService
         return $this->ensureDefaultBranch()->id;
     }
 
-    public function assignUserToDefaultBranch(User $user): void
+    public function assignUserToDefaultBranch(User $user, int $roleId): void
     {
         $defaultId = $this->defaultBranchId();
-        $user->branches()->syncWithoutDetaching([$defaultId]);
+        $user->branches()->syncWithoutDetaching([
+            $defaultId => ['role_id' => $roleId],
+        ]);
     }
 
     public function create(BranchData $data): Branch

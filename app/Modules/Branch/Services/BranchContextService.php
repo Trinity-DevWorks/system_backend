@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Branch\Models\Branch;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class BranchContextService
 {
@@ -100,6 +101,9 @@ class BranchContextService
         return $id;
     }
 
+    /**
+     * Owner if the user has the Owner role on any branch assignment.
+     */
     public function isOwner(?User $user = null): bool
     {
         $user = $user ?? $this->authenticatedUser();
@@ -107,9 +111,11 @@ class BranchContextService
             return false;
         }
 
-        $user->loadMissing('role:id,name');
-
-        return $user->role?->name === self::OWNER_ROLE_NAME;
+        return DB::table('branch_user')
+            ->join('roles', 'branch_user.role_id', '=', 'roles.id')
+            ->where('branch_user.user_id', $user->id)
+            ->where('roles.name', self::OWNER_ROLE_NAME)
+            ->exists();
     }
 
     /**

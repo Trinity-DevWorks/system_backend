@@ -6,10 +6,15 @@ namespace App\Modules\Inventory\Purchasing\Services;
 
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
+use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Collection;
 
 class PurchaseOrderQueryService
 {
+    public function __construct(
+        private readonly WarehouseService $warehouseService,
+    ) {}
+
     /**
      * @param  array{
      *   status?:string,
@@ -34,6 +39,8 @@ class PurchaseOrderQueryService
             ])
             ->withCount('lines');
 
+        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+
         if (! empty($filters['status'])) {
             $status = PurchaseOrderStatus::tryFrom((string) $filters['status']);
             if ($status) {
@@ -46,7 +53,9 @@ class PurchaseOrderQueryService
         }
 
         if (! empty($filters['warehouse_id'])) {
-            $query->where('warehouse_id', (int) $filters['warehouse_id']);
+            $warehouseId = (int) $filters['warehouse_id'];
+            $this->warehouseService->assertVisibleById($warehouseId);
+            $query->where('warehouse_id', $warehouseId);
         }
 
         if (! empty($filters['search'])) {

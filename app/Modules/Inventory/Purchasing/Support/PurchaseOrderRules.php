@@ -55,6 +55,8 @@ final class PurchaseOrderRules
         if (! $warehouse->is_active) {
             abort(422, 'Warehouse must be active.', ['X-Error-Code' => 'PURCHASE_ORDER_WAREHOUSE_INACTIVE']);
         }
+
+        app(\App\Modules\Warehouse\Services\WarehouseService::class)->assertVisible($warehouse);
     }
 
     public static function assertPurchasableItem(Item $item): void

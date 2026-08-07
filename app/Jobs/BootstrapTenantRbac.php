@@ -92,9 +92,8 @@ class BootstrapTenantRbac implements ShouldQueue
 
             $owner = User::query()->find($ownerUserId);
             if ($owner) {
-                $owner->update(['role_id' => $ownerRole->id]);
-                $branchService->assignUserToDefaultBranch($owner);
-                $permissionService->invalidateCacheForUser($owner->fresh());
+                $branchService->assignUserToDefaultBranch($owner, (int) $ownerRole->id);
+                $permissionService->invalidateCacheForUser($owner->fresh() ?? $owner);
             }
 
             $permissionCatalogService->forget();
