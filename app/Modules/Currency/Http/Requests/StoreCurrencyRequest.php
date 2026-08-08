@@ -31,7 +31,7 @@ class StoreCurrencyRequest extends FormRequest
             'acceptable_amount_overdue' => ['nullable', 'numeric', 'min:0'],
             'allowed_difference_in_receipt' => ['nullable', 'numeric', 'min:0'],
             'allowed_difference_in_payment' => ['nullable', 'numeric', 'min:0'],
-            'active' => ['nullable', 'boolean'],
+            'is_active' => ['nullable', 'boolean'],
             'is_primary' => ['nullable', 'boolean'],
         ];
 

@@ -40,7 +40,7 @@ class UserService
     }
 
     /**
-     * @param  array{name: string, email: string, password: string, active: bool, role_id: int}  $data
+     * @param  array{name: string, email: string, password: string, is_active: bool, role_id: int}  $data
      */
     public function create(array $data): User
     {
@@ -49,7 +49,7 @@ class UserService
                 'name' => $data['name'],
                 'email' => $data['email'],
                 'password' => $data['password'],
-                'active' => $data['active'],
+                'is_active' => $data['is_active'],
                 'role_id' => $data['role_id'],
                 'created_by' => auth()->id(),
             ]);
@@ -61,24 +61,24 @@ class UserService
     }
 
     /**
-     * @param  array{name: string, email: string, active: bool, role_id: int, password?: string|null}  $data
+     * @param  array{name: string, email: string, is_active: bool, role_id: int, password?: string|null}  $data
      */
     public function update(User $user, array $data): User
     {
         return DB::transaction(function () use ($user, $data): User {
             $actor = auth()->user();
             if ($actor instanceof User && $actor->id === $user->id) {
-                if (! $data['active']) {
+                if (! $data['is_active']) {
                     abort(422, 'You cannot deactivate your own account.', ['X-Error-Code' => 'USER_SELF_DEACTIVATE_FORBIDDEN']);
                 }
             }
 
-            $this->assertOwnerProtection($user, (int) $data['role_id'], (bool) $data['active']);
+            $this->assertOwnerProtection($user, (int) $data['role_id'], (bool) $data['is_active']);
 
             $payload = [
                 'name' => $data['name'],
                 'email' => $data['email'],
-                'active' => $data['active'],
+                'is_active' => $data['is_active'],
                 'role_id' => $data['role_id'],
             ];
 
@@ -101,7 +101,7 @@ class UserService
             }
 
             $roleChanged = (int) $user->role_id !== (int) $data['role_id'];
-            $wasActive = (bool) $user->active;
+            $wasActive = (bool) $user->is_active;
 
             $user->update($payload);
 
@@ -109,7 +109,7 @@ class UserService
                 $this->permissionService->invalidateCacheForUser($user->fresh());
             }
 
-            if ($wasActive && ! $data['active']) {
+            if ($wasActive && ! $data['is_active']) {
                 $user->tokens()->delete();
             }
 
@@ -124,7 +124,7 @@ class UserService
     public function assignRole(User $user, int $roleId): User
     {
         return DB::transaction(function () use ($user, $roleId): User {
-            $this->assertOwnerProtection($user, $roleId, (bool) $user->active);
+            $this->assertOwnerProtection($user, $roleId, (bool) $user->is_active);
 
             $roleChanged = (int) $user->role_id !== $roleId;
             $user->update(['role_id' => $roleId]);
@@ -148,6 +148,7 @@ class UserService
 
         DB::transaction(function () use ($user): void {
             $user->tokens()->delete();
+            // Soft-delete: preserves historical attribution FKs (created_by, posted_by, …).
             $user->delete();
         });
     }
@@ -206,7 +207,7 @@ class UserService
 
         return User::query()
             ->where('role_id', $ownerRoleId)
-            ->where('active', true)
+            ->where('is_active', true)
             ->where('id', '!=', $excludeUserId)
             ->count();
     }

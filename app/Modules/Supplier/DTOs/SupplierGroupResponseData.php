@@ -13,6 +13,7 @@ readonly class SupplierGroupResponseData
         public int $id,
         public string $code,
         public string $name,
+        public bool $isActive,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -23,6 +24,7 @@ readonly class SupplierGroupResponseData
             id: $group->id,
             code: $group->code,
             name: $group->name,
+            isActive: (bool) $group->is_active,
             createdAt: (string) $group->created_at,
             updatedAt: (string) $group->updated_at,
         );
@@ -49,6 +51,7 @@ readonly class SupplierGroupResponseData
             'id' => $this->id,
             'code' => $this->code,
             'name' => $this->name,
+            'is_active' => $this->isActive,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];

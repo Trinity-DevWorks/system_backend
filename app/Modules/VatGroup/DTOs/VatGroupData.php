@@ -12,6 +12,7 @@ readonly class VatGroupData
         public string $name,
         public float $percentage,
         public bool $isDefault,
+        public bool $isActive,
     ) {}
 
     public static function fromStoreRequest(StoreVatGroupRequest $request): self
@@ -23,6 +24,7 @@ readonly class VatGroupData
             name: $data['name'],
             percentage: (float) $data['percentage'],
             isDefault: (bool) $data['is_default'],
+            isActive: (bool) ($data['is_active'] ?? true),
         );
     }
 
@@ -35,11 +37,12 @@ readonly class VatGroupData
             name: $data['name'],
             percentage: (float) $data['percentage'],
             isDefault: (bool) $data['is_default'],
+            isActive: (bool) $data['is_active'],
         );
     }
 
     /**
-     * @return array{abrv:string,name:string,percentage:float,is_default:bool}
+     * @return array{abrv:string,name:string,percentage:float,is_default:bool,is_active:bool}
      */
     public function toArray(): array
     {
@@ -48,6 +51,7 @@ readonly class VatGroupData
             'name' => $this->name,
             'percentage' => $this->percentage,
             'is_default' => $this->isDefault,
+            'is_active' => $this->isActive,
         ];
     }
 }

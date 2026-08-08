@@ -45,6 +45,12 @@ class SupplierGroupService
 
     public function delete(SupplierGroup $group): void
     {
+        if ($group->suppliers()->withTrashed()->exists()) {
+            abort(409, 'Cannot delete a supplier group while members exist (including soft-deleted members). Reassign or remove them first.', [
+                'X-Error-Code' => 'SUPPLIER_GROUP_DELETE_HAS_MEMBERS',
+            ]);
+        }
+
         $group->delete();
         TenantReferenceCache::forget(self::CACHE_LIST);
     }

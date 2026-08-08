@@ -145,7 +145,7 @@ class TenantSeeder extends Seeder
                 'name' => self::TENANT_NAME.'_owner',
                 'email' => self::OWNER_EMAIL,
                 'password' => self::OWNER_PASSWORD,
-                'active' => true,
+                'is_active' => true,
             ]);
             $ownerUserId = $user->id;
 
@@ -195,7 +195,7 @@ class TenantSeeder extends Seeder
                 'name' => 'US Dollar',
                 'iso_code' => 'USD',
                 'symbol' => '$',
-                'active' => true,
+                'is_active' => true,
             ]
         );
 

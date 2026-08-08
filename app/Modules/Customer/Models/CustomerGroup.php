@@ -11,11 +11,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['code', 'name'])]
+#[Fillable(['code', 'name', 'is_active'])]
 class CustomerGroup extends Model implements AuditableContract
 {
     use Auditable;
     use HasFactory;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+        ];
+    }
 
     /**
      * @return HasMany<Customer, $this>

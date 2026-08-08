@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('name');
             $table->decimal('percentage', 5, 2);
             $table->boolean('is_default')->default(false);
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
     }

@@ -34,7 +34,7 @@ class LoginController extends Controller
             return ApiResponse::error('Invalid credentials.', 422, null, [], null, null, 'INVALID_CREDENTIALS');
         }
 
-        if (! $user->active) {
+        if (! $user->is_active) {
             $this->auditWriter->write(
                 event: 'login_failed',
                 auditable: $user,

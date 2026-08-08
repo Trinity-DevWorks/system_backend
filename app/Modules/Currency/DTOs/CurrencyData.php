@@ -18,7 +18,7 @@ readonly class CurrencyData
         public ?string $acceptableAmountOverdue,
         public ?string $allowedDifferenceInReceipt,
         public ?string $allowedDifferenceInPayment,
-        public bool $active,
+        public bool $isActive,
         public bool $isPrimary,
         public ?float $rate,
         public ?int $fromCurrencyId,
@@ -39,7 +39,7 @@ readonly class CurrencyData
             acceptableAmountOverdue: isset($d['acceptable_amount_overdue']) ? (string) $d['acceptable_amount_overdue'] : null,
             allowedDifferenceInReceipt: isset($d['allowed_difference_in_receipt']) ? (string) $d['allowed_difference_in_receipt'] : null,
             allowedDifferenceInPayment: isset($d['allowed_difference_in_payment']) ? (string) $d['allowed_difference_in_payment'] : null,
-            active: $d['active'] ?? true,
+            isActive: $d['is_active'] ?? true,
             isPrimary: $d['is_primary'] ?? false,
             rate: isset($d['rate']) && is_numeric($d['rate']) ? (float) $d['rate'] : null,
             fromCurrencyId: isset($d['from_currency_id']) ? (int) $d['from_currency_id'] : null,
@@ -62,7 +62,7 @@ readonly class CurrencyData
             'acceptable_amount_overdue' => $this->acceptableAmountOverdue,
             'allowed_difference_in_receipt' => $this->allowedDifferenceInReceipt,
             'allowed_difference_in_payment' => $this->allowedDifferenceInPayment,
-            'active' => $this->active,
+            'is_active' => $this->isActive,
         ];
     }
 }
