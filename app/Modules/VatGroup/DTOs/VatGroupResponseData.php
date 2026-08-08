@@ -13,6 +13,7 @@ readonly class VatGroupResponseData
         public string $name,
         public string $percentage,
         public bool $isDefault,
+        public bool $isActive,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -25,6 +26,7 @@ readonly class VatGroupResponseData
             name: $vatGroup->name,
             percentage: (string) $vatGroup->percentage,
             isDefault: (bool) $vatGroup->is_default,
+            isActive: (bool) $vatGroup->is_active,
             createdAt: (string) $vatGroup->created_at,
             updatedAt: (string) $vatGroup->updated_at,
         );
@@ -32,7 +34,7 @@ readonly class VatGroupResponseData
 
     /**
      * @param  Collection<int, VatGroup>  $vatGroups
-     * @return array<int, array{id:int,abrv:string,name:string,percentage:string,is_default:bool,created_at:string,updated_at:string}>
+     * @return array<int, array{id:int,abrv:string,name:string,percentage:string,is_default:bool,is_active:bool,created_at:string,updated_at:string}>
      */
     public static function collectionToArray(Collection $vatGroups): array
     {
@@ -43,7 +45,7 @@ readonly class VatGroupResponseData
     }
 
     /**
-     * @return array{id:int,abrv:string,name:string,percentage:string,is_default:bool,created_at:string,updated_at:string}
+     * @return array{id:int,abrv:string,name:string,percentage:string,is_default:bool,is_active:bool,created_at:string,updated_at:string}
      */
     public function toArray(): array
     {
@@ -53,6 +55,7 @@ readonly class VatGroupResponseData
             'name' => $this->name,
             'percentage' => $this->percentage,
             'is_default' => $this->isDefault,
+            'is_active' => $this->isActive,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];

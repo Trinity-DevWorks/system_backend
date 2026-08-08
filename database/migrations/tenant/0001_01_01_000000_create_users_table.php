@@ -17,12 +17,13 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            $table->boolean('active')->default(true);
+            $table->boolean('is_active')->default(true);
             // FK to roles added in create_rbac_tables (roles is created after users).
             $table->unsignedBigInteger('role_id')->nullable();
             $table->uuid('created_by')->nullable();
             $table->rememberToken();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::table('users', function (Blueprint $table) {

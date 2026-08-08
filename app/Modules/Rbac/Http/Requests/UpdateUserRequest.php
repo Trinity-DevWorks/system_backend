@@ -40,7 +40,7 @@ class UpdateUserRequest extends FormRequest
                 Rule::unique('users', 'email')->ignore($user->id),
             ],
             'password' => ['nullable', 'string', 'confirmed', Password::defaults()],
-            'active' => ['required', 'boolean'],
+            'is_active' => ['required', 'boolean'],
             'role_id' => ['required', 'integer', 'exists:roles,id'],
         ];
     }

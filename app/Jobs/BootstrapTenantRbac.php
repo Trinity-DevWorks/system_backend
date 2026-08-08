@@ -45,7 +45,7 @@ class BootstrapTenantRbac implements ShouldQueue
                 ['name' => 'Owner'],
                 [
                     'description' => 'Full access',
-                    'active' => true,
+                    'is_active' => true,
                 ]
             );
 
@@ -53,7 +53,7 @@ class BootstrapTenantRbac implements ShouldQueue
                 ['name' => 'Admin'],
                 [
                     'description' => 'Administrative access',
-                    'active' => true,
+                    'is_active' => true,
                 ]
             );
 

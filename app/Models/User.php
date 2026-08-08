@@ -14,13 +14,14 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name', 'email', 'password', 'active', 'role_id', 'created_by'])]
+#[Fillable(['name', 'email', 'password', 'is_active', 'role_id', 'created_by'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements AuditableContract, CanResetPasswordContract
 {
@@ -33,6 +34,7 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
 
     use HasUuids;
     use Notifiable;
+    use SoftDeletes;
 
     /**
      * Never persist secrets into the audits table (owen-it local exclude wins over config).
@@ -57,7 +59,7 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'active' => 'boolean',
+            'is_active' => 'boolean',
         ];
     }
 

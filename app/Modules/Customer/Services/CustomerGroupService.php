@@ -45,6 +45,12 @@ class CustomerGroupService
 
     public function delete(CustomerGroup $group): void
     {
+        if ($group->customers()->withTrashed()->exists()) {
+            abort(409, 'Cannot delete a customer group while members exist (including soft-deleted members). Reassign or remove them first.', [
+                'X-Error-Code' => 'CUSTOMER_GROUP_DELETE_HAS_MEMBERS',
+            ]);
+        }
+
         $group->delete();
         TenantReferenceCache::forget(self::CACHE_LIST);
     }

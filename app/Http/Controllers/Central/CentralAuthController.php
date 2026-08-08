@@ -23,7 +23,7 @@ class CentralAuthController extends Controller
             return ApiResponse::error('Invalid credentials.', 422, null, [], null, null, 'INVALID_CREDENTIALS');
         }
 
-        if (! $user->active) {
+        if (! $user->is_active) {
             return ApiResponse::forbidden('Account is inactive.', 'ACCOUNT_INACTIVE');
         }
 

@@ -28,6 +28,7 @@ class UpdateCustomerGroupRequest extends FormRequest
                 Rule::unique('customer_groups', 'code')->ignore($this->route('customer_group')),
             ],
             'name' => ['required', 'string', 'max:255'],
+            'is_active' => ['required', 'boolean'],
         ];
     }
 }

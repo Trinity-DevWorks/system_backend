@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name', 'description', 'active', 'created_by'])]
+#[Fillable(['name', 'description', 'is_active', 'created_by'])]
 class Role extends Model implements AuditableContract
 {
     use Auditable;
@@ -24,7 +24,7 @@ class Role extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
-            'active' => 'boolean',
+            'is_active' => 'boolean',
         ];
     }
 

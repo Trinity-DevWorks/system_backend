@@ -55,6 +55,30 @@ class VatGroupService
 
     public function delete(VatGroup $vatGroup): void
     {
+        if ($vatGroup->is_default) {
+            abort(422, 'Cannot delete the default VAT group. Set another VAT group as default first.', [
+                'X-Error-Code' => 'VAT_GROUP_DEFAULT_DELETE_FORBIDDEN',
+            ]);
+        }
+
+        if ($vatGroup->items()->withTrashed()->exists()) {
+            abort(409, 'Cannot delete a VAT group that is assigned to items (including soft-deleted items).', [
+                'X-Error-Code' => 'VAT_GROUP_DELETE_REFERENCED_BY_ITEMS',
+            ]);
+        }
+
+        if ($vatGroup->customers()->withTrashed()->exists()) {
+            abort(409, 'Cannot delete a VAT group that is assigned to customers (including soft-deleted customers).', [
+                'X-Error-Code' => 'VAT_GROUP_DELETE_REFERENCED_BY_CUSTOMERS',
+            ]);
+        }
+
+        if ($vatGroup->suppliers()->withTrashed()->exists()) {
+            abort(409, 'Cannot delete a VAT group that is assigned to suppliers (including soft-deleted suppliers).', [
+                'X-Error-Code' => 'VAT_GROUP_DELETE_REFERENCED_BY_SUPPLIERS',
+            ]);
+        }
+
         $vatGroup->delete();
         TenantReferenceCache::forget(self::CACHE_LIST);
     }
