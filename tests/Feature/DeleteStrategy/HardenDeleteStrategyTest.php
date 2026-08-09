@@ -12,7 +12,6 @@ use App\Modules\Inventory\Item\Services\ItemService;
 use App\Modules\Inventory\ItemType\Models\ItemType;
 use App\Modules\Inventory\Shared\Enums\DimensionType;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
-use App\Modules\Rbac\Models\Role;
 use App\Modules\VatGroup\Models\VatGroup;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Group;
@@ -51,18 +50,10 @@ class HardenDeleteStrategyTest extends TestCase
     public function test_user_delete_soft_deletes_and_hides_from_index(): void
     {
         $userId = $this->tenant->run(function (): string {
-            $role = Role::query()->where('name', '!=', 'Owner')->orderBy('id')->first()
-                ?? Role::query()->create([
-                    'name' => 'Staff',
-                    'description' => 'Test staff role',
-                    'is_active' => true,
-                ]);
-
             $user = User::factory()->create([
                 'name' => 'Soft Delete User',
                 'email' => 'soft-delete@delete-strategy.local',
                 'is_active' => true,
-                'role_id' => $role->id,
             ]);
 
             return (string) $user->id;
