@@ -39,14 +39,14 @@ return new class extends Migration
             $table->unique(['role_id', 'permission_id']);
         });
 
-        Schema::table('users', function (Blueprint $table) {
-            $table->foreign('role_id')->references('id')->on('roles')->nullOnDelete();
+        Schema::table('branch_user', function (Blueprint $table) {
+            $table->foreign('role_id')->references('id')->on('roles')->restrictOnDelete();
         });
     }
 
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
+        Schema::table('branch_user', function (Blueprint $table) {
             $table->dropForeign(['role_id']);
         });
 

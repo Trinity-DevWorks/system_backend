@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Stock\Support;
 use App\Modules\Inventory\Stock\Enums\StockTransferStatus;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Modules\Warehouse\Services\WarehouseService;
 
 final class StockTransferRules
 {
@@ -28,6 +29,26 @@ final class StockTransferRules
 
         if (! $from->is_active || ! $to->is_active) {
             abort(422, 'Both warehouses must be active.', ['X-Error-Code' => 'STOCK_TRANSFER_WAREHOUSE_INACTIVE']);
+        }
+
+        app(WarehouseService::class)->assertTransferPair($from, $to);
+    }
+
+    public static function assertTransferVisible(StockTransfer $transfer): void
+    {
+        $warehouseService = app(WarehouseService::class);
+        $from = $transfer->relationLoaded('fromWarehouse')
+            ? $transfer->fromWarehouse
+            : Warehouse::query()->find($transfer->from_warehouse_id);
+        $to = $transfer->relationLoaded('toWarehouse')
+            ? $transfer->toWarehouse
+            : Warehouse::query()->find($transfer->to_warehouse_id);
+
+        if ($from instanceof Warehouse) {
+            $warehouseService->assertVisible($from);
+        }
+        if ($to instanceof Warehouse) {
+            $warehouseService->assertVisible($to);
         }
     }
 }

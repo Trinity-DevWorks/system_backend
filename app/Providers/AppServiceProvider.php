@@ -9,6 +9,7 @@ use App\Models\Attachment;
 use App\Models\Audit;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Branch\Models\Branch;
 use App\Modules\Brand\Models\Brand;
 use App\Modules\Category\Models\Category;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
@@ -80,6 +81,7 @@ class AppServiceProvider extends ServiceProvider
             'audit' => Audit::class,
             'attachment' => Attachment::class,
             'brand' => Brand::class,
+            'branch' => Branch::class,
             'category' => Category::class,
             'company_profile' => CompanyProfile::class,
             'customer' => Customer::class,

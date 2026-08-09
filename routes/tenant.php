@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AssignedModuleController;
 use App\Modules\Audit\Http\Controllers\AuditController;
+use App\Modules\Branch\Http\Controllers\BranchContextController;
+use App\Modules\Branch\Http\Controllers\BranchController;
 use App\Modules\Brand\Http\Controllers\BrandController;
 use App\Modules\Category\Http\Controllers\CategoryController;
 use App\Modules\CompanyProfile\Http\Controllers\CompanyProfileAttachmentController;
@@ -36,6 +38,7 @@ use App\Modules\PaymentTerm\Http\Controllers\PaymentTermController;
 use App\Modules\Rbac\Http\Controllers\ForgotPasswordController;
 use App\Modules\Rbac\Http\Controllers\LoginController;
 use App\Modules\Rbac\Http\Controllers\LogoutController;
+use App\Modules\Rbac\Http\Controllers\MeController;
 use App\Modules\Rbac\Http\Controllers\PermissionController;
 use App\Modules\Rbac\Http\Controllers\ResetPasswordController;
 use App\Modules\Rbac\Http\Controllers\RoleController;
@@ -85,9 +88,13 @@ Route::middleware([
     Route::post('auth/reset-password', ResetPasswordController::class)
         ->middleware('throttle:password-reset');
 
-    Route::middleware(['auth:sanctum', 'ensure.active'])->group(function () {
+    Route::middleware(['auth:sanctum', 'ensure.active', 'resolve.branch'])->group(function () {
         Route::post('auth/logout', LogoutController::class)
             ->middleware('throttle:60,1');
+
+        Route::get('auth/me', MeController::class);
+        Route::get('branch-context', [BranchContextController::class, 'show']);
+        Route::post('branch-context/switch', [BranchContextController::class, 'switch']);
 
         Route::get('tenant/assigned-modules', AssignedModuleController::class);
 
@@ -121,6 +128,11 @@ Route::middleware([
             Route::put('company-profile', [CompanyProfileController::class, 'update'])
                 ->middleware('check.permission:company_profile,edit');
 
+            Route::apiResource('branches', BranchController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:branches,view'])
+                ->middlewareFor(['store'], ['check.permission:branches,add'])
+                ->middlewareFor(['update'], ['check.permission:branches,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:branches,delete']);
             Route::get('tenant-settings', [TenantSettingController::class, 'show']);
             Route::put('tenant-settings', [TenantSettingController::class, 'update'])
                 ->middleware('check.permission:tenant_settings,edit');

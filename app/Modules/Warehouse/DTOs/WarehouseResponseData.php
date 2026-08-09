@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Warehouse\DTOs;
 
+use App\Modules\Warehouse\Enums\WarehouseType;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Support\Collection;
 
@@ -13,6 +14,13 @@ readonly class WarehouseResponseData
         public int $id,
         public string $name,
         public string $shortcutName,
+        public string $type,
+        public ?int $branchId,
+        public ?string $branchName,
+        public ?string $address,
+        public ?string $description,
+        public ?string $managerId,
+        public ?string $managerName,
         public bool $isActive,
         public bool $isDefault,
         public bool $isDefaultSales,
@@ -25,10 +33,24 @@ readonly class WarehouseResponseData
 
     public static function fromModel(Warehouse $warehouse): self
     {
+        $warehouse->loadMissing(['branch:id,name', 'manager:id,name']);
+        $branch = $warehouse->branch;
+        $manager = $warehouse->manager;
+        $type = $warehouse->type instanceof WarehouseType
+            ? $warehouse->type
+            : WarehouseType::from((string) $warehouse->type);
+
         return new self(
             id: $warehouse->id,
             name: $warehouse->name,
             shortcutName: $warehouse->shortcut_name,
+            type: $type->value,
+            branchId: $warehouse->branch_id,
+            branchName: $branch?->name,
+            address: $warehouse->address,
+            description: $warehouse->description,
+            managerId: $warehouse->manager_id,
+            managerName: $manager?->name,
             isActive: (bool) $warehouse->is_active,
             isDefault: (bool) $warehouse->is_default,
             isDefaultSales: (bool) $warehouse->is_default_sales,
@@ -42,19 +64,7 @@ readonly class WarehouseResponseData
 
     /**
      * @param  Collection<int, Warehouse>  $warehouses
-     * @return list<array{
-     *     id:int,
-     *     name:string,
-     *     shortcut_name:string,
-     *     is_active:bool,
-     *     is_default:bool,
-     *     is_default_sales:bool,
-     *     is_default_production:bool,
-     *     is_default_purchase:bool,
-     *     is_default_storage:bool,
-     *     created_at:string,
-     *     updated_at:string
-     * }>
+     * @return list<array<string, mixed>>
      */
     public static function collectionToArray(Collection $warehouses): array
     {
@@ -65,19 +75,7 @@ readonly class WarehouseResponseData
     }
 
     /**
-     * @return array{
-     *     id:int,
-     *     name:string,
-     *     shortcut_name:string,
-     *     is_active:bool,
-     *     is_default:bool,
-     *     is_default_sales:bool,
-     *     is_default_production:bool,
-     *     is_default_purchase:bool,
-     *     is_default_storage:bool,
-     *     created_at:string,
-     *     updated_at:string
-     * }
+     * @return array<string, mixed>
      */
     public function toArray(): array
     {
@@ -85,6 +83,13 @@ readonly class WarehouseResponseData
             'id' => $this->id,
             'name' => $this->name,
             'shortcut_name' => $this->shortcutName,
+            'type' => $this->type,
+            'branch_id' => $this->branchId,
+            'branch_name' => $this->branchName,
+            'address' => $this->address,
+            'description' => $this->description,
+            'manager_id' => $this->managerId,
+            'manager_name' => $this->managerName,
             'is_active' => $this->isActive,
             'is_default' => $this->isDefault,
             'is_default_sales' => $this->isDefaultSales,

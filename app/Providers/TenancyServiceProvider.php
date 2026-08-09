@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Jobs\BootstrapTenantDefaultBranch;
 use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantUnitCatalog;
 use Illuminate\Contracts\Http\Kernel;
@@ -30,6 +31,7 @@ class TenancyServiceProvider extends ServiceProvider
                 JobPipeline::make([
                     Jobs\CreateDatabase::class,
                     Jobs\MigrateDatabase::class,
+                    BootstrapTenantDefaultBranch::class,
                     BootstrapTenantItemTypes::class,
                     BootstrapTenantUnitCatalog::class,
                 ])->send(function (Events\TenantCreated $event) {

@@ -10,13 +10,15 @@ use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderLineQuantity;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
+use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderService
 {
     public function __construct(
-        private readonly PurchaseOrderQueryService $purchaseOrderQueryService
+        private readonly PurchaseOrderQueryService $purchaseOrderQueryService,
+        private readonly WarehouseService $warehouseService,
     ) {}
 
     /**
@@ -38,7 +40,7 @@ class PurchaseOrderService
 
     public function find(string $id): PurchaseOrder
     {
-        return PurchaseOrder::query()
+        $order = PurchaseOrder::query()
             ->with([
                 'supplier',
                 'warehouse',
@@ -50,6 +52,14 @@ class PurchaseOrderService
                 'lines.itemUom.uom',
             ])
             ->findOrFail($id);
+
+        if ($order->warehouse !== null) {
+            $this->warehouseService->assertVisible($order->warehouse);
+        } else {
+            $this->warehouseService->assertVisibleById((int) $order->warehouse_id);
+        }
+
+        return $order;
     }
 
     /**
@@ -173,6 +183,7 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($order): PurchaseOrder {
             $locked = PurchaseOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $this->assertOrderWarehouseVisible($locked);
             PurchaseOrderRules::assertCancellable($locked);
             $locked->update(['status' => PurchaseOrderStatus::Cancelled]);
 
@@ -207,6 +218,7 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($order, $userId): PurchaseOrder {
             $locked = PurchaseOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $this->assertOrderWarehouseVisible($locked);
             PurchaseOrderRules::assertMarkAsSent($locked);
 
             $locked->update([
@@ -273,9 +285,15 @@ class PurchaseOrderService
     private function lockDraftOrder(PurchaseOrder $order): PurchaseOrder
     {
         $locked = PurchaseOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+        $this->assertOrderWarehouseVisible($locked);
         PurchaseOrderRules::assertDraft($locked);
 
         return $locked;
+    }
+
+    private function assertOrderWarehouseVisible(PurchaseOrder $order): void
+    {
+        $this->warehouseService->assertVisibleById((int) $order->warehouse_id);
     }
 
     private function formatPoNumber(): string

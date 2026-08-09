@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Warehouse\DTOs;
 
+use App\Modules\Warehouse\Enums\WarehouseType;
 use App\Modules\Warehouse\Http\Requests\StoreWarehouseRequest;
 use App\Modules\Warehouse\Http\Requests\UpdateWarehouseRequest;
 
@@ -12,6 +13,11 @@ readonly class WarehouseData
     public function __construct(
         public string $name,
         public string $shortcutName,
+        public WarehouseType $type,
+        public ?int $branchId,
+        public ?string $address,
+        public ?string $description,
+        public ?string $managerId,
         public bool $isActive,
         public bool $isDefault,
         public bool $isDefaultSales,
@@ -35,9 +41,25 @@ readonly class WarehouseData
      */
     private static function fromValidated(array $data): self
     {
+        $type = WarehouseType::from((string) $data['type']);
+        $branchId = isset($data['branch_id']) && $data['branch_id'] !== '' && $data['branch_id'] !== null
+            ? (int) $data['branch_id']
+            : null;
+
+        if (! $type->requiresBranch()) {
+            $branchId = null;
+        }
+
         return new self(
             name: $data['name'],
             shortcutName: $data['shortcut_name'],
+            type: $type,
+            branchId: $branchId,
+            address: self::nullableString($data['address'] ?? null),
+            description: self::nullableString($data['description'] ?? null),
+            managerId: isset($data['manager_id']) && $data['manager_id'] !== ''
+                ? (string) $data['manager_id']
+                : null,
             isActive: (bool) $data['is_active'],
             isDefault: (bool) $data['is_default'],
             isDefaultSales: (bool) $data['is_default_sales'],
@@ -45,6 +67,17 @@ readonly class WarehouseData
             isDefaultPurchase: (bool) $data['is_default_purchase'],
             isDefaultStorage: (bool) $data['is_default_storage'],
         );
+    }
+
+    private static function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+
+        return $trimmed === '' ? null : $trimmed;
     }
 
     /**
@@ -62,22 +95,18 @@ readonly class WarehouseData
     }
 
     /**
-     * @return array{
-     *     name:string,
-     *     shortcut_name:string,
-     *     is_active:bool,
-     *     is_default:bool,
-     *     is_default_sales:bool,
-     *     is_default_production:bool,
-     *     is_default_purchase:bool,
-     *     is_default_storage:bool
-     * }
+     * @return array<string, mixed>
      */
     public function toArray(): array
     {
         return [
             'name' => $this->name,
             'shortcut_name' => $this->shortcutName,
+            'type' => $this->type->value,
+            'branch_id' => $this->branchId,
+            'address' => $this->address,
+            'description' => $this->description,
+            'manager_id' => $this->managerId,
             'is_active' => $this->isActive,
             'is_default' => $this->isDefault,
             'is_default_sales' => $this->isDefaultSales,

@@ -18,6 +18,7 @@ class UpdateUserRoleRequest extends FormRequest
     {
         return [
             'role_id' => ['required', 'integer', 'exists:roles,id'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
         ];
     }
 }

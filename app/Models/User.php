@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Modules\Branch\Models\Branch;
+use App\Modules\Branch\Models\BranchUser;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Salesman\Models\Salesman;
 use App\Notifications\ResetPasswordNotification;
@@ -13,6 +15,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -21,7 +24,7 @@ use Laravel\Sanctum\HasApiTokens;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name', 'email', 'password', 'is_active', 'role_id', 'created_by'])]
+#[Fillable(['name', 'email', 'password', 'is_active', 'created_by', 'preferred_branch_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements AuditableContract, CanResetPasswordContract
 {
@@ -64,14 +67,6 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     }
 
     /**
-     * @return BelongsTo<Role, $this>
-     */
-    public function role(): BelongsTo
-    {
-        return $this->belongsTo(Role::class);
-    }
-
-    /**
      * @return BelongsTo<User, $this>
      */
     public function creator(): BelongsTo
@@ -80,10 +75,61 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     }
 
     /**
+     * Last branch the user switched into (server-side preference).
+     *
+     * @return BelongsTo<Branch, $this>
+     */
+    public function preferredBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'preferred_branch_id');
+    }
+
+    /**
      * @return HasOne<Salesman, $this>
      */
     public function salesmanProfile(): HasOne
     {
         return $this->hasOne(Salesman::class);
+    }
+
+    /**
+     * Branch memberships with the role assigned in each branch.
+     *
+     * @return BelongsToMany<Branch, $this>
+     */
+    public function branches(): BelongsToMany
+    {
+        return $this->belongsToMany(Branch::class, 'branch_user')
+            ->using(BranchUser::class)
+            ->withPivot('role_id')
+            ->withTimestamps();
+    }
+
+    /**
+     * Roles assigned across branches (may include the same role more than once).
+     *
+     * @return BelongsToMany<Role, $this>
+     */
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'branch_user')
+            ->using(BranchUser::class)
+            ->withPivot('branch_id')
+            ->withTimestamps();
+    }
+
+    public function roleIdForBranch(int $branchId): ?int
+    {
+        $this->loadMissing('branches');
+
+        $branch = $this->branches->first(
+            fn (Branch $b): bool => (int) $b->id === $branchId
+        );
+
+        if ($branch === null || $branch->pivot?->role_id === null) {
+            return null;
+        }
+
+        return (int) $branch->pivot->role_id;
     }
 }
