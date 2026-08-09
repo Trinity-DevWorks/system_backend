@@ -27,6 +27,7 @@ class UpdateVatGroupRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'percentage' => ['required', 'numeric', 'min:0', 'max:100'],
             'is_default' => ['required', 'boolean'],
+            'is_active' => ['required', 'boolean'],
         ];
     }
 }

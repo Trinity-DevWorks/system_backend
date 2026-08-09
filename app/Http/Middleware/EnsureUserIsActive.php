@@ -20,7 +20,7 @@ class EnsureUserIsActive
             return $next($request);
         }
 
-        if ($user->active) {
+        if ($user->is_active) {
             return $next($request);
         }
 

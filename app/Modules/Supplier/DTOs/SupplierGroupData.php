@@ -12,6 +12,7 @@ readonly class SupplierGroupData
     public function __construct(
         public string $code,
         public string $name,
+        public bool $isActive,
     ) {}
 
     public static function fromStoreRequest(StoreSupplierGroupRequest $request): self
@@ -20,7 +21,8 @@ readonly class SupplierGroupData
 
         return new self(
             code: $d['code'],
-            name: $d['name']
+            name: $d['name'],
+            isActive: (bool) ($d['is_active'] ?? true),
         );
     }
 
@@ -30,18 +32,20 @@ readonly class SupplierGroupData
 
         return new self(
             code: $d['code'],
-            name: $d['name']
+            name: $d['name'],
+            isActive: (bool) $d['is_active'],
         );
     }
 
     /**
-     * @return array{code: string, name: string}
+     * @return array{code: string, name: string, is_active: bool}
      */
     public function toArray(): array
     {
         return [
             'code' => $this->code,
             'name' => $this->name,
+            'is_active' => $this->isActive,
         ];
     }
 }

@@ -21,7 +21,7 @@ return new class extends Migration
             $table->decimal('acceptable_amount_overdue', 20, 4)->nullable();
             $table->decimal('allowed_difference_in_receipt', 20, 4)->nullable();
             $table->decimal('allowed_difference_in_payment', 20, 4)->nullable();
-            $table->boolean('active')->default(true);
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
 
             $table->unique('code');

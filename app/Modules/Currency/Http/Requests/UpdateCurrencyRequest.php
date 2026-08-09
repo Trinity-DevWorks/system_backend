@@ -35,7 +35,7 @@ class UpdateCurrencyRequest extends FormRequest
             'acceptable_amount_overdue' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'allowed_difference_in_receipt' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'allowed_difference_in_payment' => ['sometimes', 'nullable', 'numeric', 'min:0'],
-            'active' => ['sometimes', 'boolean'],
+            'is_active' => ['sometimes', 'boolean'],
             'is_primary' => ['sometimes', 'boolean'],
         ];
     }

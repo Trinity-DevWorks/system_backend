@@ -23,7 +23,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'acceptable_amount_overdue',
     'allowed_difference_in_receipt',
     'allowed_difference_in_payment',
-    'active',
+    'is_active',
 ])]
 class Currency extends Model implements AuditableContract
 {
@@ -36,7 +36,7 @@ class Currency extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
-            'active' => 'boolean',
+            'is_active' => 'boolean',
             'smallest_unit' => 'decimal:6',
             'round_limit' => 'decimal:6',
             'acceptable_amount_overdue' => 'decimal:4',

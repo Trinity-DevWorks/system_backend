@@ -19,7 +19,7 @@ class ForgotPasswordController extends Controller
 
         $user = User::query()->where('email', $email)->first();
 
-        if ($user instanceof User && $user->active) {
+        if ($user instanceof User && $user->is_active) {
             Password::broker()->sendResetLink(['email' => $email]);
         }
 

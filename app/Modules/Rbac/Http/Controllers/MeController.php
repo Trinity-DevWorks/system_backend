@@ -44,7 +44,7 @@ class MeController extends Controller
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'active' => (bool) $user->active,
+            'is_active' => (bool) $user->is_active,
             'role' => $effectiveRole,
             'branches' => $branches,
             'branch_ids' => $user->branches->pluck('id')->map(fn ($id): int => (int) $id)->values()->all(),

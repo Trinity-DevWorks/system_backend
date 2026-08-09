@@ -55,7 +55,7 @@ trait InteractsWithTenant
             $this->tenantUser = User::factory()->create([
                 'name' => 'Attachment Owner',
                 'email' => 'owner@attach-test.local',
-                'active' => true,
+                'is_active' => true,
             ]);
 
             BootstrapTenantRbac::dispatchSync($this->tenant, (string) $this->tenantUser->id);

@@ -29,7 +29,7 @@ class RoleService
     }
 
     /**
-     * @param  array{name: string, description?: string|null, active: bool, permissions?: array<int, array<string, mixed>>}  $data
+     * @param  array{name: string, description?: string|null, is_active: bool, permissions?: array<int, array<string, mixed>>}  $data
      */
     public function create(array $data): Role
     {
@@ -37,7 +37,7 @@ class RoleService
             $role = Role::query()->create([
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
-                'active' => $data['active'],
+                'is_active' => $data['is_active'],
                 'created_by' => Auth::id(),
             ]);
 
@@ -51,7 +51,7 @@ class RoleService
     }
 
     /**
-     * @param  array{name: string, description?: string|null, active: bool, permissions?: array<int, array<string, mixed>>}  $data
+     * @param  array{name: string, description?: string|null, is_active: bool, permissions?: array<int, array<string, mixed>>}  $data
      */
     public function update(Role $role, array $data): Role
     {
@@ -63,7 +63,7 @@ class RoleService
             $role->update([
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
-                'active' => $data['active'],
+                'is_active' => $data['is_active'],
             ]);
 
             if (array_key_exists('permissions', $data) && is_array($data['permissions'])) {

@@ -7,6 +7,7 @@ namespace App\Modules\Currency\Services;
 use App\Modules\Currency\DTOs\CurrencyData;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Models\CurrencyPairRate;
+use App\Modules\TenantSetting\Models\TenantSetting;
 use App\Modules\TenantSetting\Services\TenantSettingService;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
@@ -91,7 +92,7 @@ class CurrencyService
         return DB::transaction(function () use ($currency, $patch): Currency {
             $modelKeys = [
                 'name', 'code', 'iso_code', 'symbol', 'smallest_unit', 'round_limit',
-                'acceptable_amount_overdue', 'allowed_difference_in_receipt', 'allowed_difference_in_payment', 'active',
+                'acceptable_amount_overdue', 'allowed_difference_in_receipt', 'allowed_difference_in_payment', 'is_active',
             ];
             $scalar = array_intersect_key($patch, array_flip($modelKeys));
             if ($scalar !== []) {

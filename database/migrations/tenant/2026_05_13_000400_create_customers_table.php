@@ -12,11 +12,11 @@ return new class extends Migration
     {
         Schema::create('customers', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->foreignId('customer_group_id')->nullable()->constrained('customer_groups')->nullOnDelete();
+            $table->foreignId('customer_group_id')->nullable()->constrained('customer_groups')->restrictOnDelete();
             $table->foreignUuid('salesman_id')->nullable()->constrained('salesmen')->nullOnDelete();
             $table->foreignId('payment_method_id')->nullable()->constrained('payment_methods')->nullOnDelete();
             $table->foreignId('payment_terms_id')->nullable()->constrained('payment_terms')->nullOnDelete();
-            $table->foreignId('vat_group_id')->nullable()->constrained('vat_groups')->nullOnDelete();
+            $table->foreignId('vat_group_id')->nullable()->constrained('vat_groups')->restrictOnDelete();
             $table->string('customer_code')->nullable()->unique();
             $table->string('name');
             $table->string('email')->nullable()->unique();

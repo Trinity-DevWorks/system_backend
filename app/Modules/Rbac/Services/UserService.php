@@ -51,7 +51,7 @@ class UserService
      *   name: string,
      *   email: string,
      *   password: string,
-     *   active: bool,
+     *   is_active: bool,
      *   branch_assignments: list<array{branch_id: int, role_id: int}>
      * }  $data
      */
@@ -62,7 +62,7 @@ class UserService
                 'name' => $data['name'],
                 'email' => $data['email'],
                 'password' => $data['password'],
-                'active' => $data['active'],
+                'is_active' => $data['is_active'],
                 'created_by' => auth()->id(),
             ]);
 
@@ -78,7 +78,7 @@ class UserService
      * @param  array{
      *   name: string,
      *   email: string,
-     *   active: bool,
+     *   is_active: bool,
      *   password?: string|null,
      *   branch_assignments: list<array{branch_id: int, role_id: int}>
      * }  $data
@@ -88,17 +88,17 @@ class UserService
         return DB::transaction(function () use ($user, $data): User {
             $actor = auth()->user();
             if ($actor instanceof User && $actor->id === $user->id) {
-                if (! $data['active']) {
+                if (! $data['is_active']) {
                     abort(422, 'You cannot deactivate your own account.', ['X-Error-Code' => 'USER_SELF_DEACTIVATE_FORBIDDEN']);
                 }
             }
 
-            $this->assertOwnerProtection($user, $data['branch_assignments'], (bool) $data['active']);
+            $this->assertOwnerProtection($user, $data['branch_assignments'], (bool) $data['is_active']);
 
             $payload = [
                 'name' => $data['name'],
                 'email' => $data['email'],
-                'active' => $data['active'],
+                'is_active' => $data['is_active'],
             ];
 
             if (! empty($data['password'])) {
@@ -119,7 +119,7 @@ class UserService
                 $payload['password'] = $data['password'];
             }
 
-            $wasActive = (bool) $user->active;
+            $wasActive = (bool) $user->is_active;
             $assignmentsChanged = $this->assignmentsDiffer($user, $data['branch_assignments']);
 
             $user->update($payload);
@@ -130,7 +130,7 @@ class UserService
                 $this->permissionService->invalidateCacheForUser($user->fresh() ?? $user);
             }
 
-            if ($wasActive && ! $data['active']) {
+            if ($wasActive && ! $data['is_active']) {
                 $user->tokens()->delete();
             }
 
@@ -182,7 +182,7 @@ class UserService
                     ->all();
             }
 
-            $this->assertOwnerProtection($user, $assignments, (bool) $user->active);
+            $this->assertOwnerProtection($user, $assignments, (bool) $user->is_active);
 
             $changed = $this->assignmentsDiffer($user, $assignments);
             $this->syncBranchAssignments($user, $assignments);
@@ -206,6 +206,7 @@ class UserService
 
         DB::transaction(function () use ($user): void {
             $user->tokens()->delete();
+            // Soft-delete: preserves historical attribution FKs (created_by, posted_by, ...).
             $user->delete();
         });
     }
@@ -286,7 +287,7 @@ class UserService
         }
 
         return (int) DB::table('users')
-            ->where('users.active', true)
+            ->where('users.is_active', true)
             ->where('users.id', '!=', $excludeUserId)
             ->whereExists(function ($query) use ($ownerRoleId): void {
                 $query->selectRaw('1')

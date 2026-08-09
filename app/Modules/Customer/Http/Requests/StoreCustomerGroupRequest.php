@@ -28,6 +28,7 @@ class StoreCustomerGroupRequest extends FormRequest
                 Rule::unique('customer_groups', 'code'),
             ],
             'name' => ['required', 'string', 'max:255'],
+            'is_active' => ['nullable', 'boolean'],
         ];
     }
 }

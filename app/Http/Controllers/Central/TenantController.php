@@ -120,7 +120,7 @@ class TenantController extends Controller
                 'name' => "{$validated['name']}_owner",
                 'email' => $validated['email'],
                 'password' => $validated['password'],
-                'active' => true,
+                'is_active' => true,
             ]);
             $ownerUserId = $user->id;
         });

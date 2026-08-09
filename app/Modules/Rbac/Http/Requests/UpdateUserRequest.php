@@ -41,7 +41,7 @@ class UpdateUserRequest extends FormRequest
                 Rule::unique('users', 'email')->ignore($user->id),
             ],
             'password' => ['nullable', 'string', 'confirmed', Password::defaults()],
-            'active' => ['required', 'boolean'],
+            'is_active' => ['required', 'boolean'],
             'branch_assignments' => ['required', 'array', 'min:1'],
             'branch_assignments.*.branch_id' => ['required', 'integer', 'exists:branches,id', 'distinct'],
             'branch_assignments.*.role_id' => ['required', 'integer', 'exists:roles,id'],

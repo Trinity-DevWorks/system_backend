@@ -19,7 +19,7 @@ return new class extends Migration
             $table->foreignId('brand_id')->nullable()->constrained('brands')->nullOnDelete();
             $table->foreignId('unit_group_id')->constrained('unit_groups')->restrictOnDelete();
             $table->foreignId('base_uom_id')->nullable()->constrained('unit_of_measurements')->nullOnDelete();
-            $table->foreignId('vat_group_id')->nullable()->constrained('vat_groups')->nullOnDelete();
+            $table->foreignId('vat_group_id')->nullable()->constrained('vat_groups')->restrictOnDelete();
             $table->string('description', 500)->nullable();
             $table->string('ticket_name', 120)->nullable();
             $table->string('kitchen_name', 120)->nullable();
@@ -33,6 +33,7 @@ return new class extends Migration
             $table->boolean('allow_purchase')->default(true);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
+            $table->softDeletes();
 
             $table->index('item_type_id');
             $table->index('category_id');

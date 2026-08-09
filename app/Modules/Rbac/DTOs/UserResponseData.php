@@ -20,7 +20,7 @@ readonly class UserResponseData
         public string $id,
         public string $name,
         public string $email,
-        public bool $active,
+        public bool $isActive,
         public ?int $roleId,
         public ?string $roleName,
         public array $branches,
@@ -98,7 +98,7 @@ readonly class UserResponseData
             id: $user->id,
             name: $user->name,
             email: $user->email,
-            active: (bool) $user->active,
+            isActive: (bool) $user->is_active,
             roleId: $sharedRoleId,
             roleName: $sharedRoleName,
             branches: $branches,
@@ -130,7 +130,7 @@ readonly class UserResponseData
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
-            'active' => $this->active,
+            'is_active' => $this->isActive,
             'role' => $this->roleId !== null
                 ? ['id' => $this->roleId, 'name' => $this->roleName]
                 : null,
