@@ -28,10 +28,23 @@ return new class extends Migration
             $table->unique(['name']);
             $table->unique(['shortcut_name']);
         });
+
+        // Last branch the user chose; used when X-Branch-Id is missing (cross-device preference).
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreignId('preferred_branch_id')
+                ->nullable()
+                ->after('created_by')
+                ->constrained('branches')
+                ->nullOnDelete();
+        });
     }
 
     public function down(): void
     {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('preferred_branch_id');
+        });
+
         Schema::dropIfExists('branches');
     }
 };

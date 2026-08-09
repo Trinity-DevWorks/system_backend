@@ -23,7 +23,7 @@ use Laravel\Sanctum\HasApiTokens;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name', 'email', 'password', 'active', 'created_by'])]
+#[Fillable(['name', 'email', 'password', 'active', 'created_by', 'preferred_branch_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements AuditableContract, CanResetPasswordContract
 {
@@ -70,6 +70,16 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Last branch the user switched into (server-side preference).
+     *
+     * @return BelongsTo<Branch, $this>
+     */
+    public function preferredBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'preferred_branch_id');
     }
 
     /**

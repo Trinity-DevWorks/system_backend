@@ -19,6 +19,10 @@ class BranchService
 
     private const CACHE_LIST = 'branches.list';
 
+    public function __construct(
+        private readonly BranchContextService $branchContext,
+    ) {}
+
     public function list(): Collection
     {
         $branches = TenantReferenceCache::rememberModels(
@@ -100,6 +104,8 @@ class BranchService
                 Branch::query()->where('is_default', true)->update(['is_default' => false]);
             }
 
+            $this->assertOwnerCanDeactivateDefault(isDefault: (bool) $payload['is_default'], isActive: (bool) $payload['is_active']);
+
             $created = Branch::query()->create($payload);
             TenantReferenceCache::forget(self::CACHE_LIST);
 
@@ -115,6 +121,12 @@ class BranchService
                     'X-Error-Code' => 'BRANCH_DEFAULT_UNSET_FORBIDDEN',
                 ]);
             }
+
+            $this->assertOwnerCanDeactivateDefault(
+                isDefault: $data->isDefault || (bool) $branch->is_default,
+                isActive: $data->isActive,
+                currentlyActive: (bool) $branch->is_active,
+            );
 
             $this->enforceSingleDefault($data, $branch->id);
 
@@ -166,5 +178,29 @@ class BranchService
             $query->where('id', '!=', $exceptBranchId);
         }
         $query->update(['is_default' => false]);
+    }
+
+    /**
+     * Only Owner may deactivate the default (Main) branch.
+     */
+    private function assertOwnerCanDeactivateDefault(
+        bool $isDefault,
+        bool $isActive,
+        ?bool $currentlyActive = null,
+    ): void {
+        if (! $isDefault || $isActive) {
+            return;
+        }
+
+        // Editing an already-inactive default (other fields) does not require Owner again.
+        if ($currentlyActive === false) {
+            return;
+        }
+
+        if (! $this->branchContext->isOwner()) {
+            abort(403, 'Only the Owner can deactivate the default branch.', [
+                'X-Error-Code' => 'BRANCH_DEFAULT_DEACTIVATE_OWNER_ONLY',
+            ]);
+        }
     }
 }

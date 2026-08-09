@@ -17,8 +17,8 @@ class BranchContextService
     public const OWNER_ROLE_NAME = 'Owner';
 
     /**
-     * Branches the user may switch into.
-     * Owner: all active branches. Others: assigned active branches.
+     * Branches shown in the switcher (includes inactive — those are listed but not selectable).
+     * Owner: all branches. Others: assigned branches.
      *
      * @return Collection<int, Branch>
      */
@@ -30,29 +30,35 @@ class BranchContextService
         }
 
         $query = Branch::query()
-            ->where('is_active', true)
+            ->orderByDesc('is_active')
             ->orderByDesc('is_default')
             ->orderBy('name');
 
         if (! $this->isOwner($user)) {
-            $query->whereIn('id', $this->assignedBranchIds($user));
+            $query->whereIn('id', $this->assignedBranchIds($user, activeOnly: false));
         }
 
         return $query->get(['id', 'name', 'shortcut_name', 'is_default', 'is_active']);
     }
 
     /**
+     * Branch IDs the user may actually work in (active only).
+     *
      * @return list<int>
      */
     public function accessibleBranchIds(?User $user = null): array
     {
         return $this->accessibleBranches($user)
+            ->filter(fn (Branch $b): bool => (bool) $b->is_active)
             ->pluck('id')
             ->map(fn ($id): int => (int) $id)
             ->values()
             ->all();
     }
 
+    /**
+     * Whether the user may switch into / operate as this branch (must be active).
+     */
     public function canAccessBranch(int $branchId, ?User $user = null): bool
     {
         $user = $user ?? $this->authenticatedUser();
@@ -64,12 +70,12 @@ class BranchContextService
             return Branch::query()->whereKey($branchId)->where('is_active', true)->exists();
         }
 
-        return in_array($branchId, $this->assignedBranchIds($user), true);
+        return in_array($branchId, $this->assignedBranchIds($user, activeOnly: true), true);
     }
 
     /**
      * Resolve the active branch for this request.
-     * Prefers X-Branch-Id when valid; otherwise default among accessible.
+     * Prefers X-Branch-Id when valid; otherwise the user's saved preference; else default among accessible.
      */
     public function resolveActiveBranchId(?User $user = null): ?int
     {
@@ -87,6 +93,42 @@ class BranchContextService
         }
 
         return $this->fallbackBranchId($user);
+    }
+
+    /**
+     * Persist the user's last chosen branch (no-op when unchanged or inaccessible).
+     */
+    public function rememberPreferredBranch(int $branchId, ?User $user = null): void
+    {
+        $user = $user ?? $this->authenticatedUser();
+        if ($user === null) {
+            return;
+        }
+
+        if (! $this->canAccessBranch($branchId, $user)) {
+            return;
+        }
+
+        if ((int) ($user->preferred_branch_id ?? 0) === $branchId) {
+            return;
+        }
+
+        $user->forceFill(['preferred_branch_id' => $branchId])->save();
+    }
+
+    /**
+     * Clear preferred branch when the user can no longer access it.
+     */
+    public function clearPreferredBranchIfInaccessible(?User $user = null): void
+    {
+        $user = $user ?? $this->authenticatedUser();
+        if ($user === null || $user->preferred_branch_id === null) {
+            return;
+        }
+
+        if (! $this->canAccessBranch((int) $user->preferred_branch_id, $user)) {
+            $user->forceFill(['preferred_branch_id' => null])->save();
+        }
     }
 
     public function requireActiveBranchId(?User $user = null): int
@@ -121,8 +163,9 @@ class BranchContextService
     /**
      * @return array{
      *   active_branch_id: int|null,
-     *   active_branch: array{id: int, name: string, shortcut_name: string|null, is_default: bool}|null,
-     *   accessible_branches: list<array{id: int, name: string, shortcut_name: string|null, is_default: bool}>,
+     *   active_branch: array{id: int, name: string, shortcut_name: string|null, is_default: bool, is_active: bool}|null,
+     *   preferred_branch_id: int|null,
+     *   accessible_branches: list<array{id: int, name: string, shortcut_name: string|null, is_default: bool, is_active: bool}>,
      *   is_owner: bool
      * }
      */
@@ -139,9 +182,15 @@ class BranchContextService
             $active = Branch::query()->whereKey($activeId)->first(['id', 'name', 'shortcut_name', 'is_default', 'is_active']);
         }
 
+        $preferredId = $user?->preferred_branch_id !== null ? (int) $user->preferred_branch_id : null;
+        if ($preferredId !== null && ! $this->canAccessBranch($preferredId, $user)) {
+            $preferredId = null;
+        }
+
         return [
             'active_branch_id' => $activeId,
             'active_branch' => $active ? $this->branchToArray($active) : null,
+            'preferred_branch_id' => $preferredId,
             'accessible_branches' => $accessible
                 ->map(fn (Branch $b): array => $this->branchToArray($b))
                 ->values()
@@ -153,10 +202,14 @@ class BranchContextService
     /**
      * @return list<int>
      */
-    private function assignedBranchIds(User $user): array
+    private function assignedBranchIds(User $user, bool $activeOnly = true): array
     {
-        return $user->branches()
-            ->where('branches.is_active', true)
+        $query = $user->branches();
+        if ($activeOnly) {
+            $query->where('branches.is_active', true);
+        }
+
+        return $query
             ->pluck('branches.id')
             ->map(fn ($id): int => (int) $id)
             ->values()
@@ -165,18 +218,29 @@ class BranchContextService
 
     private function fallbackBranchId(User $user): ?int
     {
-        $accessible = $this->accessibleBranches($user);
-        if ($accessible->isEmpty()) {
+        $switchable = $this->accessibleBranches($user)
+            ->filter(fn (Branch $b): bool => (bool) $b->is_active)
+            ->values();
+
+        if ($switchable->isEmpty()) {
             return null;
         }
 
-        $default = $accessible->first(fn (Branch $b): bool => (bool) $b->is_default);
+        $preferredId = $user->preferred_branch_id !== null ? (int) $user->preferred_branch_id : null;
+        if ($preferredId !== null) {
+            $preferred = $switchable->first(fn (Branch $b): bool => (int) $b->id === $preferredId);
+            if ($preferred !== null) {
+                return $preferredId;
+            }
+        }
 
-        return (int) ($default?->id ?? $accessible->first()->id);
+        $default = $switchable->first(fn (Branch $b): bool => (bool) $b->is_default);
+
+        return (int) ($default?->id ?? $switchable->first()->id);
     }
 
     /**
-     * @return array{id: int, name: string, shortcut_name: string|null, is_default: bool}
+     * @return array{id: int, name: string, shortcut_name: string|null, is_default: bool, is_active: bool}
      */
     private function branchToArray(Branch $branch): array
     {
@@ -185,6 +249,7 @@ class BranchContextService
             'name' => (string) $branch->name,
             'shortcut_name' => $branch->shortcut_name,
             'is_default' => (bool) $branch->is_default,
+            'is_active' => (bool) $branch->is_active,
         ];
     }
 

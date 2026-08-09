@@ -42,6 +42,8 @@ class BranchContextController extends Controller
             );
         }
 
+        $this->branchContext->rememberPreferredBranch($branchId);
+
         $payload = $this->payloadWithEffectiveRole($branchId);
 
         return ApiResponse::success($payload, 'Branch switched successfully.')
@@ -60,11 +62,13 @@ class BranchContextController extends Controller
             $active = $accessible->first(fn ($b): bool => (int) $b->id === $forceBranchId);
 
             $payload['active_branch_id'] = $forceBranchId;
+            $payload['preferred_branch_id'] = $forceBranchId;
             $payload['active_branch'] = $active ? [
                 'id' => (int) $active->id,
                 'name' => (string) $active->name,
                 'shortcut_name' => $active->shortcut_name,
                 'is_default' => (bool) $active->is_default,
+                'is_active' => (bool) $active->is_active,
             ] : null;
             $payload['accessible_branches'] = $accessible
                 ->map(fn ($b): array => [
@@ -72,6 +76,7 @@ class BranchContextController extends Controller
                     'name' => (string) $b->name,
                     'shortcut_name' => $b->shortcut_name,
                     'is_default' => (bool) $b->is_default,
+                    'is_active' => (bool) $b->is_active,
                 ])
                 ->values()
                 ->all();

@@ -63,6 +63,10 @@ class LoginController extends Controller
 
         $branchContext = $this->branchContext->contextPayload($user);
         $activeBranchId = $branchContext['active_branch_id'] ?? null;
+        if (is_int($activeBranchId)) {
+            $this->branchContext->rememberPreferredBranch($activeBranchId, $user);
+            $branchContext['preferred_branch_id'] = $activeBranchId;
+        }
         $effectiveRole = $this->permissionService->resolveEffectiveRole(
             $user,
             is_int($activeBranchId) ? $activeBranchId : null

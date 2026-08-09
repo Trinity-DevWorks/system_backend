@@ -6,6 +6,7 @@ namespace App\Modules\Rbac\Services;
 
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
+use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Rbac\Models\Role;
 use App\Services\PermissionService;
 use Illuminate\Database\Eloquent\Collection;
@@ -19,6 +20,7 @@ class UserService
 
     public function __construct(
         private readonly PermissionService $permissionService,
+        private readonly BranchContextService $branchContext,
     ) {}
 
     /**
@@ -314,6 +316,8 @@ class UserService
         }
 
         $user->branches()->sync($sync);
+        $user->unsetRelation('branches');
+        $this->branchContext->clearPreferredBranchIfInaccessible($user->refresh());
     }
 
     /**
