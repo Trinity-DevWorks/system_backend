@@ -22,6 +22,9 @@ class UpdateUserRequest extends FormRequest
         if ($this->has('password') && $this->input('password') === '') {
             $this->merge(['password' => null]);
         }
+        if ($this->has('phone') && $this->input('phone') === '') {
+            $this->merge(['phone' => null]);
+        }
     }
 
     /**
@@ -40,6 +43,7 @@ class UpdateUserRequest extends FormRequest
                 'max:255',
                 Rule::unique('users', 'email')->ignore($user->id),
             ],
+            'phone' => ['nullable', 'string', 'max:32'],
             'password' => ['nullable', 'string', 'confirmed', Password::defaults()],
             'is_active' => ['required', 'boolean'],
             'branch_assignments' => ['required', 'array', 'min:1'],

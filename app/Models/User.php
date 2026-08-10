@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\AttachmentViewerCategory;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Branch\Models\BranchUser;
 use App\Modules\Rbac\Models\Role;
@@ -17,6 +18,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -24,7 +27,7 @@ use Laravel\Sanctum\HasApiTokens;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name', 'email', 'password', 'is_active', 'created_by', 'preferred_branch_id'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'is_active', 'created_by', 'preferred_branch_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements AuditableContract, CanResetPasswordContract
 {
@@ -90,6 +93,26 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     public function salesmanProfile(): HasOne
     {
         return $this->hasOne(Salesman::class);
+    }
+
+    /**
+     * @return MorphMany<Attachment, $this>
+     */
+    public function attachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable');
+    }
+
+    /**
+     * Primary avatar image for the user profile.
+     *
+     * @return MorphOne<Attachment, $this>
+     */
+    public function avatarAttachment(): MorphOne
+    {
+        return $this->morphOne(Attachment::class, 'attachable')
+            ->where('is_primary', true)
+            ->where('viewer_category', AttachmentViewerCategory::Image);
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Enums\AttachmentScanStatus;
 use App\Enums\AttachmentViewerCategory;
 use App\Jobs\ProcessAttachmentJob;
 use App\Models\Attachment;
+use App\Models\User;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Inventory\Item\Models\Item;
@@ -32,7 +33,7 @@ class AttachmentService
     /**
      * @return Collection<int, Attachment>
      */
-    public function listFor(Customer|Supplier|Salesman|Item|CompanyProfile $attachable): Collection
+    public function listFor(Customer|Supplier|Salesman|Item|CompanyProfile|User $attachable): Collection
     {
         return $attachable->attachments()
             ->where('processing_status', '!=', AttachmentProcessingStatus::Rejected)
@@ -41,7 +42,7 @@ class AttachmentService
             ->get();
     }
 
-    public function store(Customer|Supplier|Salesman|Item|CompanyProfile $attachable, UploadedFile $file, ?string $uploadedByUserId): Attachment
+    public function store(Customer|Supplier|Salesman|Item|CompanyProfile|User $attachable, UploadedFile $file, ?string $uploadedByUserId): Attachment
     {
         $this->assertWithinQuota($attachable);
 
@@ -164,7 +165,7 @@ class AttachmentService
         return $attachment->fresh() ?? $attachment;
     }
 
-    public function setPrimaryImage(Item|CompanyProfile $attachable, Attachment $attachment): Attachment
+    public function setPrimaryImage(Item|CompanyProfile|User $attachable, Attachment $attachment): Attachment
     {
         if ($attachment->attachable_type !== $attachable->getMorphClass()
             || (string) $attachment->attachable_id !== (string) $attachable->getKey()) {
@@ -292,7 +293,7 @@ class AttachmentService
         );
     }
 
-    private function assertWithinQuota(Customer|Supplier|Salesman|Item|CompanyProfile $attachable): void
+    private function assertWithinQuota(Customer|Supplier|Salesman|Item|CompanyProfile|User $attachable): void
     {
         $max = (int) config('attachments.max_per_record', 50);
         if ($max <= 0) {
@@ -385,7 +386,7 @@ class AttachmentService
     }
 
     private function shouldMarkAsPrimaryOnStore(
-        Customer|Supplier|Salesman|Item|CompanyProfile $attachable,
+        Customer|Supplier|Salesman|Item|CompanyProfile|User $attachable,
         AttachmentViewerCategory $category,
     ): bool {
         if (! $this->supportsPrimaryImage($attachable) || $category !== AttachmentViewerCategory::Image) {
@@ -400,10 +401,10 @@ class AttachmentService
 
     private function supportsPrimaryImage(mixed $attachable): bool
     {
-        return $attachable instanceof Item || $attachable instanceof CompanyProfile;
+        return $attachable instanceof Item || $attachable instanceof CompanyProfile || $attachable instanceof User;
     }
 
-    private function promoteNextPrimaryImage(Item|CompanyProfile $attachable): void
+    private function promoteNextPrimaryImage(Item|CompanyProfile|User $attachable): void
     {
         $next = $attachable->attachments()
             ->where('viewer_category', AttachmentViewerCategory::Image)
