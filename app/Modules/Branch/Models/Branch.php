@@ -15,6 +15,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property-read BranchUser|null $pivot
+ */
 #[Fillable([
     'name',
     'shortcut_name',
@@ -68,7 +71,7 @@ class Branch extends Model implements AuditableContract
     }
 
     /**
-     * @return BelongsToMany<User, $this>
+     * @return BelongsToMany<User, $this, BranchUser>
      */
     public function users(): BelongsToMany
     {

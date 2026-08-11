@@ -22,8 +22,12 @@ class WarehouseService
         private readonly BranchContextService $branchContext,
     ) {}
 
+    /**
+     * @return Collection<int, Warehouse>
+     */
     public function list(): Collection
     {
+        /** @var Collection<int, Warehouse> $warehouses */
         $warehouses = TenantReferenceCache::rememberModels(
             self::CACHE_LIST,
             Warehouse::class,

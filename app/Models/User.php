@@ -95,7 +95,7 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     /**
      * Branch memberships with the role assigned in each branch.
      *
-     * @return BelongsToMany<Branch, $this>
+     * @return BelongsToMany<Branch, $this, BranchUser>
      */
     public function branches(): BelongsToMany
     {
@@ -108,7 +108,7 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     /**
      * Roles assigned across branches (may include the same role more than once).
      *
-     * @return BelongsToMany<Role, $this>
+     * @return BelongsToMany<Role, $this, BranchUser>
      */
     public function roles(): BelongsToMany
     {

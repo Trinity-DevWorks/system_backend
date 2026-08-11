@@ -15,6 +15,10 @@ class RoleService
 {
     private const CACHE_LIST = 'roles.list';
 
+    private const OWNER_ROLE_NAME = 'Owner';
+
+    private const SYSTEM_ROLE_NAMES = ['Owner', 'Admin'];
+
     public function __construct(
         private readonly PermissionService $permissionService
     ) {}
@@ -56,7 +60,13 @@ class RoleService
     public function update(Role $role, array $data): Role
     {
         return DB::transaction(function () use ($role, $data): Role {
-            if (in_array($role->name, ['Owner', 'Admin'], true) && $data['name'] !== $role->name) {
+            if ($role->name === self::OWNER_ROLE_NAME) {
+                abort(422, 'Cannot edit the Owner role or its permissions.', [
+                    'X-Error-Code' => 'ROLE_OWNER_EDIT_FORBIDDEN',
+                ]);
+            }
+
+            if (in_array($role->name, self::SYSTEM_ROLE_NAMES, true) && $data['name'] !== $role->name) {
                 abort(422, 'Cannot rename system role.', ['X-Error-Code' => 'ROLE_SYSTEM_RENAME_FORBIDDEN']);
             }
 
@@ -78,7 +88,7 @@ class RoleService
 
     public function delete(Role $role): void
     {
-        if (in_array($role->name, ['Owner', 'Admin'], true)) {
+        if (in_array($role->name, self::SYSTEM_ROLE_NAMES, true)) {
             abort(422, 'Cannot delete system role.', ['X-Error-Code' => 'ROLE_SYSTEM_DELETE_FORBIDDEN']);
         }
 
@@ -89,6 +99,27 @@ class RoleService
         $role->delete();
         $this->permissionService->invalidateCacheForAllUsers();
         TenantReferenceCache::forget(self::CACHE_LIST);
+    }
+
+    /**
+     * Replace a role's permission matrix without changing role metadata.
+     *
+     * @param  array<int, array<string, mixed>>  $permissionRows
+     */
+    public function updatePermissions(Role $role, array $permissionRows): Role
+    {
+        return DB::transaction(function () use ($role, $permissionRows): Role {
+            if ($role->name === self::OWNER_ROLE_NAME) {
+                abort(422, 'Cannot edit the Owner role or its permissions.', [
+                    'X-Error-Code' => 'ROLE_OWNER_EDIT_FORBIDDEN',
+                ]);
+            }
+
+            $this->syncPermissions($role, $permissionRows);
+            $this->permissionService->invalidateCacheForAllUsers();
+
+            return $role->refresh()->load('permissions');
+        });
     }
 
     /**

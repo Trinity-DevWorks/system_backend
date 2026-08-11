@@ -26,10 +26,9 @@ class MeController extends Controller
 
         $branchContext = $this->branchContext->contextPayload($user);
         $activeBranchId = $branchContext['active_branch_id'] ?? null;
-        $effectiveRole = $this->permissionService->resolveEffectiveRole(
-            $user,
-            is_int($activeBranchId) ? $activeBranchId : null
-        );
+        $branchId = is_int($activeBranchId) ? $activeBranchId : null;
+        $effectiveRole = $this->permissionService->resolveEffectiveRole($user, $branchId);
+        $permissions = $this->permissionService->matrixForUser($user, $branchId);
 
         $branches = $user->branches
             ->map(fn ($b): array => [
@@ -46,6 +45,7 @@ class MeController extends Controller
             'email' => $user->email,
             'is_active' => (bool) $user->is_active,
             'role' => $effectiveRole,
+            'permissions' => $permissions,
             'branches' => $branches,
             'branch_ids' => $user->branches->pluck('id')->map(fn ($id): int => (int) $id)->values()->all(),
             'branch_assignments' => array_values(array_filter(

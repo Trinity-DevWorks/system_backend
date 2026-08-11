@@ -9,6 +9,11 @@ use App\Modules\Rbac\Models\Role;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
+/**
+ * @property string $user_id
+ * @property int $branch_id
+ * @property int $role_id
+ */
 class BranchUser extends Pivot
 {
     protected $table = 'branch_user';
