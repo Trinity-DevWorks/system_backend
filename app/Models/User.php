@@ -126,10 +126,15 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
             fn (Branch $b): bool => (int) $b->id === $branchId
         );
 
-        if ($branch === null || $branch->pivot?->role_id === null) {
+        if ($branch === null) {
             return null;
         }
 
-        return (int) $branch->pivot->role_id;
+        $pivot = $branch->pivot;
+        if (! $pivot instanceof BranchUser || $pivot->role_id === null) {
+            return null;
+        }
+
+        return (int) $pivot->role_id;
     }
 }
