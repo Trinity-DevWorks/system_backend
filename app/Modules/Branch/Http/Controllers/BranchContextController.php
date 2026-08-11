@@ -84,12 +84,13 @@ class BranchContextController extends Controller
 
         $user = auth()->user();
         $activeBranchId = $payload['active_branch_id'] ?? null;
+        $branchId = is_int($activeBranchId) ? $activeBranchId : null;
         $payload['effective_role'] = $user instanceof User
-            ? $this->permissionService->resolveEffectiveRole(
-                $user,
-                is_int($activeBranchId) ? $activeBranchId : null
-            )
+            ? $this->permissionService->resolveEffectiveRole($user, $branchId)
             : null;
+        $payload['permissions'] = $user instanceof User
+            ? $this->permissionService->matrixForUser($user, $branchId)
+            : [];
 
         return $payload;
     }

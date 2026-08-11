@@ -86,11 +86,13 @@ class PermissionService
     }
 
     /**
+     * Permission matrix for the user's effective role on a branch (active branch by default).
+     *
      * @return array<string, array<string, bool>>
      */
-    private function cachedPermissionMatrix(User $user): array
+    public function matrixForUser(User $user, ?int $branchId = null): array
     {
-        $branchId = $this->branchContext->resolveActiveBranchId($user);
+        $branchId ??= $this->branchContext->resolveActiveBranchId($user);
         $roleId = $this->resolveEffectiveRoleId($user, $branchId);
 
         if ($roleId === null) {
@@ -104,6 +106,14 @@ class PermissionService
             (int) config('cache.rbac_matrix_ttl_seconds', 600),
             fn (): array => $this->loadPermissionMatrix($roleId)
         );
+    }
+
+    /**
+     * @return array<string, array<string, bool>>
+     */
+    private function cachedPermissionMatrix(User $user): array
+    {
+        return $this->matrixForUser($user);
     }
 
     /**

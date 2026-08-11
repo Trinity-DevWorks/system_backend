@@ -8,6 +8,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchContextService;
+use App\Modules\Rbac\DTOs\UserResponseData;
+use App\Modules\Rbac\Http\Requests\UpdateMeRequest;
+use App\Modules\Rbac\Services\UserService;
 use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
 
@@ -16,47 +19,51 @@ class MeController extends Controller
     public function __construct(
         private readonly BranchContextService $branchContext,
         private readonly PermissionService $permissionService,
+        private readonly UserService $userService,
     ) {}
 
-    public function __invoke(): JsonResponse
+    public function show(): JsonResponse
     {
         /** @var User $user */
         $user = auth()->user();
-        $user->load(['branches' => fn ($q) => $q->select('branches.id', 'branches.name')]);
+
+        return ApiResponse::success(
+            $this->payload($user),
+            'Current user fetched successfully.'
+        );
+    }
+
+    public function update(UpdateMeRequest $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = auth()->user();
+        $updated = $this->userService->updateMe($user, $request->validated());
+
+        return ApiResponse::success(
+            $this->payload($updated),
+            'Profile updated successfully.'
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function payload(User $user): array
+    {
+        $user->load([
+            'branches' => fn ($q) => $q->select('branches.id', 'branches.name'),
+            'avatarAttachment',
+        ]);
 
         $branchContext = $this->branchContext->contextPayload($user);
         $activeBranchId = $branchContext['active_branch_id'] ?? null;
-        $effectiveRole = $this->permissionService->resolveEffectiveRole(
-            $user,
-            is_int($activeBranchId) ? $activeBranchId : null
-        );
+        $branchId = is_int($activeBranchId) ? $activeBranchId : null;
 
-        $branches = $user->branches
-            ->map(fn ($b): array => [
-                'id' => (int) $b->id,
-                'name' => (string) $b->name,
-                'role_id' => $b->pivot?->role_id !== null ? (int) $b->pivot->role_id : null,
-            ])
-            ->values()
-            ->all();
+        $base = UserResponseData::fromModel($user)->toArray();
+        $base['role'] = $this->permissionService->resolveEffectiveRole($user, $branchId);
+        $base['permissions'] = $this->permissionService->matrixForUser($user, $branchId);
+        $base['branch_context'] = $branchContext;
 
-        return ApiResponse::success([
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'is_active' => (bool) $user->is_active,
-            'role' => $effectiveRole,
-            'branches' => $branches,
-            'branch_ids' => $user->branches->pluck('id')->map(fn ($id): int => (int) $id)->values()->all(),
-            'branch_assignments' => array_values(array_filter(
-                array_map(
-                    static fn (array $b): ?array => $b['role_id'] !== null
-                        ? ['branch_id' => $b['id'], 'role_id' => $b['role_id']]
-                        : null,
-                    $branches
-                )
-            )),
-            'branch_context' => $branchContext,
-        ], 'Current user fetched successfully.');
+        return $base;
     }
 }

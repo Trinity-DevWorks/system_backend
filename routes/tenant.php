@@ -42,6 +42,8 @@ use App\Modules\Rbac\Http\Controllers\MeController;
 use App\Modules\Rbac\Http\Controllers\PermissionController;
 use App\Modules\Rbac\Http\Controllers\ResetPasswordController;
 use App\Modules\Rbac\Http\Controllers\RoleController;
+use App\Modules\Rbac\Http\Controllers\RolePermissionController;
+use App\Modules\Rbac\Http\Controllers\UserAttachmentController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
 use App\Modules\Salesman\Http\Controllers\SalesmanAttachmentController;
@@ -92,7 +94,8 @@ Route::middleware([
         Route::post('auth/logout', LogoutController::class)
             ->middleware('throttle:60,1');
 
-        Route::get('auth/me', MeController::class);
+        Route::get('auth/me', [MeController::class, 'show']);
+        Route::put('auth/me', [MeController::class, 'update']);
         Route::get('branch-context', [BranchContextController::class, 'show']);
         Route::post('branch-context/switch', [BranchContextController::class, 'switch']);
 
@@ -101,6 +104,12 @@ Route::middleware([
         Route::middleware(['ensure.module:core'])->group(function () {
             Route::get('permissions', [PermissionController::class, 'index'])
                 ->middleware('check.permission:permissions,view');
+            Route::get('permissions/roles', [RolePermissionController::class, 'roles'])
+                ->middleware('check.permission:permissions,view');
+            Route::get('roles/{role}/permissions', [RolePermissionController::class, 'show'])
+                ->middleware('check.permission:permissions,view');
+            Route::put('roles/{role}/permissions', [RolePermissionController::class, 'update'])
+                ->middleware('check.permission:permissions,edit');
 
             Route::get('audits', [AuditController::class, 'index'])
                 ->middleware('check.permission:audits,view');
@@ -123,6 +132,14 @@ Route::middleware([
             Route::patch('users/{user}/role', [UserRoleController::class, 'update'])
                 ->middleware('check.permission:users,edit');
 
+            // Self may manage own avatar without users.*; controller enforces self-or-permission.
+            Route::get('users/{user}/attachments/{attachment}/download', [UserAttachmentController::class, 'download'])
+                ->name('users.attachments.download');
+            Route::get('users/{user}/attachments/{attachment}/view', [UserAttachmentController::class, 'view'])
+                ->name('users.attachments.view');
+            Route::apiResource('users.attachments', UserAttachmentController::class)
+                ->only(['index', 'store', 'show', 'destroy']);
+
             Route::get('company-profile', [CompanyProfileController::class, 'show'])
                 ->middleware('check.permission:company_profile,view');
             Route::put('company-profile', [CompanyProfileController::class, 'update'])
@@ -143,9 +160,6 @@ Route::middleware([
             Route::get('company-profile/attachments/{attachment}/view', [CompanyProfileAttachmentController::class, 'view'])
                 ->middleware('check.permission:company_profile,view')
                 ->name('company-profile.attachments.view');
-            Route::put('company-profile/attachments/{attachment}/primary', [CompanyProfileAttachmentController::class, 'setPrimary'])
-                ->middleware('check.permission:company_profile,edit')
-                ->name('company-profile.attachments.set-primary');
 
             Route::get('company-profile/attachments', [CompanyProfileAttachmentController::class, 'index'])
                 ->middleware('check.permission:company_profile,view');

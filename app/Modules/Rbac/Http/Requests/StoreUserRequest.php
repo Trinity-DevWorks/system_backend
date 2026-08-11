@@ -23,12 +23,20 @@ class StoreUserRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'phone' => ['nullable', 'string', 'max:32'],
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
             'is_active' => ['required', 'boolean'],
             'branch_assignments' => ['required', 'array', 'min:1'],
             'branch_assignments.*.branch_id' => ['required', 'integer', 'exists:branches,id', 'distinct'],
             'branch_assignments.*.role_id' => ['required', 'integer', 'exists:roles,id'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('phone') && $this->input('phone') === '') {
+            $this->merge(['phone' => null]);
+        }
     }
 
     public function withValidator(Validator $validator): void
