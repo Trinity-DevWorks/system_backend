@@ -31,7 +31,7 @@ class Role extends Model implements AuditableContract
     /**
      * Users assigned this role in one or more branches.
      *
-     * @return BelongsToMany<User, $this>
+     * @return BelongsToMany<User, $this, BranchUser>
      */
     public function users(): BelongsToMany
     {

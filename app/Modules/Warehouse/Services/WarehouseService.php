@@ -57,13 +57,19 @@ class WarehouseService
                 && (bool) $warehouse->is_active
         );
 
-        if ($match !== null || $resolved === WarehouseDefaultKind::General) {
+        if ($match instanceof Warehouse) {
             return $match;
         }
 
-        return $warehouses->first(
+        if ($resolved === WarehouseDefaultKind::General) {
+            return null;
+        }
+
+        $fallback = $warehouses->first(
             fn (Warehouse $warehouse): bool => (bool) $warehouse->is_default && (bool) $warehouse->is_active
         );
+
+        return $fallback instanceof Warehouse ? $fallback : null;
     }
 
     public function defaultWarehouseIdFor(string $kind): ?int

@@ -6,6 +6,7 @@ namespace App\Modules\Salesman\DTOs;
 
 use App\Modules\Salesman\Enums\CommissionType;
 use App\Modules\Salesman\Models\Salesman;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 readonly class SalesmanResponseData
@@ -57,7 +58,9 @@ readonly class SalesmanResponseData
             commissionType: $commissionType->value,
             commissionValue: $salesman->commission_value !== null ? (string) $salesman->commission_value : null,
             targetAmount: $salesman->target_amount !== null ? (string) $salesman->target_amount : null,
-            hireDate: $salesman->hire_date?->toDateString(),
+            hireDate: $salesman->hire_date instanceof CarbonInterface
+                ? $salesman->hire_date->toDateString()
+                : ($salesman->hire_date !== null ? (string) $salesman->hire_date : null),
             branchId: (int) $salesman->branch_id,
             branchName: $branch?->name,
             warehouseId: $salesman->warehouse_id,
