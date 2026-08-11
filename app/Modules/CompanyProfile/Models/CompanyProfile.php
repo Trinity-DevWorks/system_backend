@@ -51,7 +51,7 @@ class CompanyProfile extends Model implements AuditableContract
     }
 
     /**
-     * Primary logo image for documents and UI branding.
+     * Current company logo (single-image slot).
      *
      * @return MorphOne<Attachment, $this>
      */

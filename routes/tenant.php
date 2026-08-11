@@ -130,8 +130,6 @@ Route::middleware([
                 ->name('users.attachments.download');
             Route::get('users/{user}/attachments/{attachment}/view', [UserAttachmentController::class, 'view'])
                 ->name('users.attachments.view');
-            Route::put('users/{user}/attachments/{attachment}/primary', [UserAttachmentController::class, 'setPrimary'])
-                ->name('users.attachments.set-primary');
             Route::apiResource('users.attachments', UserAttachmentController::class)
                 ->only(['index', 'store', 'show', 'destroy']);
 
@@ -155,9 +153,6 @@ Route::middleware([
             Route::get('company-profile/attachments/{attachment}/view', [CompanyProfileAttachmentController::class, 'view'])
                 ->middleware('check.permission:company_profile,view')
                 ->name('company-profile.attachments.view');
-            Route::put('company-profile/attachments/{attachment}/primary', [CompanyProfileAttachmentController::class, 'setPrimary'])
-                ->middleware('check.permission:company_profile,edit')
-                ->name('company-profile.attachments.set-primary');
 
             Route::get('company-profile/attachments', [CompanyProfileAttachmentController::class, 'index'])
                 ->middleware('check.permission:company_profile,view');

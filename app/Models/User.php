@@ -104,7 +104,7 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     }
 
     /**
-     * Primary avatar image for the user profile.
+     * Current avatar image for the user profile (single-image slot).
      *
      * @return MorphOne<Attachment, $this>
      */

@@ -60,6 +60,15 @@ class AttachmentService
         $dir = 'attachments/'.$attachable->getMorphClass().'/'.$attachable->getKey();
 
         $classified = AttachmentClassifier::fromUploadedFile($file);
+
+        // User avatar / company logo: one image only — purge previous before storing.
+        if (
+            $this->isSingleImageSlot($attachable)
+            && $classified['viewer_category'] === AttachmentViewerCategory::Image
+        ) {
+            $this->purgeImageAttachments($attachable);
+        }
+
         $isPrimary = $this->shouldMarkAsPrimaryOnStore($attachable, $classified['viewer_category']);
         $async = $this->shouldProcessAsync((int) $file->getSize());
 
@@ -165,7 +174,11 @@ class AttachmentService
         return $attachment->fresh() ?? $attachment;
     }
 
-    public function setPrimaryImage(Item|CompanyProfile|User $attachable, Attachment $attachment): Attachment
+    /**
+     * Items only: gallery primary-image selection.
+     * User avatar / company logo use single-image replace (store purges previous).
+     */
+    public function setPrimaryImage(Item $attachable, Attachment $attachment): Attachment
     {
         if ($attachment->attachable_type !== $attachable->getMorphClass()
             || (string) $attachment->attachable_id !== (string) $attachable->getKey()) {
@@ -212,7 +225,8 @@ class AttachmentService
                 $this->deleteStoredFile($disk, $path);
             }
 
-            if ($wasPrimaryImage && $this->supportsPrimaryImage($attachable)) {
+            // Promote next primary only for item galleries — never for user/company single-image.
+            if ($wasPrimaryImage && $attachable instanceof Item) {
                 $this->promoteNextPrimaryImage($attachable);
             }
         });
@@ -234,7 +248,7 @@ class AttachmentService
             $attachment->forceDelete();
             $this->deleteStoredFile($disk, $path);
 
-            if ($wasPrimaryImage && $this->supportsPrimaryImage($attachable)) {
+            if ($wasPrimaryImage && $attachable instanceof Item) {
                 $this->promoteNextPrimaryImage($attachable);
             }
         });
@@ -389,7 +403,17 @@ class AttachmentService
         Customer|Supplier|Salesman|Item|CompanyProfile|User $attachable,
         AttachmentViewerCategory $category,
     ): bool {
-        if (! $this->supportsPrimaryImage($attachable) || $category !== AttachmentViewerCategory::Image) {
+        if ($category !== AttachmentViewerCategory::Image) {
+            return false;
+        }
+
+        // Single-image slots always mark the new (only) image as primary for logo/avatar relations.
+        if ($this->isSingleImageSlot($attachable)) {
+            return true;
+        }
+
+        // Item gallery: first image becomes primary when none exists yet.
+        if (! $attachable instanceof Item) {
             return false;
         }
 
@@ -399,12 +423,37 @@ class AttachmentService
             ->exists();
     }
 
-    private function supportsPrimaryImage(mixed $attachable): bool
+    /**
+     * User avatar and company logo are one image each (replace deletes previous).
+     */
+    private function isSingleImageSlot(mixed $attachable): bool
     {
-        return $attachable instanceof Item || $attachable instanceof CompanyProfile || $attachable instanceof User;
+        return $attachable instanceof User || $attachable instanceof CompanyProfile;
     }
 
-    private function promoteNextPrimaryImage(Item|CompanyProfile|User $attachable): void
+    /**
+     * Soft-delete every image on a single-image slot without promoting another.
+     */
+    private function purgeImageAttachments(User|CompanyProfile $attachable): void
+    {
+        $images = $attachable->attachments()
+            ->where('viewer_category', AttachmentViewerCategory::Image)
+            ->get();
+
+        foreach ($images as $image) {
+            $disk = $image->disk;
+            $path = $image->file_path;
+
+            $image->update(['is_primary' => false]);
+            $image->delete();
+
+            if (config('attachments.purge_files_on_soft_delete', false)) {
+                $this->deleteStoredFile($disk, $path);
+            }
+        }
+    }
+
+    private function promoteNextPrimaryImage(Item $attachable): void
     {
         $next = $attachable->attachments()
             ->where('viewer_category', AttachmentViewerCategory::Image)
