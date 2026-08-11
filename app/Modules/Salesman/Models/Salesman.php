@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Salesman\Enums\CommissionType;
 use App\Modules\Warehouse\Models\Warehouse;
+use Carbon\Carbon;
 use Database\Factories\SalesmanFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -20,6 +21,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property Carbon|null $hire_date
+ */
 #[Fillable([
     'salesman_code',
     'first_name',

@@ -16,7 +16,7 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
- * @property-read BranchUser|null $pivot Present when loaded via User::branches() / branch_user.
+ * @property-read BranchUser|null $pivot
  */
 #[Fillable([
     'name',

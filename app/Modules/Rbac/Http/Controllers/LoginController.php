@@ -67,10 +67,9 @@ class LoginController extends Controller
             $this->branchContext->rememberPreferredBranch($activeBranchId, $user);
             $branchContext['preferred_branch_id'] = $activeBranchId;
         }
-        $effectiveRole = $this->permissionService->resolveEffectiveRole(
-            $user,
-            is_int($activeBranchId) ? $activeBranchId : null
-        );
+        $branchId = is_int($activeBranchId) ? $activeBranchId : null;
+        $effectiveRole = $this->permissionService->resolveEffectiveRole($user, $branchId);
+        $permissions = $this->permissionService->matrixForUser($user, $branchId);
 
         $branches = $user->branches
             ->map(fn ($branch): array => [
@@ -101,6 +100,7 @@ class LoginController extends Controller
                     )
                 )),
             ],
+            'permissions' => $permissions,
             'branch_context' => $branchContext,
         ], 'Logged in successfully.');
     }

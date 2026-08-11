@@ -50,18 +50,18 @@ class MeController extends Controller
      */
     private function payload(User $user): array
     {
-        $user->load(['branches' => fn ($q) => $q->select('branches.id', 'branches.name')]);
-        $user->loadMissing('avatarAttachment');
+        $user->load([
+            'branches' => fn ($q) => $q->select('branches.id', 'branches.name'),
+            'avatarAttachment',
+        ]);
 
         $branchContext = $this->branchContext->contextPayload($user);
         $activeBranchId = $branchContext['active_branch_id'] ?? null;
-        $effectiveRole = $this->permissionService->resolveEffectiveRole(
-            $user,
-            is_int($activeBranchId) ? $activeBranchId : null
-        );
+        $branchId = is_int($activeBranchId) ? $activeBranchId : null;
 
         $base = UserResponseData::fromModel($user)->toArray();
-        $base['role'] = $effectiveRole;
+        $base['role'] = $this->permissionService->resolveEffectiveRole($user, $branchId);
+        $base['permissions'] = $this->permissionService->matrixForUser($user, $branchId);
         $base['branch_context'] = $branchContext;
 
         return $base;

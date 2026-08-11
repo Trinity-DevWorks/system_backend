@@ -42,6 +42,7 @@ use App\Modules\Rbac\Http\Controllers\MeController;
 use App\Modules\Rbac\Http\Controllers\PermissionController;
 use App\Modules\Rbac\Http\Controllers\ResetPasswordController;
 use App\Modules\Rbac\Http\Controllers\RoleController;
+use App\Modules\Rbac\Http\Controllers\RolePermissionController;
 use App\Modules\Rbac\Http\Controllers\UserAttachmentController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
@@ -103,6 +104,12 @@ Route::middleware([
         Route::middleware(['ensure.module:core'])->group(function () {
             Route::get('permissions', [PermissionController::class, 'index'])
                 ->middleware('check.permission:permissions,view');
+            Route::get('permissions/roles', [RolePermissionController::class, 'roles'])
+                ->middleware('check.permission:permissions,view');
+            Route::get('roles/{role}/permissions', [RolePermissionController::class, 'show'])
+                ->middleware('check.permission:permissions,view');
+            Route::put('roles/{role}/permissions', [RolePermissionController::class, 'update'])
+                ->middleware('check.permission:permissions,edit');
 
             Route::get('audits', [AuditController::class, 'index'])
                 ->middleware('check.permission:audits,view');
