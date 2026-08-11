@@ -29,7 +29,10 @@ class UserService
     public function list(): Collection
     {
         $users = User::query()
-            ->with(['branches' => fn ($q) => $q->select('branches.id', 'branches.name')])
+            ->with([
+                'branches' => fn ($q) => $q->select('branches.id', 'branches.name'),
+                'avatarAttachment',
+            ])
             ->orderBy('name')
             ->get();
 
@@ -40,7 +43,10 @@ class UserService
 
     public function find(User $user): User
     {
-        $user->load(['branches' => fn ($q) => $q->select('branches.id', 'branches.name')]);
+        $user->load([
+            'branches' => fn ($q) => $q->select('branches.id', 'branches.name'),
+            'avatarAttachment',
+        ]);
         $this->eagerLoadBranchRolesForMany(new Collection([$user]));
 
         return $user;
@@ -52,6 +58,7 @@ class UserService
      *   email: string,
      *   password: string,
      *   is_active: bool,
+     *   phone?: string|null,
      *   branch_assignments: list<array{branch_id: int, role_id: int}>
      * }  $data
      */
@@ -61,6 +68,7 @@ class UserService
             $user = User::query()->create([
                 'name' => $data['name'],
                 'email' => $data['email'],
+                'phone' => $data['phone'] ?? null,
                 'password' => $data['password'],
                 'is_active' => $data['is_active'],
                 'created_by' => auth()->id(),
@@ -80,6 +88,7 @@ class UserService
      *   email: string,
      *   is_active: bool,
      *   password?: string|null,
+     *   phone?: string|null,
      *   branch_assignments: list<array{branch_id: int, role_id: int}>
      * }  $data
      */
@@ -100,6 +109,10 @@ class UserService
                 'email' => $data['email'],
                 'is_active' => $data['is_active'],
             ];
+
+            if (array_key_exists('phone', $data)) {
+                $payload['phone'] = $data['phone'];
+            }
 
             if (! empty($data['password'])) {
                 if (Hash::check((string) $data['password'], (string) $user->getAuthPassword())) {
@@ -133,6 +146,69 @@ class UserService
             if ($wasActive && ! $data['is_active']) {
                 $user->tokens()->delete();
             }
+
+            if (! empty($data['password'])) {
+                $user->tokens()->delete();
+            }
+
+            return $this->find($user->refresh());
+        });
+    }
+
+    /**
+     * Self-service profile update (no branch role / is_active changes).
+     *
+     * @param  array{
+     *   name: string,
+     *   email: string,
+     *   phone?: string|null,
+     *   password?: string|null,
+     *   preferred_branch_id?: int|null
+     * }  $data
+     */
+    public function updateMe(User $user, array $data): User
+    {
+        return DB::transaction(function () use ($user, $data): User {
+            $payload = [
+                'name' => $data['name'],
+                'email' => $data['email'],
+            ];
+
+            if (array_key_exists('phone', $data)) {
+                $payload['phone'] = $data['phone'];
+            }
+
+            if (array_key_exists('preferred_branch_id', $data)) {
+                $preferredId = $data['preferred_branch_id'];
+                if ($preferredId !== null) {
+                    $preferredId = (int) $preferredId;
+                    if (! $this->branchContext->canAccessBranch($preferredId, $user)) {
+                        abort(422, 'You cannot prefer a branch you cannot access.', [
+                            'X-Error-Code' => 'USER_PREFERRED_BRANCH_FORBIDDEN',
+                        ]);
+                    }
+                }
+                $payload['preferred_branch_id'] = $preferredId;
+            }
+
+            if (! empty($data['password'])) {
+                if (Hash::check((string) $data['password'], (string) $user->getAuthPassword())) {
+                    throw new HttpResponseException(
+                        ApiResponse::error(
+                            'The new password must be different from your current password.',
+                            422,
+                            null,
+                            ['password' => ['The new password must be different from your current password.']],
+                            null,
+                            null,
+                            'PASSWORD_UNCHANGED'
+                        )
+                    );
+                }
+                $payload['password'] = $data['password'];
+            }
+
+            $user->update($payload);
 
             if (! empty($data['password'])) {
                 $user->tokens()->delete();

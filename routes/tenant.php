@@ -43,6 +43,7 @@ use App\Modules\Rbac\Http\Controllers\PermissionController;
 use App\Modules\Rbac\Http\Controllers\ResetPasswordController;
 use App\Modules\Rbac\Http\Controllers\RoleController;
 use App\Modules\Rbac\Http\Controllers\RolePermissionController;
+use App\Modules\Rbac\Http\Controllers\UserAttachmentController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
 use App\Modules\Salesman\Http\Controllers\SalesmanAttachmentController;
@@ -93,7 +94,8 @@ Route::middleware([
         Route::post('auth/logout', LogoutController::class)
             ->middleware('throttle:60,1');
 
-        Route::get('auth/me', MeController::class);
+        Route::get('auth/me', [MeController::class, 'show']);
+        Route::put('auth/me', [MeController::class, 'update']);
         Route::get('branch-context', [BranchContextController::class, 'show']);
         Route::post('branch-context/switch', [BranchContextController::class, 'switch']);
 
@@ -129,6 +131,16 @@ Route::middleware([
                 ->middlewareFor(['destroy'], ['check.permission:users,delete']);
             Route::patch('users/{user}/role', [UserRoleController::class, 'update'])
                 ->middleware('check.permission:users,edit');
+
+            // Self may manage own avatar without users.*; controller enforces self-or-permission.
+            Route::get('users/{user}/attachments/{attachment}/download', [UserAttachmentController::class, 'download'])
+                ->name('users.attachments.download');
+            Route::get('users/{user}/attachments/{attachment}/view', [UserAttachmentController::class, 'view'])
+                ->name('users.attachments.view');
+            Route::put('users/{user}/attachments/{attachment}/primary', [UserAttachmentController::class, 'setPrimary'])
+                ->name('users.attachments.set-primary');
+            Route::apiResource('users.attachments', UserAttachmentController::class)
+                ->only(['index', 'store', 'show', 'destroy']);
 
             Route::get('company-profile', [CompanyProfileController::class, 'show'])
                 ->middleware('check.permission:company_profile,view');
