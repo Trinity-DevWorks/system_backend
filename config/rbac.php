@@ -28,7 +28,7 @@ return [
         'notifications' => [
             'label' => 'Notifications',
             'actions' => $crud,
-            ],
+        ],
         'users' => [
             'label' => 'User Management',
             'actions' => $crud,
