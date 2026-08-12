@@ -7,6 +7,7 @@ namespace App\Modules\Rbac\Services;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchContextService;
+use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
 use App\Services\PermissionService;
 use Illuminate\Database\Eloquent\Collection;
@@ -21,6 +22,7 @@ class UserService
     public function __construct(
         private readonly PermissionService $permissionService,
         private readonly BranchContextService $branchContext,
+        private readonly DomainNotificationPublisher $notifications,
     ) {}
 
     /**
@@ -78,7 +80,13 @@ class UserService
 
             $this->permissionService->invalidateCacheForUser($user->fresh() ?? $user);
 
-            return $this->find($user);
+            $created = $this->find($user);
+            $this->notifications->userCreated($created);
+            if ($data['branch_assignments'] !== []) {
+                $this->notifications->userRoleAssigned($created, $data['branch_assignments']);
+            }
+
+            return $created;
         });
     }
 
@@ -151,7 +159,17 @@ class UserService
                 $user->tokens()->delete();
             }
 
-            return $this->find($user->refresh());
+            $updated = $this->find($user->refresh());
+
+            if ($wasActive && ! $data['is_active']) {
+                $this->notifications->userDeactivated($updated);
+            }
+
+            if ($assignmentsChanged) {
+                $this->notifications->userRoleAssigned($updated, $data['branch_assignments']);
+            }
+
+            return $updated;
         });
     }
 
@@ -223,7 +241,7 @@ class UserService
      */
     public function assignRole(User $user, int $roleId, ?int $branchId = null): User
     {
-        return DB::transaction(function () use ($user, $roleId, $branchId): User {
+        $result = DB::transaction(function () use ($user, $roleId, $branchId): array {
             $user->loadMissing('branches');
 
             if ($branchId !== null) {
@@ -267,8 +285,18 @@ class UserService
                 $this->permissionService->invalidateCacheForUser($user->fresh() ?? $user);
             }
 
-            return $this->find($user->refresh());
+            return [
+                'user' => $this->find($user->refresh()),
+                'changed' => $changed,
+                'assignments' => $assignments,
+            ];
         });
+
+        if ($result['changed']) {
+            $this->notifications->userRoleAssigned($result['user'], $result['assignments']);
+        }
+
+        return $result['user'];
     }
 
     public function delete(User $user): void

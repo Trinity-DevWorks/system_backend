@@ -7,6 +7,8 @@ namespace App\Modules\Branch\Services;
 use App\Models\User;
 use App\Modules\Branch\DTOs\BranchData;
 use App\Modules\Branch\Models\Branch;
+use App\Modules\Notification\Services\DomainNotificationPublisher;
+use App\Modules\Rbac\Models\Role;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +23,7 @@ class BranchService
 
     public function __construct(
         private readonly BranchContextService $branchContext,
+        private readonly DomainNotificationPublisher $notifications,
     ) {}
 
     public function list(): Collection
@@ -85,9 +88,19 @@ class BranchService
     public function assignUserToDefaultBranch(User $user, int $roleId): void
     {
         $defaultId = $this->defaultBranchId();
+        $alreadyAssigned = $user->branches()->where('branches.id', $defaultId)->exists();
+
         $user->branches()->syncWithoutDetaching([
             $defaultId => ['role_id' => $roleId],
         ]);
+
+        if (! $alreadyAssigned) {
+            $branch = Branch::query()->find($defaultId);
+            $role = Role::query()->find($roleId);
+            if ($branch !== null) {
+                $this->notifications->branchUserAssigned($user, $branch, $role);
+            }
+        }
     }
 
     public function create(BranchData $data): Branch

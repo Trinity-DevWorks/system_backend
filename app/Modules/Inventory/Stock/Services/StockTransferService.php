@@ -12,6 +12,7 @@ use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferLine;
 use App\Modules\Inventory\Stock\Support\StockTransferLineQuantity;
 use App\Modules\Inventory\Stock\Support\StockTransferRules;
+use App\Modules\Notification\Services\DomainNotificationPublisher;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -19,7 +20,8 @@ class StockTransferService
 {
     public function __construct(
         private readonly StockMovementService $stockMovementService,
-        private readonly StockTransferQueryService $stockTransferQueryService
+        private readonly StockTransferQueryService $stockTransferQueryService,
+        private readonly DomainNotificationPublisher $notifications,
     ) {}
 
     /**
@@ -147,17 +149,22 @@ class StockTransferService
 
     public function cancel(StockTransfer $transfer): StockTransfer
     {
-        return DB::transaction(function () use ($transfer): StockTransfer {
+        $cancelled = DB::transaction(function () use ($transfer): StockTransfer {
             $transfer = $this->lockDraftTransfer($transfer);
             $transfer->update(['status' => StockTransferStatus::Cancelled]);
 
             return $this->find($transfer->id);
         });
+
+        $actorId = auth()->id() ? (string) auth()->id() : null;
+        $this->notifications->stockTransferCancelled($cancelled, $actorId);
+
+        return $cancelled;
     }
 
     public function post(StockTransfer $transfer, ?string $userId): StockTransfer
     {
-        return DB::transaction(function () use ($transfer, $userId): StockTransfer {
+        $posted = DB::transaction(function () use ($transfer, $userId): StockTransfer {
             $transfer = $this->lockDraftTransfer($transfer);
             StockTransferRules::assertWarehouses($transfer->from_warehouse_id, $transfer->to_warehouse_id);
 
@@ -208,6 +215,10 @@ class StockTransferService
 
             return $this->find($transfer->id);
         });
+
+        $this->notifications->stockTransferPosted($posted, $userId);
+
+        return $posted;
     }
 
     /**

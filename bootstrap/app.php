@@ -31,6 +31,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withSchedule(function (Schedule $schedule): void {
         // Nightly retention purge for tenant audit logs (see audits:prune in routes/console.php).
         $schedule->command('audits:prune')->dailyAt('02:30')->withoutOverlapping();
+        // Daily low-stock / purchasing-alert digest emails + in-app notifications (Phase 1).
+        $schedule->command('notifications:low-stock-digest')->dailyAt('07:00')->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(HandleCors::class);

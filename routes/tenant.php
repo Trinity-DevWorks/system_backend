@@ -33,6 +33,7 @@ use App\Modules\Inventory\Stock\Http\Controllers\StockMovementController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockTransferController;
 use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
 use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementController;
+use App\Modules\Notification\Http\Controllers\NotificationController;
 use App\Modules\PaymentMethod\Http\Controllers\PaymentMethodController;
 use App\Modules\PaymentTerm\Http\Controllers\PaymentTermController;
 use App\Modules\Rbac\Http\Controllers\ForgotPasswordController;
@@ -155,6 +156,17 @@ Route::middleware([
             Route::get('tenant-settings', [TenantSettingController::class, 'show']);
             Route::put('tenant-settings', [TenantSettingController::class, 'update'])
                 ->middleware('check.permission:tenant_settings,edit');
+
+            /*
+            | In-app notification inbox + preferences (Phase 1).
+            | Scoped to the authenticated user — no separate RBAC gate so every active user can open their bell.
+            */
+            Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
+            Route::get('notifications', [NotificationController::class, 'index']);
+            Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
+            Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead']);
+            Route::get('notifications/preferences', [NotificationController::class, 'preferences']);
+            Route::put('notifications/preferences', [NotificationController::class, 'updatePreferences']);
 
             Route::get('company-profile/attachments/{attachment}/download', [CompanyProfileAttachmentController::class, 'download'])
                 ->middleware('check.permission:company_profile,view')

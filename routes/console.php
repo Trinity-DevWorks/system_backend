@@ -161,3 +161,45 @@ Artisan::command('audits:prune {--days= : Override retention days from config}',
 
     $this->info("Done. Retention={$days} day(s). Total deleted={$total}.");
 })->purpose('Delete audit rows older than the configured retention period (per tenant DB)');
+
+/*
+|--------------------------------------------------------------------------
+| notifications:low-stock-digest
+|--------------------------------------------------------------------------
+|
+| What: Walks each tenant and sends a cooldown-aware low-stock digest via DomainNotificationPublisher.
+| Where: Manual run or daily schedule (07:00) in bootstrap/app.php.
+| Why: Converts purchasing-alert query data into proactive in-app + email notifications without spamming.
+|
+*/
+Artisan::command('notifications:low-stock-digest', function (): void {
+    $command = $this;
+    $sentTenants = 0;
+    $skipped = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use ($command, &$sentTenants, &$skipped): void {
+        $tenant->run(function () use ($tenant, $command, &$sentTenants, &$skipped): void {
+            if (! Schema::hasTable('notifications')) {
+                $command->warn("Skipped tenant [{$tenant->id}] — notifications table missing. Run tenant migrations.");
+                $skipped++;
+
+                return;
+            }
+
+            /** @var \App\Modules\Notification\Services\DomainNotificationPublisher $publisher */
+            $publisher = app(\App\Modules\Notification\Services\DomainNotificationPublisher::class);
+            $result = $publisher->lowStockDigest();
+
+            if ($result['sent']) {
+                $sentTenants++;
+                $command->info("Tenant [{$tenant->id}]: digest sent ({$result['alert_count']} alert(s)).");
+            } else {
+                $skipped++;
+                $reason = $result['reason'] ?? 'skipped';
+                $command->info("Tenant [{$tenant->id}]: skipped ({$reason}, alerts={$result['alert_count']}).");
+            }
+        });
+    });
+
+    $this->info("Done. Sent={$sentTenants}. Skipped={$skipped}.");
+})->purpose('Send low-stock digest notifications for each tenant (cooldown-aware)');
