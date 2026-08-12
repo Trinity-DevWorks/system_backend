@@ -87,20 +87,6 @@ class CompanyProfileAttachmentController extends Controller
         return $this->deliverAttachmentDownload($attachment);
     }
 
-    public function setPrimary(Attachment $attachment): JsonResponse
-    {
-        $profile = CompanyProfile::singleton();
-        $this->ensureMorph($profile, $attachment);
-        $updated = $this->attachmentService->setPrimaryImage($profile, $attachment);
-        $this->companyProfileService->forgetCache();
-        $urls = $this->urls($updated);
-
-        return ApiResponse::success(
-            AttachmentResponseData::fromModel($updated, $urls['download'], $urls['view'])->toArray(),
-            'Company logo updated successfully.'
-        );
-    }
-
     public function destroy(Attachment $attachment): JsonResponse
     {
         $profile = CompanyProfile::singleton();

@@ -86,19 +86,6 @@ class UserAttachmentController extends Controller
         return $this->deliverAttachmentDownload($attachment);
     }
 
-    public function setPrimary(User $user, Attachment $attachment): JsonResponse
-    {
-        $this->assertCanEdit($user);
-        $this->ensureMorph($user, $attachment);
-        $updated = $this->attachmentService->setPrimaryImage($user, $attachment);
-        $urls = $this->urls($user, $updated);
-
-        return ApiResponse::success(
-            AttachmentResponseData::fromModel($updated, $urls['download'], $urls['view'])->toArray(),
-            'Avatar updated successfully.'
-        );
-    }
-
     public function destroy(User $user, Attachment $attachment): JsonResponse
     {
         $this->assertCanEdit($user);
