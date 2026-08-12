@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use App\Modules\Rbac\RbacResourceCatalog;
 
 /**
  * Permission catalog: resource_key => label + applicable actions.
@@ -14,7 +15,8 @@ declare(strict_types=1);
  * action here in the same change. Leaving it off hides the checkbox and
  * makes the new route 403 for every role, including Owner.
  *
- * @see App\Modules\Rbac\RbacResourceCatalog
+ * @see RbacResourceCatalog
+
  * @see routes/tenant.php
  */
 $crud = ['view', 'add', 'edit', 'delete'];
