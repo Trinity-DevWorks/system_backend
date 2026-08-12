@@ -5,6 +5,7 @@ namespace App\Modules\Rbac\Services;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\RolePermission;
+use App\Modules\Rbac\RbacResourceCatalog;
 use App\Services\PermissionService;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
@@ -150,16 +151,32 @@ class RoleService
     {
         $role->permissions()->detach();
 
+        $permissionIds = [];
         foreach ($permissionRows as $row) {
+            $permissionIds[] = (int) $row['permission_id'];
+        }
+        $keysById = Permission::query()
+            ->whereIn('id', $permissionIds)
+            ->pluck('resource_key', 'id');
+
+        foreach ($permissionRows as $row) {
+            $permissionId = (int) $row['permission_id'];
+            $resourceKey = (string) ($keysById[$permissionId] ?? '');
+            $flags = $resourceKey !== ''
+                ? RbacResourceCatalog::clampFlags($resourceKey, $row)
+                : [
+                    'can_view' => false,
+                    'can_add' => false,
+                    'can_edit' => false,
+                    'can_delete' => false,
+                    'can_import' => false,
+                    'can_export' => false,
+                ];
+
             RolePermission::query()->create([
                 'role_id' => $role->id,
-                'permission_id' => (int) $row['permission_id'],
-                'can_view' => (bool) $row['can_view'],
-                'can_add' => (bool) $row['can_add'],
-                'can_edit' => (bool) $row['can_edit'],
-                'can_delete' => (bool) $row['can_delete'],
-                'can_import' => (bool) $row['can_import'],
-                'can_export' => (bool) $row['can_export'],
+                'permission_id' => $permissionId,
+                ...$flags,
             ]);
         }
     }

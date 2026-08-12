@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Rbac\Models\Role;
+use App\Modules\Rbac\RbacResourceCatalog;
 use App\Support\TenantReferenceCache;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -23,15 +24,11 @@ class PermissionService
 
     public function userHas(string $resourceKey, string $action, User $user): bool
     {
-        $actionFlag = match ($action) {
-            'view' => 'can_view',
-            'add' => 'can_add',
-            'edit' => 'can_edit',
-            'delete' => 'can_delete',
-            'import' => 'can_import',
-            'export' => 'can_export',
-            default => null,
-        };
+        if (! RbacResourceCatalog::allows($resourceKey, $action)) {
+            return false;
+        }
+
+        $actionFlag = RbacResourceCatalog::ACTION_FLAGS[$action] ?? null;
 
         if (! $actionFlag) {
             return false;
@@ -141,8 +138,16 @@ class PermissionService
             if (! isset($matrix[$rk])) {
                 $matrix[$rk] = [];
             }
-            foreach (['can_view', 'can_add', 'can_edit', 'can_delete', 'can_import', 'can_export'] as $flag) {
-                if ($row->{$flag}) {
+            $clamped = RbacResourceCatalog::clampFlags($rk, [
+                'can_view' => $row->can_view,
+                'can_add' => $row->can_add,
+                'can_edit' => $row->can_edit,
+                'can_delete' => $row->can_delete,
+                'can_import' => $row->can_import,
+                'can_export' => $row->can_export,
+            ]);
+            foreach ($clamped as $flag => $on) {
+                if ($on) {
                     $matrix[$rk][$flag] = true;
                 }
             }

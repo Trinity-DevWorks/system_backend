@@ -8,13 +8,24 @@ The repository uses custom route-level tenant RBAC.
 
 ## Source of truth
 
-Permission resource keys are defined in:
+Permission resource keys **and their applicable actions** are defined in:
 
 `config/rbac.php`
+
+Each resource has a `label` and an `actions` list. The permissions matrix only shows those actions. `App\Modules\Rbac\RbacResourceCatalog` and `App\Services\PermissionService` deny any action that is not listed.
 
 Tenant permissions are synchronized through `App\Jobs\BootstrapTenantRbac`, with catalog help from `App\Modules\Rbac\Services\PermissionCatalogService`.
 
 Do not invent a resource key without checking this configuration and the sync path.
+
+## When adding import, export, or any new action route
+
+In the same change:
+
+1. Add `check.permission:<resource_key>,<action>` on the tenant route.
+2. Add that action to the resource's `actions` array in `config/rbac.php`.
+
+Do not add an import/export route without updating `rbac.php`. The new route will 403 for every role, including Owner.
 
 ## Established actions
 

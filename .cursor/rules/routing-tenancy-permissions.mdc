@@ -50,6 +50,8 @@ Follow `module-entitlement.mdc` for module codes and entitlement checks.
 
 Follow `rbac-permissions.mdc` for resource keys, actions, and `middlewareFor()` usage.
 
+When adding `import` or `export` (or any action a resource did not have), update that resource's `actions` list in `config/rbac.php` in the same change.
+
 ## Module placement pitfall
 
 Purchase-order routes and code live under inventory:
