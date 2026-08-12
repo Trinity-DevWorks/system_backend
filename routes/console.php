@@ -7,6 +7,7 @@ use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchService;
+use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -186,8 +187,8 @@ Artisan::command('notifications:low-stock-digest', function (): void {
                 return;
             }
 
-            /** @var \App\Modules\Notification\Services\DomainNotificationPublisher $publisher */
-            $publisher = app(\App\Modules\Notification\Services\DomainNotificationPublisher::class);
+            /** @var DomainNotificationPublisher $publisher */
+            $publisher = app(DomainNotificationPublisher::class);
             $result = $publisher->lowStockDigest();
 
             if ($result['sent']) {
