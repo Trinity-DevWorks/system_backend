@@ -9,6 +9,7 @@ use App\Modules\Branch\Services\BranchService;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\RolePermission;
+use App\Modules\Rbac\RbacResourceCatalog;
 use App\Modules\Rbac\Services\PermissionCatalogService;
 use App\Services\PermissionService;
 use App\Support\TenantReferenceCache;
@@ -38,10 +39,10 @@ class BootstrapTenantRbac implements ShouldQueue
         $this->tenant->run(function () use ($ownerUserId, $permissionService, $permissionCatalogService, $branchService): void {
             $resources = config('rbac.resources', []);
 
-            foreach ($resources as $resourceKey => $label) {
+            foreach ($resources as $resourceKey => $_entry) {
                 Permission::query()->firstOrCreate(
                     ['resource_key' => $resourceKey],
-                    ['resource_label' => is_string($label) ? $label : (string) $resourceKey]
+                    ['resource_label' => RbacResourceCatalog::label((string) $resourceKey)]
                 );
             }
 

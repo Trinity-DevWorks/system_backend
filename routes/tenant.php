@@ -102,6 +102,9 @@ Route::middleware([
         Route::get('tenant/assigned-modules', AssignedModuleController::class);
 
         Route::middleware(['ensure.module:core'])->group(function () {
+            // When adding check.permission:<resource>,import|export (or any new
+            // action), add that action to config/rbac.php for the same resource.
+            // The permissions matrix only offers catalogued actions.
             Route::get('permissions', [PermissionController::class, 'index'])
                 ->middleware('check.permission:permissions,view');
             Route::get('permissions/roles', [RolePermissionController::class, 'roles'])
