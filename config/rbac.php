@@ -88,7 +88,7 @@ return [
         ],
         'stock' => [
             'label' => 'Stock Management',
-            'actions' => $viewEdit,
+            'actions' => $crud,
         ],
         'salesmen' => [
             'label' => 'Salesman Management',

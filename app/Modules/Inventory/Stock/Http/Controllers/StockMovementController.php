@@ -38,6 +38,20 @@ class StockMovementController extends Controller
         );
     }
 
+    public function show(int $stock_movement): JsonResponse
+    {
+        $movement = $this->stockMovementQueryService->find($stock_movement);
+        $onHandByMovementId = StockMovementQuantityOnHand::mapForMovements(
+            new Collection([$movement])
+        );
+        $onHand = $onHandByMovementId[$movement->id] ?? null;
+
+        return ApiResponse::success(
+            StockMovementResponseData::fromModel($movement, $onHand),
+            'Stock movement fetched successfully.'
+        );
+    }
+
     public function storeAdjustment(StoreStockAdjustmentRequest $request): JsonResponse
     {
         $userId = $request->user()?->id;

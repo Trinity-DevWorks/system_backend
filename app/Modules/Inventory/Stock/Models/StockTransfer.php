@@ -16,7 +16,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * @property StockTransferStatus $status
- * @property Carbon|null $posted_at
+ * @property Carbon|null $dispatched_at
+ * @property Carbon|null $received_at
  */
 #[Fillable([
     'transfer_number',
@@ -25,8 +26,10 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'status',
     'notes',
     'created_by',
-    'posted_by',
-    'posted_at',
+    'dispatched_by',
+    'dispatched_at',
+    'received_by',
+    'received_at',
 ])]
 class StockTransfer extends Model implements AuditableContract
 {
@@ -42,7 +45,8 @@ class StockTransfer extends Model implements AuditableContract
     {
         return [
             'status' => StockTransferStatus::class,
-            'posted_at' => 'datetime',
+            'dispatched_at' => 'datetime',
+            'received_at' => 'datetime',
         ];
     }
 
@@ -73,9 +77,17 @@ class StockTransfer extends Model implements AuditableContract
     /**
      * @return BelongsTo<User, $this>
      */
-    public function postedByUser(): BelongsTo
+    public function dispatchedByUser(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'posted_by');
+        return $this->belongsTo(User::class, 'dispatched_by');
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function receivedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'received_by');
     }
 
     /**

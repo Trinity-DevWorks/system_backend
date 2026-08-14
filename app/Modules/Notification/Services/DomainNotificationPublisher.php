@@ -191,6 +191,18 @@ class DomainNotificationPublisher
             fn (array $row): bool => ($row['status'] ?? '') === 'out_of_stock'
         )->count();
 
+        $focusAlert = collect($alerts)->first(
+            fn (array $row): bool => ($row['status'] ?? '') === 'out_of_stock'
+        ) ?? $alerts[0];
+
+        $focusId = isset($focusAlert['replenishment_id'])
+            ? (int) $focusAlert['replenishment_id']
+            : 0;
+
+        $actionPath = $focusId > 0
+            ? '/main/stock/purchasing-alerts?drawer='.rawurlencode((string) $focusId).'&mode=view'
+            : '/main/stock/purchasing-alerts';
+
         $this->dispatcher->dispatch(
             'purchasing.low_stock',
             [
@@ -203,9 +215,9 @@ class DomainNotificationPublisher
                     'There are :alert_count purchasing alert(s) that need attention (:critical_count out of stock).',
                     'Open Purchasing Alerts in the app to review and create purchase orders.',
                 ],
-                'action_path' => '/main/stock/purchasing-alerts',
+                'action_path' => $actionPath,
                 'resource_type' => 'purchasing_alert',
-                'resource_id' => null,
+                'resource_id' => $focusId > 0 ? (string) $focusId : null,
             ],
             RecipientQuery::permission('stock', 'view'),
         );
@@ -236,7 +248,7 @@ class DomainNotificationPublisher
                     'po_number' => (string) $order->po_number,
                 ],
                 'mail_lines' => $mailLines,
-                'action_path' => '/main/stock/purchase-orders',
+                'action_path' => '/main/stock/purchase-orders?drawer='.rawurlencode((string) $order->id).'&mode=view',
                 'resource_type' => PurchaseOrder::REFERENCE_TYPE,
                 'resource_id' => (string) $order->id,
             ],
@@ -277,7 +289,7 @@ class DomainNotificationPublisher
                     'transfer_number' => (string) $transfer->transfer_number,
                 ],
                 'mail_lines' => $mailLines,
-                'action_path' => '/main/stock/transfers',
+                'action_path' => '/main/stock/transfers?drawer='.rawurlencode((string) $transfer->id).'&mode=view',
                 'resource_type' => StockTransfer::REFERENCE_TYPE,
                 'resource_id' => (string) $transfer->id,
             ],

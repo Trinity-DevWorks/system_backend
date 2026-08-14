@@ -243,24 +243,29 @@ Route::middleware([
                 ->middleware('check.permission:stock,view');
             Route::get('stock/movements', [StockMovementController::class, 'index'])
                 ->middleware('check.permission:stock,view');
+            Route::get('stock/movements/{stock_movement}', [StockMovementController::class, 'show'])
+                ->middleware('check.permission:stock,view');
             Route::post('stock/adjustments', [StockMovementController::class, 'storeAdjustment'])
-                ->middleware('check.permission:stock,edit');
+                ->middleware('check.permission:stock,add');
 
             Route::get('stock/purchasing-alerts/summary', [PurchasingAlertController::class, 'summary'])
                 ->middleware('check.permission:stock,view');
             Route::get('stock/purchasing-alerts', [PurchasingAlertController::class, 'index'])
                 ->middleware('check.permission:stock,view');
+            Route::get('stock/purchasing-alerts/{replenishmentId}', [PurchasingAlertController::class, 'show'])
+                ->whereNumber('replenishmentId')
+                ->middleware('check.permission:stock,view');
 
             Route::get('stock/transfers', [StockTransferController::class, 'index'])
                 ->middleware('check.permission:stock,view');
             Route::post('stock/transfers', [StockTransferController::class, 'store'])
-                ->middleware('check.permission:stock,edit');
+                ->middleware('check.permission:stock,add');
             Route::get('stock/transfers/{stock_transfer}', [StockTransferController::class, 'show'])
                 ->middleware('check.permission:stock,view');
             Route::put('stock/transfers/{stock_transfer}', [StockTransferController::class, 'update'])
                 ->middleware('check.permission:stock,edit');
             Route::delete('stock/transfers/{stock_transfer}', [StockTransferController::class, 'destroy'])
-                ->middleware('check.permission:stock,edit');
+                ->middleware('check.permission:stock,delete');
             Route::put('stock/transfers/{stock_transfer}/lines/sync', [StockTransferController::class, 'syncLines'])
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/transfers/{stock_transfer}/post', [StockTransferController::class, 'post'])
@@ -271,15 +276,15 @@ Route::middleware([
             Route::get('stock/purchase-orders', [PurchaseOrderController::class, 'index'])
                 ->middleware('check.permission:stock,view');
             Route::post('stock/purchase-orders', [PurchaseOrderController::class, 'store'])
-                ->middleware('check.permission:stock,edit');
+                ->middleware('check.permission:stock,add');
             Route::post('stock/purchase-orders/from-alerts', [PurchaseOrderController::class, 'fromAlerts'])
-                ->middleware('check.permission:stock,edit');
+                ->middleware('check.permission:stock,add');
             Route::get('stock/purchase-orders/{purchase_order}', [PurchaseOrderController::class, 'show'])
                 ->middleware('check.permission:stock,view');
             Route::put('stock/purchase-orders/{purchase_order}', [PurchaseOrderController::class, 'update'])
                 ->middleware('check.permission:stock,edit');
             Route::delete('stock/purchase-orders/{purchase_order}', [PurchaseOrderController::class, 'destroy'])
-                ->middleware('check.permission:stock,edit');
+                ->middleware('check.permission:stock,delete');
             Route::put('stock/purchase-orders/{purchase_order}/lines/sync', [PurchaseOrderController::class, 'syncLines'])
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/purchase-orders/{purchase_order}/confirm', [PurchaseOrderController::class, 'confirm'])

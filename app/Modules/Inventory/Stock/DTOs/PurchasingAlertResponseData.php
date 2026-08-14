@@ -25,7 +25,7 @@ readonly class PurchasingAlertResponseData
         array $preferredSuppliersByItemId,
     ): array {
         $rule->loadMissing([
-            'item:id,sku,name,base_uom_id,track_inventory,allow_purchase,is_active',
+            'item:id,item_code,name,base_uom_id,track_inventory,allow_purchase,is_active',
             'item.baseUom:id,code,name',
             'warehouse:id,name,shortcut_name,is_active',
         ]);
@@ -74,7 +74,8 @@ readonly class PurchasingAlertResponseData
 
         return [
             'id' => $item->id,
-            'sku' => $item->sku,
+
+            'item_code' => $item->item_code,
             'name' => $item->name,
             'base_uom' => $item->baseUom ? [
                 'id' => $item->baseUom->id,

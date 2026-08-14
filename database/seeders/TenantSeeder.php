@@ -9,8 +9,14 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Category\Models\Category;
 use App\Modules\Currency\Models\Currency;
+use App\Modules\Inventory\Item\Models\Item;
+use App\Modules\Inventory\ItemType\Models\ItemType;
+use App\Modules\Inventory\Shared\Enums\DimensionType;
+use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\TenantSetting\Models\TenantSetting;
 use App\Modules\TenantSetting\Services\TenantSettingService;
+use App\Modules\Warehouse\Enums\WarehouseType;
+use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\ModuleEntitlementService;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Seeder;
@@ -119,8 +125,9 @@ class TenantSeeder extends Seeder
 
             if ($tenant !== null) {
                 $modules->grantAll($tenant);
+                $tenant->run(fn () => $this->seedDemoInventory());
                 $this->command?->info(
-                    'Tenant ['.$tenant->id.'] already exists - ensured all modules are assigned.'
+                    'Tenant ['.$tenant->id.'] already exists - ensured modules and demo inventory.'
                 );
             } else {
                 $this->command?->info('Tenant domain ['.self::TENANT_DOMAIN.'] already exists - skipping.');
@@ -154,6 +161,7 @@ class TenantSeeder extends Seeder
             }
 
             $this->seedPrimaryCurrency();
+            $this->seedDemoInventory();
         });
 
         if ($ownerUserId === null) {
@@ -201,5 +209,68 @@ class TenantSeeder extends Seeder
 
         TenantSetting::singleton()->update(['primary_currency_id' => $currency->id]);
         TenantReferenceCache::forget(TenantSettingService::CACHE_KEY);
+    }
+
+    private function seedDemoInventory(): void
+    {
+        Warehouse::query()->firstOrCreate(
+            ['shortcut_name' => 'WH-A'],
+            [
+                'name' => 'Demo Warehouse A',
+                'type' => WarehouseType::Central,
+                'is_active' => true,
+                'is_default' => true,
+                'is_default_storage' => true,
+            ]
+        );
+
+        Warehouse::query()->firstOrCreate(
+            ['shortcut_name' => 'WH-B'],
+            [
+                'name' => 'Demo Warehouse B',
+                'type' => WarehouseType::Central,
+                'is_active' => true,
+            ]
+        );
+
+        $itemType = ItemType::query()->firstOrCreate(
+            ['code' => 'INVENTORY'],
+            ['name' => 'inventory', 'is_system' => true, 'is_active' => true]
+        );
+
+        $category = Category::query()->firstOrCreate(
+            ['code' => 'DEMO'],
+            [
+                'name' => 'Demo Items',
+                'color' => '#64748B',
+                'description' => 'General development items.',
+                'is_active' => true,
+            ]
+        );
+
+        $unitGroup = UnitGroup::query()->firstOrCreate(
+            ['code' => 'COUNT'],
+            [
+                'name' => 'Count',
+                'dimension_type' => DimensionType::Count,
+                'is_active' => true,
+            ]
+        );
+
+        Item::query()->firstOrCreate(
+            ['sku' => 'DEMO-ITEM-001'],
+            [
+                'name' => 'Demo Item',
+                'item_code' => 'DEMO-001',
+                'item_type_id' => $itemType->id,
+                'category_id' => $category->id,
+                'unit_group_id' => $unitGroup->id,
+                'description' => 'General information only.',
+                'track_inventory' => true,
+                'allow_sale' => true,
+                'allow_purchase' => true,
+                'is_active' => true,
+            ]
+        );
     }
 }

@@ -11,6 +11,7 @@ use App\Modules\Inventory\Stock\Support\ReplenishmentAlertRules;
 use App\Modules\Supplier\Models\SupplierItem;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -48,7 +49,7 @@ class PurchasingAlertService
             $term = '%'.trim((string) $filters['search']).'%';
             $query->where(function (Builder $q) use ($term): void {
                 $q->where('items.name', 'like', $term)
-                    ->orWhere('items.sku', 'like', $term);
+                    ->orWhere('items.item_code', 'like', $term);
             });
         }
 
@@ -143,6 +144,19 @@ class PurchasingAlertService
         }
 
         return $results;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function find(int $replenishmentId): array
+    {
+        $map = $this->findByReplenishmentIds([$replenishmentId]);
+        if (! isset($map[$replenishmentId])) {
+            throw (new ModelNotFoundException)->setModel(ItemWarehouseReplenishment::class, [$replenishmentId]);
+        }
+
+        return $map[$replenishmentId];
     }
 
     public function alertCount(): int

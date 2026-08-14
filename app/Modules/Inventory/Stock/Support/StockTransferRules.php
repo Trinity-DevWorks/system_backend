@@ -18,6 +18,43 @@ final class StockTransferRules
         }
     }
 
+    public static function assertDispatchable(StockTransfer $transfer): void
+    {
+        if ($transfer->status === StockTransferStatus::InTransit) {
+            abort(422, 'Stock transfer is already dispatched.', ['X-Error-Code' => 'STOCK_TRANSFER_ALREADY_DISPATCHED']);
+        }
+
+        if ($transfer->status !== StockTransferStatus::Draft) {
+            abort(422, 'Only draft transfers can be dispatched.', ['X-Error-Code' => 'STOCK_TRANSFER_DISPATCH_NOT_ALLOWED']);
+        }
+    }
+
+    public static function assertReceivable(StockTransfer $transfer): void
+    {
+        if ($transfer->status === StockTransferStatus::Received) {
+            abort(422, 'Stock transfer is already received.', ['X-Error-Code' => 'STOCK_TRANSFER_ALREADY_RECEIVED']);
+        }
+
+        if ($transfer->status !== StockTransferStatus::InTransit) {
+            abort(422, 'Only in-transit transfers can be received.', ['X-Error-Code' => 'STOCK_TRANSFER_RECEIVE_NOT_ALLOWED']);
+        }
+    }
+
+    public static function assertCancellable(StockTransfer $transfer): void
+    {
+        if ($transfer->status === StockTransferStatus::Cancelled) {
+            abort(422, 'Stock transfer is already cancelled.', ['X-Error-Code' => 'STOCK_TRANSFER_ALREADY_CANCELLED']);
+        }
+
+        if ($transfer->status === StockTransferStatus::Received) {
+            abort(422, 'Received transfers cannot be cancelled.', ['X-Error-Code' => 'STOCK_TRANSFER_CANCEL_NOT_ALLOWED']);
+        }
+
+        if (! in_array($transfer->status, [StockTransferStatus::Draft, StockTransferStatus::InTransit], true)) {
+            abort(422, 'This stock transfer cannot be cancelled.', ['X-Error-Code' => 'STOCK_TRANSFER_CANCEL_NOT_ALLOWED']);
+        }
+    }
+
     public static function assertWarehouses(int $fromWarehouseId, int $toWarehouseId): void
     {
         if ($fromWarehouseId === $toWarehouseId) {

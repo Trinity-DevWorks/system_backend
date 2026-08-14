@@ -34,7 +34,8 @@ class StockTransferQueryService
                 'fromWarehouse:id,name,shortcut_name,is_active',
                 'toWarehouse:id,name,shortcut_name,is_active',
                 'createdByUser:id,name,email',
-                'postedByUser:id,name,email',
+                'dispatchedByUser:id,name,email',
+                'receivedByUser:id,name,email',
             ])
             ->withCount('lines');
 

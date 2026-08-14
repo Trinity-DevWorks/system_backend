@@ -15,6 +15,14 @@ class StockMovementQueryService
         private readonly WarehouseService $warehouseService,
     ) {}
 
+    public function find(int $id): StockMovement
+    {
+        $query = StockMovement::query()->whereKey($id);
+        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+
+        return $query->firstOrFail();
+    }
+
     /**
      * @param  array{
      *   warehouse_id?:int,
@@ -30,7 +38,7 @@ class StockMovementQueryService
     {
         $query = StockMovement::query()
             ->with([
-                'item:id,sku,name,base_uom_id',
+                'item:id,sku,item_code,name,base_uom_id',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name',
                 'itemUom.uom:id,code,name',

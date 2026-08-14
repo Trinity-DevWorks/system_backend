@@ -15,7 +15,8 @@ readonly class StockTransferResponseData
             'fromWarehouse:id,name,shortcut_name,is_active',
             'toWarehouse:id,name,shortcut_name,is_active',
             'createdByUser:id,name,email',
-            'postedByUser:id,name,email',
+            'dispatchedByUser:id,name,email',
+            'receivedByUser:id,name,email',
         ]);
 
         $payload = [
@@ -28,8 +29,10 @@ readonly class StockTransferResponseData
             'from_warehouse' => self::warehouseBrief($transfer->fromWarehouse),
             'to_warehouse' => self::warehouseBrief($transfer->toWarehouse),
             'created_by' => self::userBrief($transfer->createdByUser),
-            'posted_by' => self::userBrief($transfer->postedByUser),
-            'posted_at' => $transfer->posted_at?->toIso8601String(),
+            'dispatched_by' => self::userBrief($transfer->dispatchedByUser),
+            'dispatched_at' => $transfer->dispatched_at?->toIso8601String(),
+            'received_by' => self::userBrief($transfer->receivedByUser),
+            'received_at' => $transfer->received_at?->toIso8601String(),
             'lines_count' => $transfer->lines_count ?? null,
             'created_at' => (string) $transfer->created_at,
             'updated_at' => (string) $transfer->updated_at,

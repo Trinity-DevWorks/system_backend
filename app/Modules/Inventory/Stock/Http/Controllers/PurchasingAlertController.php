@@ -39,4 +39,12 @@ class PurchasingAlertController extends Controller
             'Purchasing alert summary fetched successfully.'
         );
     }
+
+    public function show(int $replenishmentId): JsonResponse
+    {
+        return ApiResponse::success(
+            $this->purchasingAlertService->find($replenishmentId),
+            'Purchasing alert fetched successfully.'
+        );
+    }
 }

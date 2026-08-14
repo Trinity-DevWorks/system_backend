@@ -23,7 +23,7 @@ class StockBalanceService
     {
         $query = StockBalance::query()
             ->with([
-                'item:id,sku,name,base_uom_id,track_inventory,is_active',
+                'item:id,sku,item_code,name,base_uom_id,track_inventory,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
             ]);
@@ -51,7 +51,9 @@ class StockBalanceService
         if (! empty($filters['search'])) {
             $term = '%'.trim((string) $filters['search']).'%';
             $query->whereHas('item', function (Builder $q) use ($term): void {
-                $q->where('name', 'like', $term)->orWhere('sku', 'like', $term);
+                $q->where('name', 'like', $term)
+                    ->orWhere('item_code', 'like', $term)
+                    ->orWhere('sku', 'like', $term);
             });
         }
 
@@ -67,7 +69,7 @@ class StockBalanceService
 
         return StockBalance::query()
             ->with([
-                'item:id,sku,name,base_uom_id,track_inventory,is_active',
+                'item:id,sku,item_code,name,base_uom_id,track_inventory,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
             ])

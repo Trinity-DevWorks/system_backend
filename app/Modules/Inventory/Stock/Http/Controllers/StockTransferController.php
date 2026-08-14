@@ -93,23 +93,41 @@ class StockTransferController extends Controller
         );
     }
 
-    public function post(Request $request, StockTransfer $stockTransfer): JsonResponse
+    public function dispatch(Request $request, StockTransfer $stockTransfer): JsonResponse
     {
         $userId = $request->user()?->id;
-        $transfer = $this->stockTransferService->post(
+        $transfer = $this->stockTransferService->dispatch(
             $stockTransfer,
             $userId !== null ? (string) $userId : null
         );
 
         return ApiResponse::success(
             StockTransferResponseData::fromModel($transfer),
-            'Stock transfer posted successfully.'
+            'Stock transfer dispatched successfully.'
         );
     }
 
-    public function cancel(StockTransfer $stockTransfer): JsonResponse
+    public function receive(Request $request, StockTransfer $stockTransfer): JsonResponse
     {
-        $transfer = $this->stockTransferService->cancel($stockTransfer);
+        $userId = $request->user()?->id;
+        $transfer = $this->stockTransferService->receive(
+            $stockTransfer,
+            $userId !== null ? (string) $userId : null
+        );
+
+        return ApiResponse::success(
+            StockTransferResponseData::fromModel($transfer),
+            'Stock transfer received successfully.'
+        );
+    }
+
+    public function cancel(Request $request, StockTransfer $stockTransfer): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $transfer = $this->stockTransferService->cancel(
+            $stockTransfer,
+            $userId !== null ? (string) $userId : null
+        );
 
         return ApiResponse::success(
             StockTransferResponseData::fromModel($transfer),
