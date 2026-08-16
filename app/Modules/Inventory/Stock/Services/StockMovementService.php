@@ -9,6 +9,7 @@ use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Models\StockMovement;
+use App\Modules\Notification\Services\InstantLowStockNotifier;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,7 @@ class StockMovementService
 {
     public function __construct(
         private readonly WarehouseService $warehouseService,
+        private readonly InstantLowStockNotifier $instantLowStockNotifier,
     ) {}
 
     /**
@@ -72,6 +74,13 @@ class StockMovementService
             $movement = StockMovement::query()->create($data->toArray());
 
             $balance->update(['quantity' => $newQuantity]);
+
+            $this->instantLowStockNotifier->afterBalanceChanged(
+                $item,
+                $warehouse,
+                $current,
+                $newQuantity,
+            );
 
             return $movement->load(['item.baseUom', 'warehouse', 'itemUom.uom', 'user']);
         });

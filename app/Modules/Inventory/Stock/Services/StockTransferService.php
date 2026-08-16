@@ -48,7 +48,8 @@ class StockTransferService
                 'fromWarehouse',
                 'toWarehouse',
                 'createdByUser',
-                'postedByUser',
+                'dispatchedByUser',
+                'receivedByUser',
                 'lines' => fn ($query) => $query->orderBy('id'),
                 'lines.item',
                 'lines.itemUom.uom',
@@ -147,38 +148,35 @@ class StockTransferService
         });
     }
 
-    public function cancel(StockTransfer $transfer): StockTransfer
+    public function cancel(StockTransfer $transfer, ?string $userId): StockTransfer
     {
-        $cancelled = DB::transaction(function () use ($transfer): StockTransfer {
-            $transfer = $this->lockDraftTransfer($transfer);
-            $transfer->update(['status' => StockTransferStatus::Cancelled]);
+        $cancelled = DB::transaction(function () use ($transfer, $userId): StockTransfer {
+            $locked = $this->lockTransfer($transfer);
+            StockTransferRules::assertCancellable($locked);
 
-            return $this->find($transfer->id);
+            if ($locked->status === StockTransferStatus::InTransit) {
+                $this->restoreSourceStock($locked, $userId);
+            }
+
+            $locked->update(['status' => StockTransferStatus::Cancelled]);
+
+            return $this->find($locked->id);
         });
 
-        $actorId = auth()->id() ? (string) auth()->id() : null;
-        $this->notifications->stockTransferCancelled($cancelled, $actorId);
+        $this->notifications->stockTransferCancelled($cancelled, $userId);
 
         return $cancelled;
     }
 
-    public function post(StockTransfer $transfer, ?string $userId): StockTransfer
+    public function dispatch(StockTransfer $transfer, ?string $userId): StockTransfer
     {
-        $posted = DB::transaction(function () use ($transfer, $userId): StockTransfer {
-            $transfer = $this->lockDraftTransfer($transfer);
-            StockTransferRules::assertWarehouses($transfer->from_warehouse_id, $transfer->to_warehouse_id);
+        $dispatched = DB::transaction(function () use ($transfer, $userId): StockTransfer {
+            $locked = $this->lockTransfer($transfer);
+            StockTransferRules::assertDispatchable($locked);
+            StockTransferRules::assertWarehouses($locked->from_warehouse_id, $locked->to_warehouse_id);
 
-            $lines = StockTransferLine::query()
-                ->where('stock_transfer_id', $transfer->id)
-                ->orderBy('item_id')
-                ->lockForUpdate()
-                ->get();
-
-            if ($lines->isEmpty()) {
-                abort(422, 'Cannot post a transfer without lines.', ['X-Error-Code' => 'STOCK_TRANSFER_NO_LINES']);
-            }
-
-            $referenceNote = 'Transfer '.$transfer->transfer_number;
+            $lines = $this->lockTransferLines($locked);
+            $referenceNote = 'Transfer '.$locked->transfer_number;
 
             foreach ($lines as $line) {
                 $baseQty = (string) $line->base_quantity;
@@ -186,39 +184,68 @@ class StockTransferService
 
                 $this->stockMovementService->post(StockMovementData::forTransfer(
                     itemId: (string) $line->item_id,
-                    warehouseId: (int) $transfer->from_warehouse_id,
+                    warehouseId: (int) $locked->from_warehouse_id,
                     quantityDelta: bcmul($baseQty, '-1', 6),
                     type: StockMovementType::TransferOut,
-                    stockTransferId: (string) $transfer->id,
-                    itemUomId: $line->item_uom_id ? (int) $line->item_uom_id : null,
-                    notes: $lineNote,
-                    userId: $userId,
-                ));
-
-                $this->stockMovementService->post(StockMovementData::forTransfer(
-                    itemId: (string) $line->item_id,
-                    warehouseId: (int) $transfer->to_warehouse_id,
-                    quantityDelta: $baseQty,
-                    type: StockMovementType::TransferIn,
-                    stockTransferId: (string) $transfer->id,
+                    stockTransferId: (string) $locked->id,
                     itemUomId: $line->item_uom_id ? (int) $line->item_uom_id : null,
                     notes: $lineNote,
                     userId: $userId,
                 ));
             }
 
-            $transfer->update([
-                'status' => StockTransferStatus::Posted,
-                'posted_by' => $userId,
-                'posted_at' => now(),
+            $locked->update([
+                'status' => StockTransferStatus::InTransit,
+                'dispatched_by' => $userId,
+                'dispatched_at' => now(),
             ]);
 
-            return $this->find($transfer->id);
+            return $this->find($locked->id);
         });
 
-        $this->notifications->stockTransferPosted($posted, $userId);
+        $this->notifications->stockTransferDispatched($dispatched, $userId);
 
-        return $posted;
+        return $dispatched;
+    }
+
+    public function receive(StockTransfer $transfer, ?string $userId): StockTransfer
+    {
+        $received = DB::transaction(function () use ($transfer, $userId): StockTransfer {
+            $locked = $this->lockTransfer($transfer);
+            StockTransferRules::assertReceivable($locked);
+            StockTransferRules::assertWarehouses($locked->from_warehouse_id, $locked->to_warehouse_id);
+
+            $lines = $this->lockTransferLines($locked);
+            $referenceNote = 'Transfer '.$locked->transfer_number;
+
+            foreach ($lines as $line) {
+                $baseQty = (string) $line->base_quantity;
+                $lineNote = $line->notes ? $referenceNote.' — '.$line->notes : $referenceNote;
+
+                $this->stockMovementService->post(StockMovementData::forTransfer(
+                    itemId: (string) $line->item_id,
+                    warehouseId: (int) $locked->to_warehouse_id,
+                    quantityDelta: $baseQty,
+                    type: StockMovementType::TransferIn,
+                    stockTransferId: (string) $locked->id,
+                    itemUomId: $line->item_uom_id ? (int) $line->item_uom_id : null,
+                    notes: $lineNote,
+                    userId: $userId,
+                ));
+            }
+
+            $locked->update([
+                'status' => StockTransferStatus::Received,
+                'received_by' => $userId,
+                'received_at' => now(),
+            ]);
+
+            return $this->find($locked->id);
+        });
+
+        $this->notifications->stockTransferReceived($received, $userId);
+
+        return $received;
     }
 
     /**
@@ -261,11 +288,58 @@ class StockTransferService
         }
     }
 
+    private function restoreSourceStock(StockTransfer $transfer, ?string $userId): void
+    {
+        $lines = $this->lockTransferLines($transfer);
+        $referenceNote = 'Transfer '.$transfer->transfer_number.' — cancelled';
+
+        foreach ($lines as $line) {
+            $baseQty = (string) $line->base_quantity;
+            $lineNote = $line->notes ? $referenceNote.' — '.$line->notes : $referenceNote;
+
+            $this->stockMovementService->post(StockMovementData::forTransfer(
+                itemId: (string) $line->item_id,
+                warehouseId: (int) $transfer->from_warehouse_id,
+                quantityDelta: $baseQty,
+                type: StockMovementType::TransferReturn,
+                stockTransferId: (string) $transfer->id,
+                itemUomId: $line->item_uom_id ? (int) $line->item_uom_id : null,
+                notes: $lineNote,
+                userId: $userId,
+            ));
+        }
+    }
+
+    /**
+     * @return Collection<int, StockTransferLine>
+     */
+    private function lockTransferLines(StockTransfer $transfer): Collection
+    {
+        $lines = StockTransferLine::query()
+            ->where('stock_transfer_id', $transfer->id)
+            ->orderBy('item_id')
+            ->lockForUpdate()
+            ->get();
+
+        if ($lines->isEmpty()) {
+            abort(422, 'Cannot process a transfer without lines.', ['X-Error-Code' => 'STOCK_TRANSFER_NO_LINES']);
+        }
+
+        return $lines;
+    }
+
     private function lockDraftTransfer(StockTransfer $transfer): StockTransfer
+    {
+        $locked = $this->lockTransfer($transfer);
+        StockTransferRules::assertDraft($locked);
+
+        return $locked;
+    }
+
+    private function lockTransfer(StockTransfer $transfer): StockTransfer
     {
         $locked = StockTransfer::query()->whereKey($transfer->id)->lockForUpdate()->firstOrFail();
         StockTransferRules::assertTransferVisible($locked);
-        StockTransferRules::assertDraft($locked);
 
         return $locked;
     }

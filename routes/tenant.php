@@ -59,6 +59,7 @@ use App\Modules\Supplier\Http\Controllers\SupplierLedgerController;
 use App\Modules\TenantSetting\Http\Controllers\TenantSettingController;
 use App\Modules\VatGroup\Http\Controllers\VatGroupController;
 use App\Modules\Warehouse\Http\Controllers\WarehouseController;
+use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
@@ -92,6 +93,10 @@ Route::middleware([
         ->middleware('throttle:password-reset');
 
     Route::middleware(['auth:sanctum', 'ensure.active', 'resolve.branch'])->group(function () {
+        // Echo/Reverb private channel auth — inherits tenant domain tenancy + Bearer Sanctum.
+        Route::match(['get', 'post'], 'broadcasting/auth', [BroadcastController::class, 'authenticate'])
+            ->name('tenant.broadcasting.auth');
+
         Route::post('auth/logout', LogoutController::class)
             ->middleware('throttle:60,1');
 
@@ -166,6 +171,8 @@ Route::middleware([
             Route::get('notifications', [NotificationController::class, 'index']);
             Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
             Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead']);
+            Route::delete('notifications/read', [NotificationController::class, 'clearRead']);
+            Route::delete('notifications', [NotificationController::class, 'clearAll']);
             Route::get('notifications/preferences', [NotificationController::class, 'preferences']);
             Route::put('notifications/preferences', [NotificationController::class, 'updatePreferences']);
 
@@ -268,7 +275,9 @@ Route::middleware([
                 ->middleware('check.permission:stock,delete');
             Route::put('stock/transfers/{stock_transfer}/lines/sync', [StockTransferController::class, 'syncLines'])
                 ->middleware('check.permission:stock,edit');
-            Route::post('stock/transfers/{stock_transfer}/post', [StockTransferController::class, 'post'])
+            Route::post('stock/transfers/{stock_transfer}/dispatch', [StockTransferController::class, 'dispatch'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/transfers/{stock_transfer}/receive', [StockTransferController::class, 'receive'])
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/transfers/{stock_transfer}/cancel', [StockTransferController::class, 'cancel'])
                 ->middleware('check.permission:stock,edit');

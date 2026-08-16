@@ -27,6 +27,7 @@ class DomainNotificationPublisher
         private readonly NotificationDispatcher $dispatcher,
         private readonly RecipientResolver $recipientResolver,
         private readonly PurchasingAlertService $purchasingAlerts,
+        private readonly InstantLowStockNotifier $instantLowStockNotifier,
     ) {}
 
     public function userCreated(User $user): void
@@ -153,10 +154,17 @@ class DomainNotificationPublisher
         ]);
     }
 
-    public function stockTransferPosted(StockTransfer $transfer, ?string $actorId): void
+    public function stockTransferDispatched(StockTransfer $transfer, ?string $actorId): void
     {
-        $this->dispatchStockTransferEvent('stock_transfer.posted', $transfer, $actorId, [
-            'Stock transfer :transfer_number was posted.',
+        $this->dispatchStockTransferEvent('stock_transfer.dispatched', $transfer, $actorId, [
+            'Stock transfer :transfer_number was dispatched.',
+        ]);
+    }
+
+    public function stockTransferReceived(StockTransfer $transfer, ?string $actorId): void
+    {
+        $this->dispatchStockTransferEvent('stock_transfer.received', $transfer, $actorId, [
+            'Stock transfer :transfer_number was received.',
         ]);
     }
 
@@ -182,7 +190,12 @@ class DomainNotificationPublisher
         }
 
         $hours = max(1, (int) config('notifications.low_stock.cooldown_hours', 24));
-        $cacheKey = (string) config('notifications.low_stock.cache_key_prefix', 'notifications:low_stock_digest');
+        $cachePrefix = (string) config(
+            'notifications.low_stock.cache_key_prefix',
+            'notifications:low_stock_digest'
+        );
+        $tenantId = function_exists('tenant') ? (string) (tenant('id') ?? 'central') : 'central';
+        $cacheKey = $cachePrefix.':'.$tenantId;
         if (Cache::has($cacheKey)) {
             return ['sent' => false, 'alert_count' => $alertCount, 'reason' => 'cooldown'];
         }
@@ -222,6 +235,9 @@ class DomainNotificationPublisher
             RecipientQuery::permission('stock', 'view'),
         );
 
+        // The digest is now the follow-up for these rows. A later worsening
+        // movement may create a fresh instant alert; recovery also releases it.
+        $this->instantLowStockNotifier->releaseAfterDigest($alerts);
         Cache::put($cacheKey, true, now()->addHours($hours));
 
         return ['sent' => true, 'alert_count' => $alertCount];

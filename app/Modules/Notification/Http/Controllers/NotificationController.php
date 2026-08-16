@@ -17,7 +17,7 @@ use Illuminate\Http\Request;
 /**
  * Tenant API for the authenticated user's notification inbox and preferences.
  *
- * What: REST endpoints for list, unread count, mark read, and preference matrix.
+ * What: REST endpoints for list, unread count, read/clear actions, and preference matrix.
  * Used for: Header bell (Phase 1 polling) and notification settings UI.
  * Solves: Exposes a secure, user-scoped inbox without granting access to other users' notifications.
  */
@@ -91,6 +91,30 @@ class NotificationController extends Controller
         return ApiResponse::success(
             ['marked' => $count, 'unread_count' => 0],
             'All notifications marked as read.'
+        );
+    }
+
+    public function clearRead(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $count = $this->inbox->clearRead($user);
+
+        return ApiResponse::success(
+            ['deleted' => $count, 'unread_count' => $this->inbox->unreadCount($user)],
+            'Read notifications cleared.'
+        );
+    }
+
+    public function clearAll(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $count = $this->inbox->clearAll($user);
+
+        return ApiResponse::success(
+            ['deleted' => $count, 'unread_count' => 0],
+            'All notifications cleared.'
         );
     }
 

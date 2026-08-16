@@ -8,13 +8,14 @@ use App\Modules\Notification\Support\NotificationChannels;
 use App\Modules\Notification\Support\NotificationTypeConfig;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
  * Generic queued Laravel notification driven by the type registry.
  *
- * What: One notification class for all Phase 1 business events (database + mail).
+ * What: One notification class for all business events (database + mail + broadcast).
  * Used for: NotificationDispatcher → $user->notify(...).
  * Solves: Avoids a separate Notification class per event while still using Laravel channels, queues, and Notifiable.
  */
@@ -24,7 +25,7 @@ class BusinessNotification extends Notification implements ShouldQueue
 
     /**
      * @param  array<string, mixed>  $payload  Stored in database `data` (+ used for mail interpolation).
-     * @param  list<string>  $channels  Subset of database|mail for this recipient.
+     * @param  list<string>  $channels  Subset of database|mail|broadcast for this recipient.
      */
     public function __construct(
         public readonly string $businessType,
@@ -47,6 +48,19 @@ class BusinessNotification extends Notification implements ShouldQueue
     {
         return array_merge($this->payload, [
             'type' => $this->businessType,
+        ]);
+    }
+
+    /**
+     * Thin realtime ping — frontend invalidates React Query and refetches the inbox.
+     */
+    public function toBroadcast(object $notifiable): BroadcastMessage
+    {
+        return new BroadcastMessage([
+            'type' => $this->businessType,
+            'severity' => $this->payload['severity'] ?? 'info',
+            'action_path' => $this->payload['action_path'] ?? null,
+            'created_at' => now()->toIso8601String(),
         ]);
     }
 

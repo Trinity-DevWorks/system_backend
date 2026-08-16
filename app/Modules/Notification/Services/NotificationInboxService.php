@@ -60,4 +60,16 @@ class NotificationInboxService
 
         return $unread->count();
     }
+
+    public function clearRead(User $user): int
+    {
+        return $user->notifications()
+            ->whereNotNull('read_at')
+            ->delete();
+    }
+
+    public function clearAll(User $user): int
+    {
+        return $user->notifications()->delete();
+    }
 }

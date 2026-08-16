@@ -31,7 +31,7 @@ class NotificationPreferenceService
         if (! is_array($defaults)) {
             $defaults = [NotificationChannels::DATABASE];
         }
-        $defaults = array_values(array_intersect($defaults, NotificationChannels::all()));
+        $defaults = array_values(array_intersect($defaults, NotificationChannels::preferenceChannels()));
 
         /** @var Collection<string, NotificationPreference> $prefs */
         $prefs = NotificationPreference::query()
@@ -50,7 +50,11 @@ class NotificationPreferenceService
 
         // Explicitly enabled channels that were not in defaults (rare; allow user override on).
         foreach ($prefs as $channel => $pref) {
-            if ($pref->enabled && in_array($channel, NotificationChannels::all(), true) && ! in_array($channel, $channels, true)) {
+            if (
+                $pref->enabled
+                && in_array($channel, NotificationChannels::preferenceChannels(), true)
+                && ! in_array($channel, $channels, true)
+            ) {
                 $channels[] = $channel;
             }
         }
@@ -77,7 +81,7 @@ class NotificationPreferenceService
             if (! is_array($defaults)) {
                 $defaults = [NotificationChannels::DATABASE];
             }
-            foreach (NotificationChannels::all() as $channel) {
+            foreach (NotificationChannels::preferenceChannels() as $channel) {
                 $key = $type.'|'.$channel;
                 $pref = $prefs->get($key);
                 $defaultOn = in_array($channel, $defaults, true);
@@ -102,7 +106,7 @@ class NotificationPreferenceService
     public function syncForUser(User $user, array $rows): array
     {
         $knownTypes = array_keys(config('notifications.types', []));
-        $knownChannels = NotificationChannels::all();
+        $knownChannels = NotificationChannels::preferenceChannels();
 
         DB::transaction(function () use ($user, $rows, $knownTypes, $knownChannels): void {
             foreach ($rows as $row) {

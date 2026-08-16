@@ -62,7 +62,8 @@ class NotificationDispatcher
             if (! is_array($defaults)) {
                 $defaults = [NotificationChannels::DATABASE];
             }
-            $defaults = array_values(array_intersect($defaults, NotificationChannels::all()));
+            // Preferences only cover database + mail; broadcast is appended when database is on.
+            $defaults = array_values(array_intersect($defaults, NotificationChannels::preferenceChannels()));
 
             foreach ($users as $user) {
                 $channels = array_values(array_intersect(
@@ -74,8 +75,13 @@ class NotificationDispatcher
                 if ($forceChannels !== null) {
                     $channels = array_values(array_intersect(
                         $this->preferences->channelsFor($user, $type),
-                        $forceChannels
+                        array_values(array_intersect($forceChannels, NotificationChannels::preferenceChannels()))
                     ));
+                }
+
+                // Realtime mirrors the in-app inbox — no separate preference toggle.
+                if (in_array(NotificationChannels::DATABASE, $channels, true)) {
+                    $channels[] = NotificationChannels::BROADCAST;
                 }
 
                 if ($channels === []) {

@@ -32,7 +32,7 @@ class UpdateNotificationPreferencesRequest extends FormRequest
         return [
             'preferences' => ['required', 'array', 'min:1'],
             'preferences.*.type' => ['required', 'string', Rule::in($types)],
-            'preferences.*.channel' => ['required', 'string', Rule::in(NotificationChannels::all())],
+            'preferences.*.channel' => ['required', 'string', Rule::in(NotificationChannels::preferenceChannels())],
             'preferences.*.enabled' => ['required', 'boolean'],
         ];
     }

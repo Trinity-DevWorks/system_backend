@@ -14,8 +14,8 @@ return [
     |--------------------------------------------------------------------------
     | Channels
     |--------------------------------------------------------------------------
-    | Phase 1: database (in-app inbox) + mail.
-    | Phase 2 will add broadcast (Reverb) without changing this catalog.
+    | Preference UI / defaults: database (in-app) + mail.
+    | Broadcast (Reverb) mirrors database and is not a user-facing preference.
     */
     'channels' => [
         'database',
@@ -26,11 +26,15 @@ return [
     |--------------------------------------------------------------------------
     | Low-stock digest
     |--------------------------------------------------------------------------
-    | Cooldown prevents spamming the same alert window; digest runs per tenant daily.
+    | Digest has a tenant-wide cooldown. One instant alert is allowed per
+    | item × warehouse until the digest covers it or its stock recovers.
+    | The fallback expiry prevents stale suppression if the scheduler is offline.
     */
     'low_stock' => [
         'cooldown_hours' => 24,
         'cache_key_prefix' => 'notifications:low_stock_digest',
+        'instant_suppression_fallback_hours' => 48,
+        'instant_cache_key_prefix' => 'notifications:instant_low_stock',
     ],
 
     /*
@@ -72,6 +76,12 @@ return [
             'mail_subject' => 'Low stock digest (:alert_count alerts)',
             'permission' => ['resource' => 'stock', 'action' => 'view'],
         ],
+        'purchasing.low_stock_item' => [
+            'severity' => 'warning',
+            'default_channels' => ['database'],
+            'mail_subject' => 'Low stock: :item_code in :warehouse_name',
+            'permission' => ['resource' => 'stock', 'action' => 'view'],
+        ],
         'purchase_order.confirmed' => [
             'severity' => 'info',
             'default_channels' => ['database', 'mail'],
@@ -90,10 +100,16 @@ return [
             'mail_subject' => 'Purchase order :po_number cancelled',
             'permission' => ['resource' => 'stock', 'action' => 'view'],
         ],
-        'stock_transfer.posted' => [
+        'stock_transfer.dispatched' => [
             'severity' => 'info',
             'default_channels' => ['database'],
-            'mail_subject' => 'Stock transfer :transfer_number posted',
+            'mail_subject' => 'Stock transfer :transfer_number dispatched',
+            'permission' => ['resource' => 'stock', 'action' => 'view'],
+        ],
+        'stock_transfer.received' => [
+            'severity' => 'info',
+            'default_channels' => ['database'],
+            'mail_subject' => 'Stock transfer :transfer_number received',
             'permission' => ['resource' => 'stock', 'action' => 'view'],
         ],
         'stock_transfer.cancelled' => [

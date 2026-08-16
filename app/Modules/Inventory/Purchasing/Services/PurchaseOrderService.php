@@ -233,6 +233,7 @@ class PurchaseOrderService
             PurchaseOrderRules::assertMarkAsSent($locked);
 
             $locked->update([
+                'status' => PurchaseOrderStatus::Sent,
                 'sent_at' => now(),
                 'sent_by' => $userId,
             ]);

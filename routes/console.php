@@ -204,3 +204,40 @@ Artisan::command('notifications:low-stock-digest', function (): void {
 
     $this->info("Done. Sent={$sentTenants}. Skipped={$skipped}.");
 })->purpose('Send low-stock digest notifications for each tenant (cooldown-aware)');
+
+/*
+|--------------------------------------------------------------------------
+| notifications:prune
+|--------------------------------------------------------------------------
+|
+| Deletes read inbox rows older than the configured retention period in each
+| tenant database. Unread notifications are deliberately preserved.
+|
+*/
+Artisan::command('notifications:prune {--days= : Override configured retention days}', function (): void {
+    $configuredDays = (int) config('notifications.retention_days', 90);
+    $days = max(1, (int) ($this->option('days') ?: $configuredDays));
+    $cutoff = now()->subDays($days);
+    $total = 0;
+    $command = $this;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use ($cutoff, $command, &$total): void {
+        $tenant->run(function () use ($cutoff, $tenant, $command, &$total): void {
+            if (! Schema::hasTable('notifications')) {
+                $command->warn("Skipped tenant [{$tenant->id}] — notifications table missing.");
+
+                return;
+            }
+
+            $deleted = DB::table('notifications')
+                ->whereNotNull('read_at')
+                ->where('created_at', '<', $cutoff)
+                ->delete();
+
+            $total += $deleted;
+            $command->info("Tenant [{$tenant->id}]: deleted {$deleted} expired read notification(s).");
+        });
+    });
+
+    $this->info("Done. Retention={$days} day(s). Total deleted={$total}.");
+})->purpose('Delete expired read notifications from tenant inboxes');

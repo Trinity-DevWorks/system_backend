@@ -26,11 +26,14 @@ return Application::configure(basePath: dirname(__DIR__))
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
+        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
     )
     ->withSchedule(function (Schedule $schedule): void {
         // Nightly retention purge for tenant audit logs (see audits:prune in routes/console.php).
         $schedule->command('audits:prune')->dailyAt('02:30')->withoutOverlapping();
+        // Remove expired read inbox rows while preserving unread notifications.
+        $schedule->command('notifications:prune')->dailyAt('02:45')->withoutOverlapping();
         // Daily low-stock / purchasing-alert digest emails + in-app notifications (Phase 1).
         $schedule->command('notifications:low-stock-digest')->dailyAt('07:00')->withoutOverlapping();
     })
