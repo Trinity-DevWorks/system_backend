@@ -25,6 +25,9 @@ class UpdateUserRequest extends FormRequest
         if ($this->has('phone') && $this->input('phone') === '') {
             $this->merge(['phone' => null]);
         }
+        if ($this->has('name') && is_string($this->input('name'))) {
+            $this->merge(['name' => trim($this->input('name'))]);
+        }
     }
 
     /**
@@ -36,7 +39,7 @@ class UpdateUserRequest extends FormRequest
         $user = $this->route('user');
 
         return [
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255', 'regex:/^[\p{L}\p{M}][\p{L}\p{M} .\'\x{2019}-]*$/u'],
             'email' => [
                 'required',
                 'email',
@@ -78,5 +81,15 @@ class UpdateUserRequest extends FormRequest
                 $branchIds[$branchId] = true;
             }
         });
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'name.regex' => 'The name must contain letters and cannot be numeric.',
+        ];
     }
 }

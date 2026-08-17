@@ -178,8 +178,8 @@ class UserService
      *
      * @param  array{
      *   name: string,
-     *   email: string,
      *   phone?: string|null,
+     *   current_password?: string|null,
      *   password?: string|null,
      *   preferred_branch_id?: int|null
      * }  $data
@@ -189,7 +189,6 @@ class UserService
         return DB::transaction(function () use ($user, $data): User {
             $payload = [
                 'name' => $data['name'],
-                'email' => $data['email'],
             ];
 
             if (array_key_exists('phone', $data)) {
@@ -210,6 +209,20 @@ class UserService
             }
 
             if (! empty($data['password'])) {
+                $currentPassword = (string) ($data['current_password'] ?? '');
+                if ($currentPassword === '' || ! Hash::check($currentPassword, (string) $user->getAuthPassword())) {
+                    throw new HttpResponseException(
+                        ApiResponse::error(
+                            'The current password is incorrect.',
+                            422,
+                            null,
+                            ['current_password' => ['The current password is incorrect.']],
+                            null,
+                            null,
+                            'CURRENT_PASSWORD_INVALID'
+                        )
+                    );
+                }
                 if (Hash::check((string) $data['password'], (string) $user->getAuthPassword())) {
                     throw new HttpResponseException(
                         ApiResponse::error(
