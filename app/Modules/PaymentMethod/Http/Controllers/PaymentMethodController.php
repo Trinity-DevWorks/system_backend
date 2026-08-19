@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\PaymentMethod\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\PaymentMethod\DTOs\PaymentMethodData;
@@ -12,18 +13,35 @@ use App\Modules\PaymentMethod\Http\Requests\StorePaymentMethodRequest;
 use App\Modules\PaymentMethod\Http\Requests\UpdatePaymentMethodRequest;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentMethod\Services\PaymentMethodService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PaymentMethodController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly PaymentMethodService $paymentMethodService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            PaymentMethodResponseData::collectionToArray($this->paymentMethodService->list()),
+        $names = $this->namesResponse(
+            $request,
+            fn () => PaymentMethodResponseData::collectionToArray($this->paymentMethodService->list()),
+            'Payment method names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->paymentMethodService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (PaymentMethod $paymentMethod): array => PaymentMethodResponseData::fromModel($paymentMethod)->toArray(),
             'Payment methods fetched successfully.'
         );
     }

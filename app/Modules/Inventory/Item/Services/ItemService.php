@@ -6,7 +6,9 @@ use App\Modules\Inventory\Item\DTOs\ItemData;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Item\Support\ItemDeleteRules;
+use App\Support\ListPagination;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class ItemService
@@ -23,6 +25,48 @@ class ItemService
                 'vatGroup:id,abrv,name,percentage',
                 'primaryImageAttachment:id,attachable_type,attachable_id,viewer_category,is_primary',
             ])
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Item::query()
+            ->with([
+                'itemType:id,code,name',
+                'category:id,code,name,parent_id',
+                'brand:id,code,name',
+                'unitGroup:id,code,name',
+                'baseUom:id,code,name,unit_group_id',
+                'vatGroup:id,abrv,name,percentage',
+                'primaryImageAttachment:id,attachable_type,attachable_id,viewer_category,is_primary',
+            ])
+            ->orderBy('name');
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['sku', 'item_code', 'plu_code', 'name'],
+            [
+                'category' => ['code', 'name'],
+                'brand' => ['code', 'name'],
+                'itemType' => ['code', 'name'],
+            ],
+        );
+
+        return $query->paginate($perPage);
+    }
+
+    /**
+     * Lightweight lookup rows for selects (bundle, recipe, stock drawers).
+     *
+     * @return Collection<int, Item>
+     */
+    public function names(): Collection
+    {
+        return Item::query()
+            ->select(['id', 'sku', 'name', 'item_type_id', 'track_inventory', 'allow_purchase', 'is_active'])
+            ->with(['itemType:id,code,name'])
             ->orderBy('name')
             ->get();
     }

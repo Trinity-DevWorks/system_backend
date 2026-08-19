@@ -13,6 +13,7 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderService
@@ -30,14 +31,13 @@ class PurchaseOrderService
      *   warehouse_id?:int,
      *   search?:string,
      *   from?:string,
-     *   to?:string,
-     *   limit?:int
+     *   to?:string
      * }  $filters
-     * @return Collection<int, PurchaseOrder>
+     * @return LengthAwarePaginator<int, PurchaseOrder>
      */
-    public function list(array $filters = []): Collection
+    public function list(array $filters, int $perPage = 20): LengthAwarePaginator
     {
-        return $this->purchaseOrderQueryService->list($filters);
+        return $this->purchaseOrderQueryService->paginate($filters, $perPage);
     }
 
     public function find(string $id): PurchaseOrder

@@ -7,8 +7,10 @@ use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\RolePermission;
 use App\Modules\Rbac\RbacResourceCatalog;
 use App\Services\PermissionService;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -31,6 +33,14 @@ class RoleService
             Role::class,
             fn (): Collection => Role::query()->orderBy('name')->get()
         );
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Role::query()->orderBy('name');
+        ListPagination::applySearch($query, $search, ['name', 'description']);
+
+        return $query->paginate($perPage);
     }
 
     /**

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Http\Responses\ApiResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 trait ResolvesListSection
@@ -24,5 +26,19 @@ trait ResolvesListSection
         }
 
         return $section;
+    }
+
+    /**
+     * Dropdown / lookup lists stay unpaginated via `?section=names`.
+     *
+     * @param  callable(): mixed  $payload
+     */
+    protected function namesResponse(Request $request, callable $payload, string $message): ?JsonResponse
+    {
+        if ($this->resolveListSection($request, ['names']) !== 'names') {
+            return null;
+        }
+
+        return ApiResponse::success($payload(), $message);
     }
 }

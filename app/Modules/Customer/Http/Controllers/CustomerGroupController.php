@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Customer\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Customer\DTOs\CustomerGroupData;
@@ -12,18 +13,35 @@ use App\Modules\Customer\Http\Requests\StoreCustomerGroupRequest;
 use App\Modules\Customer\Http\Requests\UpdateCustomerGroupRequest;
 use App\Modules\Customer\Models\CustomerGroup;
 use App\Modules\Customer\Services\CustomerGroupService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class CustomerGroupController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly CustomerGroupService $customerGroupService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            CustomerGroupResponseData::collectionToArray($this->customerGroupService->list()),
+        $names = $this->namesResponse(
+            $request,
+            fn () => CustomerGroupResponseData::collectionToArray($this->customerGroupService->list()),
+            'Customer group names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->customerGroupService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (CustomerGroup $group): array => CustomerGroupResponseData::fromModel($group)->toArray(),
             'Customer groups fetched successfully.'
         );
     }

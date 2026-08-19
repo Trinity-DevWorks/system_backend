@@ -9,9 +9,11 @@ use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
 use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerContact;
+use App\Support\ListPagination;
 use App\Support\SequentialCodeGenerator;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class CustomerService
@@ -41,6 +43,40 @@ class CustomerService
             ])
             ->orderBy('name')
             ->get();
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Customer::query()
+            ->select([
+                'id',
+                'customer_code',
+                'name',
+                'customer_group_id',
+                'salesman_id',
+                'phone',
+                'email',
+                'status',
+                'created_at',
+                'updated_at',
+            ])
+            ->with([
+                'customerGroup:id,name',
+                'salesman:id,full_name,salesman_code',
+            ])
+            ->orderBy('name');
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['customer_code', 'name', 'phone', 'email'],
+            [
+                'customerGroup' => ['name'],
+                'salesman' => ['full_name', 'salesman_code'],
+            ],
+        );
+
+        return $query->paginate($perPage);
     }
 
     public function names(): Collection

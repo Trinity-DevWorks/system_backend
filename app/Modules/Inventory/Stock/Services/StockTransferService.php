@@ -14,6 +14,7 @@ use App\Modules\Inventory\Stock\Support\StockTransferLineQuantity;
 use App\Modules\Inventory\Stock\Support\StockTransferRules;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class StockTransferService
@@ -31,14 +32,13 @@ class StockTransferService
      *   to_warehouse_id?:int,
      *   search?:string,
      *   from?:string,
-     *   to?:string,
-     *   limit?:int
+     *   to?:string
      * }  $filters
-     * @return Collection<int, StockTransfer>
+     * @return LengthAwarePaginator<int, StockTransfer>
      */
-    public function list(array $filters = []): Collection
+    public function list(array $filters, int $perPage = 20): LengthAwarePaginator
     {
-        return $this->stockTransferQueryService->list($filters);
+        return $this->stockTransferQueryService->paginate($filters, $perPage);
     }
 
     public function find(string $id): StockTransfer

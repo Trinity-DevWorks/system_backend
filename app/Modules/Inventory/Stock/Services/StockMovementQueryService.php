@@ -7,7 +7,9 @@ namespace App\Modules\Inventory\Stock\Services;
 use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Warehouse\Services\WarehouseService;
-use Illuminate\Database\Eloquent\Collection;
+use App\Support\ListPagination;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class StockMovementQueryService
 {
@@ -26,15 +28,33 @@ class StockMovementQueryService
     /**
      * @param  array{
      *   warehouse_id?:int,
-     *   item_id?:int,
+     *   item_id?:int|string,
      *   type?:string,
+     *   search?:string,
      *   from?:string,
-     *   to?:string,
-     *   limit?:int
+     *   to?:string
      * }  $filters
-     * @return Collection<int, StockMovement>
+     * @return LengthAwarePaginator<int, StockMovement>
      */
-    public function list(array $filters = []): Collection
+    public function paginate(array $filters, int $perPage): LengthAwarePaginator
+    {
+        return $this->filteredQuery($filters)
+            ->orderByDesc('id')
+            ->paginate($perPage);
+    }
+
+    /**
+     * @param  array{
+     *   warehouse_id?:int,
+     *   item_id?:int|string,
+     *   type?:string,
+     *   search?:string,
+     *   from?:string,
+     *   to?:string
+     * }  $filters
+     * @return Builder<StockMovement>
+     */
+    private function filteredQuery(array $filters = []): Builder
     {
         $query = StockMovement::query()
             ->with([
@@ -72,11 +92,20 @@ class StockMovementQueryService
             $query->where('created_at', '<=', $filters['to']);
         }
 
-        $limit = min(max((int) ($filters['limit'] ?? 100), 1), 500);
+        $search = isset($filters['search']) ? trim((string) $filters['search']) : '';
+        if ($search !== '') {
+            ListPagination::applySearch(
+                $query,
+                $search,
+                ['notes'],
+                [
+                    'item' => ['sku', 'item_code', 'name'],
+                    'warehouse' => ['name', 'shortcut_name'],
+                    'user' => ['name', 'email'],
+                ],
+            );
+        }
 
-        return $query
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get();
+        return $query;
     }
 }

@@ -21,6 +21,7 @@ use App\Modules\Supplier\Http\Requests\UpdateSupplierRequest;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Supplier\Services\SupplierService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -40,8 +41,8 @@ class SupplierController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        if ($this->resolveListSection($request, self::INDEX_SECTIONS) === 'names') {
-            $rows = $this->supplierService->names()->map(fn (Supplier $s): array => [
+        $names = $this->namesResponse($request, function () {
+            return $this->supplierService->names()->map(fn (Supplier $s): array => [
                 'id' => $s->id,
                 'supplier_code' => (string) ($s->supplier_code ?? ''),
                 'name' => $s->name,
@@ -49,17 +50,17 @@ class SupplierController extends Controller
                 'created_at' => (string) $s->created_at,
                 'updated_at' => (string) $s->updated_at,
             ])->values()->all();
-
-            return ApiResponse::success($rows, 'Supplier names fetched successfully.');
+        }, 'Supplier names fetched successfully.');
+        if ($names) {
+            return $names;
         }
 
-        $suppliers = $this->supplierService->listForTable();
-
-        return ApiResponse::success(
-            $suppliers
-                ->map(fn (Supplier $s): array => SupplierTableRowResponseData::fromModel($s)->toArray())
-                ->values()
-                ->all(),
+        return ListPagination::json(
+            $this->supplierService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (Supplier $s): array => SupplierTableRowResponseData::fromModel($s)->toArray(),
             'Suppliers fetched successfully.'
         );
     }

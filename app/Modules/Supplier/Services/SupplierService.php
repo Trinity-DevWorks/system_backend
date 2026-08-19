@@ -8,9 +8,11 @@ use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
 use App\Modules\Supplier\Models\SupplierBalance;
 use App\Modules\Supplier\Models\SupplierContact;
+use App\Support\ListPagination;
 use App\Support\SequentialCodeGenerator;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class SupplierService
@@ -45,6 +47,34 @@ class SupplierService
             ->with(['supplierGroup:id,name'])
             ->orderBy('name')
             ->get();
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Supplier::query()
+            ->select([
+                'id',
+                'supplier_code',
+                'name',
+                'company_name',
+                'supplier_group_id',
+                'phone',
+                'email',
+                'is_active',
+                'created_at',
+                'updated_at',
+            ])
+            ->with(['supplierGroup:id,name'])
+            ->orderBy('name');
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['supplier_code', 'name', 'company_name', 'phone', 'email'],
+            ['supplierGroup' => ['name']],
+        );
+
+        return $query->paginate($perPage);
     }
 
     public function names(): Collection

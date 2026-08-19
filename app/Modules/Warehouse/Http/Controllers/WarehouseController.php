@@ -2,6 +2,7 @@
 
 namespace App\Modules\Warehouse\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Warehouse\DTOs\WarehouseData;
@@ -10,18 +11,35 @@ use App\Modules\Warehouse\Http\Requests\StoreWarehouseRequest;
 use App\Modules\Warehouse\Http\Requests\UpdateWarehouseRequest;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class WarehouseController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly WarehouseService $warehouseService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            WarehouseResponseData::collectionToArray($this->warehouseService->list()),
+        $names = $this->namesResponse(
+            $request,
+            fn () => WarehouseResponseData::collectionToArray($this->warehouseService->list()),
+            'Warehouse names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->warehouseService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (Warehouse $warehouse): array => WarehouseResponseData::fromModel($warehouse)->toArray(),
             'Warehouses fetched successfully.'
         );
     }

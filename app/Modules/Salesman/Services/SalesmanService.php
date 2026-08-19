@@ -8,7 +8,9 @@ use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Branch\Services\BranchService;
 use App\Modules\Salesman\DTOs\SalesmanData;
 use App\Modules\Salesman\Models\Salesman;
+use App\Support\ListPagination;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class SalesmanService
@@ -33,6 +35,26 @@ class SalesmanService
         }
 
         return $query->get();
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Salesman::query()
+            ->with(['branch:id,name', 'warehouse:id,name'])
+            ->orderBy('full_name');
+
+        $activeBranchId = $this->branchContext->resolveActiveBranchId();
+        if ($activeBranchId !== null) {
+            $query->where('branch_id', $activeBranchId);
+        }
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['salesman_code', 'full_name', 'phone', 'email'],
+        );
+
+        return $query->paginate($perPage);
     }
 
     public function assertVisible(Salesman $salesman): void

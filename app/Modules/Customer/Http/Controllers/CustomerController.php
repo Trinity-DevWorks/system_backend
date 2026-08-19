@@ -22,6 +22,7 @@ use App\Modules\Customer\Http\Requests\UpdateCustomerRequest;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Services\CustomerLedgerService;
 use App\Modules\Customer\Services\CustomerService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -41,8 +42,8 @@ class CustomerController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        if ($this->resolveListSection($request, self::INDEX_SECTIONS) === 'names') {
-            $rows = $this->customerService->names()->map(fn (Customer $c): array => [
+        $names = $this->namesResponse($request, function () {
+            return $this->customerService->names()->map(fn (Customer $c): array => [
                 'id' => $c->id,
                 'customer_code' => (string) ($c->customer_code ?? ''),
                 'name' => $c->name,
@@ -52,17 +53,17 @@ class CustomerController extends Controller
                 'created_at' => (string) $c->created_at,
                 'updated_at' => (string) $c->updated_at,
             ])->values()->all();
-
-            return ApiResponse::success($rows, 'Customer names fetched successfully.');
+        }, 'Customer names fetched successfully.');
+        if ($names) {
+            return $names;
         }
 
-        $customers = $this->customerService->listForTable();
-
-        return ApiResponse::success(
-            $customers
-                ->map(fn (Customer $c): array => CustomerTableRowResponseData::fromModel($c)->toArray())
-                ->values()
-                ->all(),
+        return ListPagination::json(
+            $this->customerService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (Customer $c): array => CustomerTableRowResponseData::fromModel($c)->toArray(),
             'Customers fetched successfully.'
         );
     }

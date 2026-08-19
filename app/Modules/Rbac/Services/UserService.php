@@ -10,8 +10,10 @@ use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
 use App\Services\PermissionService;
+use App\Support\ListPagination;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
@@ -41,6 +43,34 @@ class UserService
         $this->eagerLoadBranchRolesForMany($users);
 
         return $users;
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = User::query()
+            ->with([
+                'branches' => fn ($q) => $q->select('branches.id', 'branches.name'),
+                'avatarAttachment',
+            ])
+            ->orderBy('name');
+
+        ListPagination::applySearch($query, $search, ['name', 'email']);
+
+        $paginator = $query->paginate($perPage);
+        $this->eagerLoadBranchRolesForMany($paginator->getCollection());
+
+        return $paginator;
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function names(): Collection
+    {
+        return User::query()
+            ->select(['id', 'name', 'email'])
+            ->orderBy('name')
+            ->get();
     }
 
     public function find(User $user): User

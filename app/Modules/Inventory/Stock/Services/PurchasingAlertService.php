@@ -12,6 +12,7 @@ use App\Modules\Supplier\Models\SupplierItem;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -33,28 +34,8 @@ class PurchasingAlertService
      */
     public function list(array $filters = []): array
     {
-        $query = $this->baseAlertQuery();
-
-        if (! empty($filters['warehouse_id'])) {
-            $warehouseId = (int) $filters['warehouse_id'];
-            $this->warehouseService->assertVisibleById($warehouseId);
-            $query->where('item_warehouse_replenishments.warehouse_id', $warehouseId);
-        }
-
-        if (! empty($filters['item_id'])) {
-            $query->where('item_warehouse_replenishments.item_id', $filters['item_id']);
-        }
-
-        if (! empty($filters['search'])) {
-            $term = '%'.trim((string) $filters['search']).'%';
-            $query->where(function (Builder $q) use ($term): void {
-                $q->where('items.name', 'like', $term)
-                    ->orWhere('items.item_code', 'like', $term);
-            });
-        }
-
         /** @var Collection<int, ItemWarehouseReplenishment&object{on_hand_quantity: string|float|int}> $rows */
-        $rows = $query
+        $rows = $this->filteredAlertQuery($filters)
             ->orderBy('items.name')
             ->orderBy('item_warehouse_replenishments.warehouse_id')
             ->get();
@@ -62,12 +43,6 @@ class PurchasingAlertService
         $preferredSuppliers = $this->preferredSuppliersByItemId(
             $rows->pluck('item_id')->unique()->all(),
         );
-
-        $onlyAlerts = array_key_exists('only_alerts', $filters)
-            ? (bool) $filters['only_alerts']
-            : true;
-
-        $statusFilter = $this->parseStatusFilter($filters['status'] ?? null);
 
         $results = [];
 
@@ -79,14 +54,6 @@ class PurchasingAlertService
                 (float) $row->safety_stock_qty,
             );
 
-            if ($onlyAlerts && $status === ReplenishmentAlertStatus::Ok) {
-                continue;
-            }
-
-            if ($statusFilter !== [] && ! in_array($status, $statusFilter, true)) {
-                continue;
-            }
-
             $results[] = PurchasingAlertResponseData::fromRow(
                 $row,
                 $onHand,
@@ -96,6 +63,49 @@ class PurchasingAlertService
         }
 
         return $results;
+    }
+
+    /**
+     * @param  array{
+     *   warehouse_id?: int|null,
+     *   item_id?: string|null,
+     *   search?: string|null,
+     *   status?: string|null,
+     *   only_alerts?: bool
+     * }  $filters
+     * @return LengthAwarePaginator<int, array<string, mixed>>
+     */
+    public function paginate(array $filters, int $perPage): LengthAwarePaginator
+    {
+        $query = $this->filteredAlertQuery($filters);
+        $paginator = $query
+            ->orderBy('items.name')
+            ->orderBy('item_warehouse_replenishments.warehouse_id')
+            ->paginate($perPage);
+
+        $preferredSuppliers = $this->preferredSuppliersByItemId(
+            $paginator->getCollection()->pluck('item_id')->unique()->all(),
+        );
+
+        $paginator->getCollection()->transform(
+            function (ItemWarehouseReplenishment $row) use ($preferredSuppliers): array {
+                $onHand = (float) $row->on_hand_quantity;
+                $status = ReplenishmentAlertRules::status(
+                    $onHand,
+                    (float) $row->reorder_point_qty,
+                    (float) $row->safety_stock_qty,
+                );
+
+                return PurchasingAlertResponseData::fromRow(
+                    $row,
+                    $onHand,
+                    $status,
+                    $preferredSuppliers,
+                );
+            }
+        );
+
+        return $paginator;
     }
 
     /**
@@ -180,6 +190,111 @@ class PurchasingAlertService
                     });
             })
             ->count();
+    }
+
+    /**
+     * @param  array{
+     *   warehouse_id?: int|null,
+     *   item_id?: string|null,
+     *   search?: string|null,
+     *   status?: string|null,
+     *   only_alerts?: bool
+     * }  $filters
+     */
+    private function filteredAlertQuery(array $filters): Builder
+    {
+        $query = $this->baseAlertQuery();
+
+        if (! empty($filters['warehouse_id'])) {
+            $warehouseId = (int) $filters['warehouse_id'];
+            $this->warehouseService->assertVisibleById($warehouseId);
+            $query->where('item_warehouse_replenishments.warehouse_id', $warehouseId);
+        }
+
+        if (! empty($filters['item_id'])) {
+            $query->where('item_warehouse_replenishments.item_id', $filters['item_id']);
+        }
+
+        if (! empty($filters['search'])) {
+            $term = '%'.addcslashes(trim((string) $filters['search']), '%_\\').'%';
+            $query->where(function (Builder $q) use ($term): void {
+                $q->where('items.name', 'like', $term)
+                    ->orWhere('items.item_code', 'like', $term)
+                    ->orWhere('items.sku', 'like', $term);
+            });
+        }
+
+        $onlyAlerts = array_key_exists('only_alerts', $filters)
+            ? (bool) $filters['only_alerts']
+            : true;
+        $statusFilter = $this->parseStatusFilter($filters['status'] ?? null);
+        $this->constrainByComputedStatus($query, $onlyAlerts, $statusFilter);
+
+        return $query;
+    }
+
+    /**
+     * @param  list<ReplenishmentAlertStatus>  $statusFilter
+     */
+    private function constrainByComputedStatus(Builder $query, bool $onlyAlerts, array $statusFilter): void
+    {
+        $wanted = $statusFilter;
+        if ($onlyAlerts) {
+            $wanted = $wanted === []
+                ? [
+                    ReplenishmentAlertStatus::OutOfStock,
+                    ReplenishmentAlertStatus::BelowSafety,
+                    ReplenishmentAlertStatus::BelowReorder,
+                ]
+                : array_values(array_filter(
+                    $wanted,
+                    fn (ReplenishmentAlertStatus $status): bool => $status !== ReplenishmentAlertStatus::Ok
+                ));
+        }
+
+        if ($wanted === []) {
+            if ($onlyAlerts) {
+                $query->whereRaw('0 = 1');
+            }
+
+            return;
+        }
+
+        $query->where(function (Builder $outer) use ($wanted): void {
+            foreach ($wanted as $index => $status) {
+                $method = $index === 0 ? 'where' : 'orWhere';
+                $outer->{$method}(function (Builder $q) use ($status): void {
+                    $this->applySingleComputedStatus($q, $status);
+                });
+            }
+        });
+    }
+
+    private function applySingleComputedStatus(Builder $query, ReplenishmentAlertStatus $status): void
+    {
+        $onHand = 'COALESCE(stock_balances.quantity, 0)';
+
+        match ($status) {
+            ReplenishmentAlertStatus::OutOfStock => $query->whereRaw("{$onHand} <= 0"),
+            ReplenishmentAlertStatus::BelowSafety => $query
+                ->whereRaw("{$onHand} > 0")
+                ->where('item_warehouse_replenishments.safety_stock_qty', '>', 0)
+                ->whereRaw("{$onHand} <= item_warehouse_replenishments.safety_stock_qty"),
+            ReplenishmentAlertStatus::BelowReorder => $query
+                ->whereRaw("{$onHand} > 0")
+                ->where(function (Builder $q) use ($onHand): void {
+                    $q->where('item_warehouse_replenishments.safety_stock_qty', '<=', 0)
+                        ->orWhereRaw("{$onHand} > item_warehouse_replenishments.safety_stock_qty");
+                })
+                ->whereRaw("{$onHand} <= item_warehouse_replenishments.reorder_point_qty"),
+            ReplenishmentAlertStatus::Ok => $query
+                ->whereRaw("{$onHand} > 0")
+                ->where(function (Builder $q) use ($onHand): void {
+                    $q->where('item_warehouse_replenishments.safety_stock_qty', '<=', 0)
+                        ->orWhereRaw("{$onHand} > item_warehouse_replenishments.safety_stock_qty");
+                })
+                ->whereRaw("{$onHand} > item_warehouse_replenishments.reorder_point_qty"),
+        };
     }
 
     private function baseAlertQuery(): Builder

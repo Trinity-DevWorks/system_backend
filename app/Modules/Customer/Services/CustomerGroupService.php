@@ -6,8 +6,10 @@ namespace App\Modules\Customer\Services;
 
 use App\Modules\Customer\DTOs\CustomerGroupData;
 use App\Modules\Customer\Models\CustomerGroup;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class CustomerGroupService
@@ -21,6 +23,14 @@ class CustomerGroupService
             CustomerGroup::class,
             fn (): Collection => CustomerGroup::query()->orderBy('name')->get()
         );
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = CustomerGroup::query()->orderBy('name');
+        ListPagination::applySearch($query, $search, ['name']);
+
+        return $query->paginate($perPage);
     }
 
     public function create(CustomerGroupData $data): CustomerGroup

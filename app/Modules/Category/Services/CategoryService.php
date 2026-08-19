@@ -4,8 +4,10 @@ namespace App\Modules\Category\Services;
 
 use App\Modules\Category\DTOs\CategoryData;
 use App\Modules\Category\Models\Category;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\ValidationException;
 
 class CategoryService
@@ -30,6 +32,23 @@ class CategoryService
                 ->orderBy('name')
                 ->get()
         );
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Category::query()
+            ->with(['parent:id,code,name,parent_id'])
+            ->withCount('children')
+            ->orderBy('name');
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['code', 'name'],
+            ['parent' => ['code', 'name']],
+        );
+
+        return $query->paginate($perPage);
     }
 
     /**

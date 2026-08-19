@@ -7,7 +7,8 @@ namespace App\Modules\Inventory\Purchasing\Services;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Warehouse\Services\WarehouseService;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class PurchaseOrderQueryService
 {
@@ -22,12 +23,30 @@ class PurchaseOrderQueryService
      *   warehouse_id?:int,
      *   search?:string,
      *   from?:string,
-     *   to?:string,
-     *   limit?:int
+     *   to?:string
      * }  $filters
-     * @return Collection<int, PurchaseOrder>
+     * @return LengthAwarePaginator<int, PurchaseOrder>
      */
-    public function list(array $filters = []): Collection
+    public function paginate(array $filters, int $perPage): LengthAwarePaginator
+    {
+        return $this->filteredQuery($filters)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate($perPage);
+    }
+
+    /**
+     * @param  array{
+     *   status?:string,
+     *   supplier_id?:string,
+     *   warehouse_id?:int,
+     *   search?:string,
+     *   from?:string,
+     *   to?:string
+     * }  $filters
+     * @return Builder<PurchaseOrder>
+     */
+    private function filteredQuery(array $filters = []): Builder
     {
         $query = PurchaseOrder::query()
             ->with([
@@ -75,12 +94,6 @@ class PurchaseOrderQueryService
             $query->where('order_date', '<=', $filters['to']);
         }
 
-        $limit = min(max((int) ($filters['limit'] ?? 100), 1), 500);
-
-        return $query
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get();
+        return $query;
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Currency\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Currency\DTOs\CurrencyData;
@@ -13,20 +14,36 @@ use App\Modules\Currency\Http\Requests\StoreCurrencyRequest;
 use App\Modules\Currency\Http\Requests\UpdateCurrencyRequest;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\CurrencyService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
 class CurrencyController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly CurrencyService $currencyService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            CurrencyResponseData::collectionToArray($this->currencyService->list()),
+        $names = $this->namesResponse(
+            $request,
+            fn () => CurrencyResponseData::collectionToArray($this->currencyService->list()),
+            'Currency names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->currencyService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (Currency $currency): array => CurrencyResponseData::fromModel($currency)->toArray(),
             'Currencies fetched successfully.'
         );
     }

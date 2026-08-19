@@ -2,6 +2,7 @@
 
 namespace App\Modules\Category\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Category\DTOs\CategoryData;
@@ -10,17 +11,29 @@ use App\Modules\Category\Http\Requests\StoreCategoryRequest;
 use App\Modules\Category\Http\Requests\UpdateCategoryRequest;
 use App\Modules\Category\Models\Category;
 use App\Modules\Category\Services\CategoryService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly CategoryService $categoryService
     ) {}
 
     public function index(Request $request): JsonResponse
     {
+        $names = $this->namesResponse(
+            $request,
+            fn () => CategoryResponseData::collectionToArray($this->categoryService->list()),
+            'Category names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
         $forceRefresh = $request->boolean('refresh');
         $leavesOnly = $request->boolean('leaves_only') || $request->boolean('assignable');
 
@@ -34,8 +47,12 @@ class CategoryController extends Controller
             );
         }
 
-        return ApiResponse::success(
-            CategoryResponseData::collectionToArray($this->categoryService->list($forceRefresh)),
+        return ListPagination::json(
+            $this->categoryService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (Category $category): array => CategoryResponseData::fromModel($category)->toArray(),
             'Categories fetched successfully.'
         );
     }

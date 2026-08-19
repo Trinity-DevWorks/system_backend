@@ -2,6 +2,7 @@
 
 namespace App\Modules\VatGroup\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\VatGroup\DTOs\VatGroupData;
@@ -10,18 +11,35 @@ use App\Modules\VatGroup\Http\Requests\StoreVatGroupRequest;
 use App\Modules\VatGroup\Http\Requests\UpdateVatGroupRequest;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\VatGroup\Services\VatGroupService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class VatGroupController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly VatGroupService $vatGroupService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            VatGroupResponseData::collectionToArray($this->vatGroupService->list()),
+        $names = $this->namesResponse(
+            $request,
+            fn () => VatGroupResponseData::collectionToArray($this->vatGroupService->list()),
+            'Vat group names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->vatGroupService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (VatGroup $vatGroup): array => VatGroupResponseData::fromModel($vatGroup)->toArray(),
             'Vat groups fetched successfully.'
         );
     }

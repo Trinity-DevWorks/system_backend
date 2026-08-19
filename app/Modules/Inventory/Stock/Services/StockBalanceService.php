@@ -7,7 +7,7 @@ namespace App\Modules\Inventory\Stock\Services;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class StockBalanceService
 {
@@ -16,10 +16,22 @@ class StockBalanceService
     ) {}
 
     /**
-     * @param  array{warehouse_id?:int,item_id?:int,search?:string,only_tracked?:bool,only_with_stock?:bool}  $filters
-     * @return Collection<int, StockBalance>
+     * @param  array{warehouse_id?:int,item_id?:int|string,search?:string,only_tracked?:bool,only_with_stock?:bool}  $filters
+     * @return LengthAwarePaginator<int, StockBalance>
      */
-    public function list(array $filters = []): Collection
+    public function paginate(array $filters, int $perPage): LengthAwarePaginator
+    {
+        return $this->filteredQuery($filters)
+            ->orderBy('warehouse_id')
+            ->orderBy('item_id')
+            ->paginate($perPage);
+    }
+
+    /**
+     * @param  array{warehouse_id?:int,item_id?:int|string,search?:string,only_tracked?:bool,only_with_stock?:bool}  $filters
+     * @return Builder<StockBalance>
+     */
+    private function filteredQuery(array $filters = []): Builder
     {
         $query = StockBalance::query()
             ->with([
@@ -49,7 +61,7 @@ class StockBalanceService
         }
 
         if (! empty($filters['search'])) {
-            $term = '%'.trim((string) $filters['search']).'%';
+            $term = '%'.addcslashes(trim((string) $filters['search']), '%_\\').'%';
             $query->whereHas('item', function (Builder $q) use ($term): void {
                 $q->where('name', 'like', $term)
                     ->orWhere('item_code', 'like', $term)
@@ -57,10 +69,7 @@ class StockBalanceService
             });
         }
 
-        return $query
-            ->orderBy('warehouse_id')
-            ->orderBy('item_id')
-            ->get();
+        return $query;
     }
 
     public function findForItemWarehouse(string $itemId, int $warehouseId): ?StockBalance

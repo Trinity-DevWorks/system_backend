@@ -4,8 +4,10 @@ namespace App\Modules\Brand\Services;
 
 use App\Modules\Brand\DTOs\BrandData;
 use App\Modules\Brand\Models\Brand;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class BrandService
 {
@@ -25,6 +27,22 @@ class BrandService
                 ->orderBy('name')
                 ->get()
         );
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Brand::query()
+            ->with('parentBrand')
+            ->orderBy('name');
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['code', 'name'],
+            ['parentBrand' => ['code', 'name']],
+        );
+
+        return $query->paginate($perPage);
     }
 
     public function create(BrandData $data): Brand

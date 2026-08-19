@@ -9,8 +9,10 @@ use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Models\CurrencyPairRate;
 use App\Modules\TenantSetting\Models\TenantSetting;
 use App\Modules\TenantSetting\Services\TenantSettingService;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -29,6 +31,14 @@ class CurrencyService
             Currency::class,
             fn (): Collection => Currency::query()->orderBy('code')->get()
         );
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Currency::query()->orderBy('code');
+        ListPagination::applySearch($query, $search, ['code', 'name', 'symbol']);
+
+        return $query->paginate($perPage);
     }
 
     /**

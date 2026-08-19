@@ -4,8 +4,10 @@ namespace App\Modules\VatGroup\Services;
 
 use App\Modules\VatGroup\DTOs\VatGroupData;
 use App\Modules\VatGroup\Models\VatGroup;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class VatGroupService
@@ -19,6 +21,14 @@ class VatGroupService
             VatGroup::class,
             fn (): Collection => VatGroup::query()->orderByDesc('is_default')->orderBy('name')->get()
         );
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = VatGroup::query()->orderByDesc('is_default')->orderBy('name');
+        ListPagination::applySearch($query, $search, ['abrv', 'name']);
+
+        return $query->paginate($perPage);
     }
 
     public function create(VatGroupData $data): VatGroup

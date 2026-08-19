@@ -5,7 +5,9 @@ namespace App\Modules\Inventory\Stock\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Inventory\Stock\DTOs\StockBalanceResponseData;
+use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Services\StockBalanceService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,24 +21,25 @@ class StockBalanceController extends Controller
     {
         $filters = [
             'warehouse_id' => $request->integer('warehouse_id') ?: null,
-            'item_id' => $request->integer('item_id') ?: null,
-            'search' => $request->string('search')->toString() ?: null,
+            'item_id' => $request->query('item_id') ?: null,
+            'search' => ListPagination::search($request),
             'only_tracked' => $request->boolean('only_tracked', true),
             'only_with_stock' => $request->boolean('only_with_stock'),
         ];
 
-        return ApiResponse::success(
-            StockBalanceResponseData::collectionToArray($this->stockBalanceService->list($filters)),
+        return ListPagination::json(
+            $this->stockBalanceService->paginate($filters, ListPagination::perPage($request)),
+            fn (StockBalance $balance): array => StockBalanceResponseData::fromModel($balance),
             'Stock balances fetched successfully.'
         );
     }
 
     public function show(Request $request): JsonResponse
     {
-        $itemId = $request->integer('item_id');
+        $itemId = (string) $request->query('item_id', '');
         $warehouseId = $request->integer('warehouse_id');
 
-        if (! $itemId || ! $warehouseId) {
+        if ($itemId === '' || ! $warehouseId) {
             return ApiResponse::error(
                 'item_id and warehouse_id are required.',
                 422,

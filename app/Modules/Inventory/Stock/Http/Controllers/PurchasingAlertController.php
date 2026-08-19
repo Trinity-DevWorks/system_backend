@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Stock\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Inventory\Stock\Services\PurchasingAlertService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -18,16 +19,21 @@ class PurchasingAlertController extends Controller
     {
         $filters = [
             'warehouse_id' => $request->integer('warehouse_id') ?: null,
-            'item_id' => $request->integer('item_id') ?: null,
-            'search' => $request->string('search')->toString() ?: null,
+            'item_id' => $request->string('item_id')->toString() ?: null,
+            'search' => ListPagination::search($request),
             'status' => $request->string('status')->toString() ?: null,
             'only_alerts' => $request->has('only_alerts')
                 ? $request->boolean('only_alerts')
                 : true,
         ];
 
+        $paginator = $this->purchasingAlertService->paginate(
+            $filters,
+            ListPagination::perPage($request)
+        );
+
         return ApiResponse::success(
-            $this->purchasingAlertService->list($filters),
+            $paginator->toArray(),
             'Purchasing alerts fetched successfully.'
         );
     }
