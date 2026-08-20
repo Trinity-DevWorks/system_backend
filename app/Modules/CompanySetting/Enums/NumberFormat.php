@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\TenantSetting\Enums;
+namespace App\Modules\CompanySetting\Enums;
 
 /**
  * Display grouping for numbers.

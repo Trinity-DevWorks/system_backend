@@ -7,8 +7,8 @@ namespace App\Modules\Currency\Services;
 use App\Modules\Currency\DTOs\CurrencyData;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Models\CurrencyPairRate;
-use App\Modules\TenantSetting\Models\TenantSetting;
-use App\Modules\TenantSetting\Services\TenantSettingService;
+use App\Modules\CompanySetting\Models\CompanySetting;
+use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
@@ -76,8 +76,8 @@ class CurrencyService
             $currency = Currency::query()->create($data->toModelArray());
 
             if ($data->isPrimary) {
-                TenantSetting::singleton()->update(['primary_currency_id' => $currency->id]);
-                TenantReferenceCache::forget(TenantSettingService::CACHE_KEY);
+                CompanySetting::singleton()->update(['primary_currency_id' => $currency->id]);
+                TenantReferenceCache::forget(CompanySettingService::CACHE_KEY);
             } elseif ($data->rate !== null && $data->rate > 0 && $data->fromCurrencyId !== null && $data->fromCurrencyId !== $currency->id) {
                 $toId = $data->toCurrencyId ?? $currency->id;
                 $this->exchangeRateService->setPairRate(
@@ -110,8 +110,8 @@ class CurrencyService
             }
 
             if (array_key_exists('is_primary', $patch) && $patch['is_primary']) {
-                TenantSetting::singleton()->update(['primary_currency_id' => $currency->id]);
-                TenantReferenceCache::forget(TenantSettingService::CACHE_KEY);
+                CompanySetting::singleton()->update(['primary_currency_id' => $currency->id]);
+                TenantReferenceCache::forget(CompanySettingService::CACHE_KEY);
             }
 
             if (array_key_exists('rate', $patch) && $patch['rate'] !== null && is_numeric($patch['rate']) && (float) $patch['rate'] > 0) {

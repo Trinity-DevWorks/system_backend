@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\TenantSetting\DTOs;
+namespace App\Modules\CompanySetting\DTOs;
 
-use App\Modules\TenantSetting\Enums\DateFormat;
-use App\Modules\TenantSetting\Enums\NumberFormat;
-use App\Modules\TenantSetting\Enums\PreferredLanguage;
-use App\Modules\TenantSetting\Enums\PriceRoundingMode;
-use App\Modules\TenantSetting\Http\Requests\UpdateTenantSettingRequest;
-use App\Modules\TenantSetting\Models\TenantSetting;
+use App\Modules\CompanySetting\Enums\DateFormat;
+use App\Modules\CompanySetting\Enums\NumberFormat;
+use App\Modules\CompanySetting\Enums\PreferredLanguage;
+use App\Modules\CompanySetting\Enums\PriceRoundingMode;
+use App\Modules\CompanySetting\Http\Requests\UpdateCompanySettingRequest;
+use App\Modules\CompanySetting\Models\CompanySetting;
 
-readonly class TenantSettingData
+readonly class CompanySettingData
 {
     public function __construct(
         public ?string $country,
@@ -25,7 +25,7 @@ readonly class TenantSettingData
         public int $priceDecimalPlaces,
     ) {}
 
-    public static function fromUpdateRequest(UpdateTenantSettingRequest $request, TenantSetting $settings): self
+    public static function fromUpdateRequest(UpdateCompanySettingRequest $request, CompanySetting $settings): self
     {
         $data = $request->validated();
 

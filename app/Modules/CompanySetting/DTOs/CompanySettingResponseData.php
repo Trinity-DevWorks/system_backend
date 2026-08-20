@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\TenantSetting\DTOs;
+namespace App\Modules\CompanySetting\DTOs;
 
 use App\Modules\Currency\Models\Currency;
-use App\Modules\TenantSetting\Models\TenantSetting;
+use App\Modules\CompanySetting\Models\CompanySetting;
 
-readonly class TenantSettingResponseData
+readonly class CompanySettingResponseData
 {
     /**
      * @param  array{id: int, code: string, name: string, symbol: string}|null  $primaryCurrency
@@ -29,7 +29,7 @@ readonly class TenantSettingResponseData
         public string $updatedAt,
     ) {}
 
-    public static function fromModel(TenantSetting $settings): self
+    public static function fromModel(CompanySetting $settings): self
     {
         $settings->loadMissing('primaryCurrency');
 

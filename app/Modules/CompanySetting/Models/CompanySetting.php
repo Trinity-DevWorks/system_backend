@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\TenantSetting\Models;
+namespace App\Modules\CompanySetting\Models;
 
 use App\Modules\Currency\Models\Currency;
-use App\Modules\TenantSetting\Enums\DateFormat;
-use App\Modules\TenantSetting\Enums\NumberFormat;
-use App\Modules\TenantSetting\Enums\PreferredLanguage;
-use App\Modules\TenantSetting\Enums\PriceRoundingMode;
-use App\Modules\TenantSetting\Services\TenantSettingService;
+use App\Modules\CompanySetting\Enums\DateFormat;
+use App\Modules\CompanySetting\Enums\NumberFormat;
+use App\Modules\CompanySetting\Enums\PreferredLanguage;
+use App\Modules\CompanySetting\Enums\PriceRoundingMode;
+use App\Modules\CompanySetting\Services\CompanySettingService;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -34,11 +34,11 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'price_rounding_mode',
     'price_decimal_places',
 ])]
-class TenantSetting extends Model implements AuditableContract
+class CompanySetting extends Model implements AuditableContract
 {
     use Auditable;
 
-    protected $table = 'tenant_settings';
+    protected $table = 'company_settings';
 
     /**
      * Single row per tenant database (DB read — prefer current() for hot paths).
@@ -63,7 +63,7 @@ class TenantSetting extends Model implements AuditableContract
      */
     public static function current(): self
     {
-        return app(TenantSettingService::class)->get();
+        return app(CompanySettingService::class)->get();
     }
 
     /**

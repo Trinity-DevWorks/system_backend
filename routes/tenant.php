@@ -56,7 +56,7 @@ use App\Modules\Supplier\Http\Controllers\SupplierController;
 use App\Modules\Supplier\Http\Controllers\SupplierGroupController;
 use App\Modules\Supplier\Http\Controllers\SupplierItemController;
 use App\Modules\Supplier\Http\Controllers\SupplierLedgerController;
-use App\Modules\TenantSetting\Http\Controllers\TenantSettingController;
+use App\Modules\CompanySetting\Http\Controllers\CompanySettingController;
 use App\Modules\VatGroup\Http\Controllers\VatGroupController;
 use App\Modules\Warehouse\Http\Controllers\WarehouseController;
 use Illuminate\Broadcasting\BroadcastController;
@@ -159,9 +159,9 @@ Route::middleware([
                 ->middlewareFor(['store'], ['check.permission:branches,add'])
                 ->middlewareFor(['update'], ['check.permission:branches,edit'])
                 ->middlewareFor(['destroy'], ['check.permission:branches,delete']);
-            Route::get('tenant-settings', [TenantSettingController::class, 'show']);
-            Route::put('tenant-settings', [TenantSettingController::class, 'update'])
-                ->middleware('check.permission:tenant_settings,edit');
+            Route::get('company-settings', [CompanySettingController::class, 'show']);
+            Route::put('company-settings', [CompanySettingController::class, 'update'])
+                ->middleware('check.permission:company_settings,edit');
 
             /*
             | In-app notification inbox + preferences (Phase 1).

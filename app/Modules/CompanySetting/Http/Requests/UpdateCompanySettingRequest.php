@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\TenantSetting\Http\Requests;
+namespace App\Modules\CompanySetting\Http\Requests;
 
-use App\Modules\TenantSetting\Enums\DateFormat;
-use App\Modules\TenantSetting\Enums\NumberFormat;
-use App\Modules\TenantSetting\Enums\PreferredLanguage;
-use App\Modules\TenantSetting\Enums\PriceRoundingMode;
+use App\Modules\CompanySetting\Enums\DateFormat;
+use App\Modules\CompanySetting\Enums\NumberFormat;
+use App\Modules\CompanySetting\Enums\PreferredLanguage;
+use App\Modules\CompanySetting\Enums\PriceRoundingMode;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class UpdateTenantSettingRequest extends FormRequest
+class UpdateCompanySettingRequest extends FormRequest
 {
     public function authorize(): bool
     {

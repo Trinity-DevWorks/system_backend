@@ -2,30 +2,30 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\TenantSetting\Services;
+namespace App\Modules\CompanySetting\Services;
 
-use App\Modules\TenantSetting\DTOs\TenantSettingData;
-use App\Modules\TenantSetting\Models\TenantSetting;
+use App\Modules\CompanySetting\DTOs\CompanySettingData;
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Support\TenantReferenceCache;
 
-class TenantSettingService
+class CompanySettingService
 {
-    public const CACHE_KEY = 'tenant_settings.singleton';
+    public const CACHE_KEY = 'company_settings.singleton';
 
-    public function get(): TenantSetting
+    public function get(): CompanySetting
     {
         $settings = TenantReferenceCache::rememberModel(
             self::CACHE_KEY,
-            TenantSetting::class,
-            fn (): TenantSetting => TenantSetting::singleton()
+            CompanySetting::class,
+            fn (): CompanySetting => CompanySetting::singleton()
         );
 
         return $settings->loadMissing('primaryCurrency');
     }
 
-    public function update(TenantSettingData $data): TenantSetting
+    public function update(CompanySettingData $data): CompanySetting
     {
-        $settings = TenantSetting::singleton();
+        $settings = CompanySetting::singleton();
         $settings->update($data->toArray());
         $this->forgetCache();
 

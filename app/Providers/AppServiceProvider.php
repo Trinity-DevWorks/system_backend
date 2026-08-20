@@ -41,7 +41,7 @@ use App\Modules\Supplier\Models\SupplierBalance;
 use App\Modules\Supplier\Models\SupplierContact;
 use App\Modules\Supplier\Models\SupplierGroup;
 use App\Modules\Supplier\Models\SupplierItem;
-use App\Modules\TenantSetting\Models\TenantSetting;
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\VirusScanning\ClamAvVirusScanner;
@@ -114,7 +114,7 @@ class AppServiceProvider extends ServiceProvider
             'unit_of_measurement' => UnitOfMeasurement::class,
             'supplier_balance' => SupplierBalance::class,
             'supplier_item' => SupplierItem::class,
-            'tenant_setting' => TenantSetting::class,
+            'company_setting' => CompanySetting::class,
         ]);
     }
 

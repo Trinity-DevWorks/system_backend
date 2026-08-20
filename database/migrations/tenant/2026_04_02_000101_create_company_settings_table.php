@@ -10,7 +10,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('tenant_settings', function (Blueprint $table) {
+        Schema::create('company_settings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('primary_currency_id')->nullable()->constrained('currencies')->nullOnDelete();
             $table->string('country', 2)->nullable();
@@ -28,6 +28,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('tenant_settings');
+        Schema::dropIfExists('company_settings');
     }
 };

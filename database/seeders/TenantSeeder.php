@@ -13,8 +13,8 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\ItemType\Models\ItemType;
 use App\Modules\Inventory\Shared\Enums\DimensionType;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
-use App\Modules\TenantSetting\Models\TenantSetting;
-use App\Modules\TenantSetting\Services\TenantSettingService;
+use App\Modules\CompanySetting\Models\CompanySetting;
+use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Modules\Warehouse\Enums\WarehouseType;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\ModuleEntitlementService;
@@ -207,8 +207,8 @@ class TenantSeeder extends Seeder
             ]
         );
 
-        TenantSetting::singleton()->update(['primary_currency_id' => $currency->id]);
-        TenantReferenceCache::forget(TenantSettingService::CACHE_KEY);
+        CompanySetting::singleton()->update(['primary_currency_id' => $currency->id]);
+        TenantReferenceCache::forget(CompanySettingService::CACHE_KEY);
     }
 
     private function seedDemoInventory(): void

@@ -49,8 +49,8 @@ return [
             'label' => 'Company Profile Management',
             'actions' => $viewEdit,
         ],
-        'tenant_settings' => [
-            'label' => 'Tenant Settings Management',
+        'company_settings' => [
+            'label' => 'Company Settings Management',
             'actions' => $viewEdit,
         ],
         'branches' => [
