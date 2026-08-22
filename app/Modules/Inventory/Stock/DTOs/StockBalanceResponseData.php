@@ -12,7 +12,7 @@ readonly class StockBalanceResponseData
     public static function fromModel(StockBalance $balance): array
     {
         $balance->loadMissing([
-            'item:id,sku,item_code,name,base_uom_id,track_inventory,is_active',
+            'item:id,item_code,name,base_uom_id,track_inventory,is_active',
             'item.baseUom:id,code,name',
             'warehouse:id,name,shortcut_name,is_active',
         ]);
@@ -53,7 +53,6 @@ readonly class StockBalanceResponseData
 
         return [
             'id' => $item->id,
-            'sku' => $item->sku,
             'item_code' => $item->item_code,
             'name' => $item->name,
             'track_inventory' => (bool) $item->track_inventory,

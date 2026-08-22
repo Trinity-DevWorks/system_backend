@@ -122,7 +122,7 @@ readonly class PurchasingAlertResponseData
             'name' => $supplier->name,
             'supplier_code' => $supplier->supplier_code,
             'supplier_item_id' => $supplierItem->id,
-            'supplier_sku' => $supplierItem->supplier_sku,
+            'supplier_item_code' => $supplierItem->supplier_item_code,
             'last_purchase_price' => $supplierItem->last_purchase_price !== null
                 ? (string) $supplierItem->last_purchase_price
                 : null,

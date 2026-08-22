@@ -18,7 +18,7 @@ class SupplierItemService
         return SupplierItem::query()
             ->where('supplier_id', $supplier->id)
             ->with([
-                'item:id,sku,name,allow_purchase,is_active',
+                'item:id,item_code,name,allow_purchase,is_active',
                 'currency:id,code,name,symbol,iso_code',
             ])
             ->orderByDesc('is_preferred')

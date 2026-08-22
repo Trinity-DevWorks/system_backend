@@ -13,7 +13,7 @@ readonly class ItemWarehouseReplenishmentResponseData
     public static function fromModel(ItemWarehouseReplenishment $row): array
     {
         $row->loadMissing([
-            'item:id,sku,name,base_uom_id,track_inventory,allow_purchase,is_active',
+            'item:id,item_code,name,base_uom_id,track_inventory,allow_purchase,is_active',
             'item.baseUom:id,code,name',
             'warehouse:id,name,shortcut_name,is_active',
         ]);
@@ -63,7 +63,7 @@ readonly class ItemWarehouseReplenishmentResponseData
 
         return [
             'id' => $item->id,
-            'sku' => $item->sku,
+            'item_code' => $item->item_code,
             'name' => $item->name,
             'track_inventory' => (bool) $item->track_inventory,
             'allow_purchase' => (bool) $item->allow_purchase,

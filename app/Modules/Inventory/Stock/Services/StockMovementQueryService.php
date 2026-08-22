@@ -58,7 +58,7 @@ class StockMovementQueryService
     {
         $query = StockMovement::query()
             ->with([
-                'item:id,sku,item_code,name,base_uom_id',
+                'item:id,item_code,name,base_uom_id',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name',
                 'itemUom.uom:id,code,name',

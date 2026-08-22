@@ -181,7 +181,7 @@ class PurchaseOrderFromAlertsService
             $linePayload = [
                 'replenishment_id' => $alert['replenishment_id'],
                 'item_id' => $itemId,
-                'item_sku' => $alert['item']['sku'] ?? null,
+                'item_code' => $alert['item']['item_code'] ?? null,
                 'item_name' => $alert['item']['name'] ?? null,
                 'quantity' => number_format($row['quantity'], 6, '.', ''),
                 'unit_price' => $unitPrice,
@@ -242,7 +242,7 @@ class PurchaseOrderFromAlertsService
         return [
             'replenishment_id' => $alert['replenishment_id'],
             'item_id' => $alert['item_id'],
-            'item_sku' => $alert['item']['sku'] ?? null,
+            'item_code' => $alert['item']['item_code'] ?? null,
             'item_name' => $alert['item']['name'] ?? null,
             'warehouse_id' => $alert['warehouse_id'],
             'reason' => $reason,

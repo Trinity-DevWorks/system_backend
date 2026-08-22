@@ -11,7 +11,7 @@ readonly class StockTransferLineResponseData
     public static function fromModel(StockTransferLine $line): array
     {
         $line->loadMissing([
-            'item:id,sku,name,is_active',
+            'item:id,item_code,name,is_active',
             'itemUom:id,uom_id,conversion_factor',
             'itemUom.uom:id,code,name',
         ]);
@@ -52,7 +52,7 @@ readonly class StockTransferLineResponseData
     }
 
     /**
-     * @return array{id:string,sku:string,name:string,is_active:bool}|null
+     * @return array{id:string,item_code:?string,name:string,is_active:bool}|null
      */
     private static function itemBrief(?Item $item): ?array
     {
@@ -62,7 +62,7 @@ readonly class StockTransferLineResponseData
 
         return [
             'id' => $item->id,
-            'sku' => $item->sku,
+            'item_code' => $item->item_code,
             'name' => $item->name,
             'is_active' => (bool) $item->is_active,
         ];

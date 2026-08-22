@@ -19,7 +19,7 @@ class UpdateSupplierItemRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'supplier_sku' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'supplier_item_code' => ['sometimes', 'nullable', 'string', 'max:100'],
             'last_purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'currency_id' => ['sometimes', 'integer', 'exists:currencies,id'],
             'lead_time_days' => ['sometimes', 'integer', 'min:0', 'max:3650'],
