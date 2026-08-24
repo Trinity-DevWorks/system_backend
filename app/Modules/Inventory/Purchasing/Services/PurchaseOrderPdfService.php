@@ -22,7 +22,7 @@ class PurchaseOrderPdfService
         $order->loadMissing([
             'supplier:id,supplier_code,name,email,phone,company_name',
             'warehouse:id,name,shortcut_name',
-            'lines.item:id,sku,name,item_code',
+            'lines.item:id,item_code,name',
             'lines.itemUom.uom:id,code,name',
         ]);
 
@@ -47,7 +47,7 @@ class PurchaseOrderPdfService
 
             $lines[] = [
                 'name' => $item?->name ?? '—',
-                'sku' => $item?->item_code ?: ($item?->sku ?? '—'),
+                'item_code' => $item?->item_code ?? '—',
                 'quantity' => rtrim(rtrim((string) $line->quantity, '0'), '.'),
                 'uom' => $uomLabel,
                 'unit_price' => $unitPrice,

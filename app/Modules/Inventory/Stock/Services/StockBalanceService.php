@@ -35,7 +35,7 @@ class StockBalanceService
     {
         $query = StockBalance::query()
             ->with([
-                'item:id,sku,item_code,name,base_uom_id,track_inventory,is_active',
+                'item:id,item_code,name,base_uom_id,track_inventory,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
             ]);
@@ -78,7 +78,7 @@ class StockBalanceService
 
         return StockBalance::query()
             ->with([
-                'item:id,sku,item_code,name,base_uom_id,track_inventory,is_active',
+                'item:id,item_code,name,base_uom_id,track_inventory,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
             ])

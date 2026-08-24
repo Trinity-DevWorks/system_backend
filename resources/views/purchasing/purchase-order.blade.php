@@ -120,7 +120,7 @@
             <tr>
                 <th>#</th>
                 <th>Item</th>
-                <th>SKU</th>
+                <th>Item code</th>
                 <th class="num">Qty</th>
                 <th>Unit</th>
                 <th class="num">Unit price</th>
@@ -132,7 +132,7 @@
                 <tr>
                     <td>{{ $index + 1 }}</td>
                     <td>{{ $line['name'] }}</td>
-                    <td>{{ $line['sku'] }}</td>
+                    <td>{{ $line['item_code'] }}</td>
                     <td class="num">{{ $line['quantity'] }}</td>
                     <td>{{ $line['uom'] }}</td>
                     <td class="num">{{ $line['unit_price'] ?? '—' }}</td>

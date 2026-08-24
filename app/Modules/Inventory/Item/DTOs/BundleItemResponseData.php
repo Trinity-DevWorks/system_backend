@@ -11,7 +11,7 @@ readonly class BundleItemResponseData
     public static function fromModel(BundleItem $row): array
     {
         $row->loadMissing([
-            'childItem:id,sku,name,is_active,item_type_id',
+            'childItem:id,item_code,name,is_active,item_type_id',
             'childItem.itemType:id,code,name',
         ]);
 
@@ -49,7 +49,7 @@ readonly class BundleItemResponseData
 
         return [
             'id' => $item->id,
-            'sku' => $item->sku,
+            'item_code' => $item->item_code,
             'name' => $item->name,
             'is_active' => (bool) $item->is_active,
             'item_type' => $item->itemType ? [

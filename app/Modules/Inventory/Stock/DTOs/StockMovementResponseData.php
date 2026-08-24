@@ -14,7 +14,7 @@ readonly class StockMovementResponseData
     public static function fromModel(StockMovement $movement, ?string $quantityOnHand = null): array
     {
         $movement->loadMissing([
-            'item:id,sku,item_code,name,base_uom_id',
+            'item:id,item_code,name,base_uom_id',
             'item.baseUom:id,code,name',
             'warehouse:id,name,shortcut_name',
             'itemUom:id,uom_id',
@@ -61,7 +61,7 @@ readonly class StockMovementResponseData
     }
 
     /**
-     * @return array{id:string,sku:string,item_code:?string,name:string}|null
+     * @return array{id:string,item_code:?string,name:string}|null
      */
     private static function itemBrief(?Item $item): ?array
     {
@@ -71,7 +71,6 @@ readonly class StockMovementResponseData
 
         return [
             'id' => $item->id,
-            'sku' => $item->sku,
             'item_code' => $item->item_code,
             'name' => $item->name,
         ];

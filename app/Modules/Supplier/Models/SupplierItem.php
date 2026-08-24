@@ -15,7 +15,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 #[Fillable([
     'supplier_id',
     'item_id',
-    'supplier_sku',
+    'supplier_item_code',
     'last_purchase_price',
     'currency_id',
     'lead_time_days',

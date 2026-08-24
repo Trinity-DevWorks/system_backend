@@ -31,7 +31,7 @@ class StoreSupplierItemRequest extends FormRequest
                 'exists:items,id',
                 Rule::unique('supplier_items', 'item_id')->where('supplier_id', $supplierId),
             ],
-            'supplier_sku' => ['nullable', 'string', 'max:100'],
+            'supplier_item_code' => ['nullable', 'string', 'max:100'],
             'last_purchase_price' => ['nullable', 'numeric', 'min:0'],
             'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
             'lead_time_days' => ['nullable', 'integer', 'min:0', 'max:3650'],

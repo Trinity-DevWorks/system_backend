@@ -27,7 +27,7 @@ class ItemWarehouseReplenishmentService
 
         return ItemWarehouseReplenishment::query()
             ->with([
-                'item:id,sku,name,base_uom_id,track_inventory,allow_purchase,is_active',
+                'item:id,item_code,name,base_uom_id,track_inventory,allow_purchase,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
             ])
@@ -83,7 +83,7 @@ class ItemWarehouseReplenishmentService
             ]);
 
             return $row->load([
-                'item:id,sku,name,base_uom_id,track_inventory,allow_purchase,is_active',
+                'item:id,item_code,name,base_uom_id,track_inventory,allow_purchase,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
             ]);
@@ -156,7 +156,7 @@ class ItemWarehouseReplenishmentService
             $replenishment->save();
 
             return $replenishment->load([
-                'item:id,sku,name,base_uom_id,track_inventory,allow_purchase,is_active',
+                'item:id,item_code,name,base_uom_id,track_inventory,allow_purchase,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
             ]);

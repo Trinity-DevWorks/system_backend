@@ -28,7 +28,7 @@ class ItemController extends Controller
         $names = $this->namesResponse($request, function () {
             return $this->itemService->names()->map(fn (Item $item): array => [
                 'id' => $item->id,
-                'sku' => $item->sku,
+                'item_code' => $item->item_code,
                 'name' => $item->name,
                 'track_inventory' => (bool) $item->track_inventory,
                 'allow_purchase' => (bool) $item->allow_purchase,

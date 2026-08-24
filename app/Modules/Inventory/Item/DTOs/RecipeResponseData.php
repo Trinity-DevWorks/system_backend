@@ -9,7 +9,7 @@ readonly class RecipeResponseData
     public static function fromModel(Recipe $recipe, bool $includeItems = true): array
     {
         $recipe->loadMissing([
-            'item:id,sku,name,is_active,item_type_id,base_uom_id',
+            'item:id,item_code,name,is_active,item_type_id,base_uom_id',
             'item.itemType:id,code,name',
             'uom:id,code,name',
         ]);
@@ -26,7 +26,7 @@ readonly class RecipeResponseData
             ] : null,
             'item' => $recipe->item ? [
                 'id' => $recipe->item->id,
-                'sku' => $recipe->item->sku,
+                'item_code' => $recipe->item->item_code,
                 'name' => $recipe->item->name,
                 'is_active' => (bool) $recipe->item->is_active,
                 'item_type' => $recipe->item->itemType ? [

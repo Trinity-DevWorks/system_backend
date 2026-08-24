@@ -83,7 +83,7 @@ final class InstantLowStockNotifier
                 return;
             }
 
-            $itemLabel = trim((string) ($item->item_code ?: $item->sku ?: $item->name));
+            $itemLabel = trim((string) ($item->item_code ?: $item->name));
             $severity = $newStatus === ReplenishmentAlertStatus::OutOfStock
                 ? 'critical'
                 : 'warning';
