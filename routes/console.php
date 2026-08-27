@@ -4,6 +4,7 @@ use App\Jobs\BootstrapTenantDefaultBranch;
 use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
+use App\Jobs\BootstrapTenantWalkInCustomer;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchService;
@@ -41,6 +42,18 @@ Artisan::command('tenants:sync-unit-catalog', function () {
 
     $this->info("Done. {$count} tenant(s) processed.");
 })->purpose('Seed default unit groups and UOMs for all existing tenants');
+
+Artisan::command('tenants:sync-walk-in-customer', function () {
+    $count = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use (&$count): void {
+        BootstrapTenantWalkInCustomer::dispatchSync($tenant);
+        $this->info("Ensured walk-in customer for tenant [{$tenant->id}]");
+        $count++;
+    });
+
+    $this->info("Done. {$count} tenant(s) processed.");
+})->purpose('Seed the walk-in / cash customer for all existing tenants');
 
 Artisan::command('tenants:sync-default-branch', function () {
     $count = 0;
@@ -204,6 +217,52 @@ Artisan::command('notifications:low-stock-digest', function (): void {
 
     $this->info("Done. Sent={$sentTenants}. Skipped={$skipped}.");
 })->purpose('Send low-stock digest notifications for each tenant (cooldown-aware)');
+
+/*
+|--------------------------------------------------------------------------
+| notifications:lot-expiry-digest
+|--------------------------------------------------------------------------
+|
+| What: Walks each tenant and sends a cooldown-aware digest of on-hand lots
+| that are expired or expire within the configured window.
+| Where: Manual run or daily schedule (07:15) in bootstrap/app.php.
+|
+*/
+Artisan::command('notifications:lot-expiry-digest', function (): void {
+    $command = $this;
+    $sentTenants = 0;
+    $skipped = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use ($command, &$sentTenants, &$skipped): void {
+        $tenant->run(function () use ($tenant, $command, &$sentTenants, &$skipped): void {
+            if (! Schema::hasTable('notifications') || ! Schema::hasTable('inventory_lots')) {
+                $command->warn("Skipped tenant [{$tenant->id}] — required tables missing. Run tenant migrations.");
+                $skipped++;
+
+                return;
+            }
+
+            /** @var DomainNotificationPublisher $publisher */
+            $publisher = app(DomainNotificationPublisher::class);
+            $result = $publisher->lotExpiryDigest();
+
+            if ($result['sent']) {
+                $sentTenants++;
+                $command->info(
+                    "Tenant [{$tenant->id}]: digest sent ({$result['lot_count']} lot(s), {$result['expired_count']} expired)."
+                );
+            } else {
+                $skipped++;
+                $reason = $result['reason'] ?? 'skipped';
+                $command->info(
+                    "Tenant [{$tenant->id}]: skipped ({$reason}, lots={$result['lot_count']})."
+                );
+            }
+        });
+    });
+
+    $this->info("Done. Sent={$sentTenants}. Skipped={$skipped}.");
+})->purpose('Send lot-expiry digest notifications for each tenant (cooldown-aware)');
 
 /*
 |--------------------------------------------------------------------------

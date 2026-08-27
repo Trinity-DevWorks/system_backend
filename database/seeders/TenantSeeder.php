@@ -11,6 +11,7 @@ use App\Modules\Category\Models\Category;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Modules\Currency\Models\Currency;
+use App\Modules\Customer\Services\WalkInCustomerService;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\ItemType\Models\ItemType;
 use App\Modules\Inventory\Shared\Enums\DimensionType;
@@ -125,7 +126,10 @@ class TenantSeeder extends Seeder
 
             if ($tenant !== null) {
                 $modules->grantAll($tenant);
-                $tenant->run(fn () => $this->seedDemoInventory());
+                $tenant->run(function (): void {
+                    $this->seedDemoInventory();
+                    app(WalkInCustomerService::class)->ensure();
+                });
                 $this->command?->info(
                     'Tenant ['.$tenant->id.'] already exists - ensured modules and demo inventory.'
                 );
@@ -162,6 +166,7 @@ class TenantSeeder extends Seeder
 
             $this->seedPrimaryCurrency();
             $this->seedDemoInventory();
+            app(WalkInCustomerService::class)->ensure();
         });
 
         if ($ownerUserId === null) {

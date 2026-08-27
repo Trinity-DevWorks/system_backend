@@ -37,6 +37,7 @@ readonly class CustomerResponseData
         public ?int $vatGroupId,
         public ?array $vatGroup,
         public string $status,
+        public bool $isSystem,
         public ?string $blacklistReason,
         /** Primary-currency convenience (zeros if no primary or no row). */
         public string $creditLimit,
@@ -148,6 +149,7 @@ readonly class CustomerResponseData
                 'percentage' => (string) $vg->percentage,
             ] : null,
             status: $status,
+            isSystem: (bool) $customer->is_system,
             blacklistReason: $customer->blacklist_reason,
             creditLimit: $primaryCredit,
             openingBalance: $primaryOpening,
@@ -205,6 +207,7 @@ readonly class CustomerResponseData
             'vat_group_id' => $this->vatGroupId,
             'vat_group' => $this->vatGroup,
             'status' => $this->status,
+            'is_system' => $this->isSystem,
             'blacklist_reason' => $this->blacklistReason,
             'credit_limit' => $this->creditLimit,
             'opening_balance' => $this->openingBalance,

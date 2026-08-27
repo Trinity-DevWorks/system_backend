@@ -11,11 +11,11 @@ return new class extends Migration
         Schema::create('items', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('name');
-            $table->string('sku', 100)->unique();
+            $table->string('sku', 100)->nullable()->unique();
             $table->string('item_code', 100)->nullable()->unique();
             $table->string('plu_code', 100)->nullable()->unique();
             $table->foreignId('item_type_id')->constrained('item_types')->restrictOnDelete();
-            $table->foreignId('category_id')->constrained('categories')->restrictOnDelete();
+            $table->foreignId('category_id')->nullable()->constrained('categories')->restrictOnDelete();
             $table->foreignId('brand_id')->nullable()->constrained('brands')->nullOnDelete();
             $table->foreignId('unit_group_id')->constrained('unit_groups')->restrictOnDelete();
             $table->foreignId('base_uom_id')->nullable()->constrained('unit_of_measurements')->nullOnDelete();
@@ -29,6 +29,9 @@ return new class extends Migration
             $table->string('pos_name', 255)->nullable();
             $table->string('color', 32)->nullable();
             $table->boolean('track_inventory')->default(true);
+            $table->boolean('track_lots')->default(false);
+            /** null = inherit tenant inventory_costing_method */
+            $table->string('costing_method', 32)->nullable();
             $table->boolean('allow_sale')->default(true);
             $table->boolean('allow_purchase')->default(true);
             $table->boolean('is_active')->default(true);

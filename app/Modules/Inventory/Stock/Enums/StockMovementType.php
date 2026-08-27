@@ -16,6 +16,7 @@ enum StockMovementType: string
     case ProductionIn = 'production_in';
     case ProductionOut = 'production_out';
     case BundleSale = 'bundle_sale';
+    case Count = 'count';
 
     /**
      * @return list<string>

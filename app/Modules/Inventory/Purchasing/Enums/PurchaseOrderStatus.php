@@ -9,6 +9,7 @@ enum PurchaseOrderStatus: string
     case Draft = 'draft';
     case Confirmed = 'confirmed';
     case Sent = 'sent';
+    case Closed = 'closed';
     case Cancelled = 'cancelled';
 
     /**

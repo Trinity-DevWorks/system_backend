@@ -26,10 +26,18 @@ use App\Modules\Inventory\Item\Http\Controllers\ItemUomController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeItemController;
 use App\Modules\Inventory\ItemType\Http\Controllers\ItemTypeController;
+use App\Modules\Inventory\Purchasing\Http\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseOrderController;
+use App\Modules\Inventory\Stock\Http\Controllers\BundleExplosionController;
+use App\Modules\Inventory\Stock\Http\Controllers\InventoryLotController;
 use App\Modules\Inventory\Stock\Http\Controllers\ItemWarehouseReplenishmentController;
+use App\Modules\Inventory\Stock\Http\Controllers\OpeningStockController;
+use App\Modules\Inventory\Stock\Http\Controllers\ProductionController;
 use App\Modules\Inventory\Stock\Http\Controllers\PurchasingAlertController;
+use App\Modules\Inventory\Stock\Http\Controllers\StockAdjustmentController;
+use App\Modules\Inventory\Stock\Http\Controllers\StockAdjustmentReasonController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockBalanceController;
+use App\Modules\Inventory\Stock\Http\Controllers\StockCountController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockMovementController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockTransferController;
 use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
@@ -244,6 +252,13 @@ Route::middleware([
                 ->middlewareFor(['update'], ['check.permission:warehouses,edit'])
                 ->middlewareFor(['destroy'], ['check.permission:warehouses,delete']);
 
+            Route::get('stock/lots', [InventoryLotController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::get('stock/inventory-lots', [InventoryLotController::class, 'catalog'])
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/inventory-lots/{inventory_lot}', [InventoryLotController::class, 'update'])
+                ->whereNumber('inventory_lot')
+                ->middleware('check.permission:stock,edit');
             Route::get('stock/balances', [StockBalanceController::class, 'index'])
                 ->middleware('check.permission:stock,view');
             Route::get('stock/balances/show', [StockBalanceController::class, 'show'])
@@ -252,8 +267,6 @@ Route::middleware([
                 ->middleware('check.permission:stock,view');
             Route::get('stock/movements/{stock_movement}', [StockMovementController::class, 'show'])
                 ->middleware('check.permission:stock,view');
-            Route::post('stock/adjustments', [StockMovementController::class, 'storeAdjustment'])
-                ->middleware('check.permission:stock,add');
 
             Route::get('stock/purchasing-alerts/summary', [PurchasingAlertController::class, 'summary'])
                 ->middleware('check.permission:stock,view');
@@ -303,6 +316,109 @@ Route::middleware([
             Route::get('stock/purchase-orders/{purchase_order}/pdf', [PurchaseOrderController::class, 'pdf'])
                 ->middleware('check.permission:stock,view');
             Route::post('stock/purchase-orders/{purchase_order}/mark-sent', [PurchaseOrderController::class, 'markAsSent'])
+                ->middleware('check.permission:stock,edit');
+
+            Route::get('stock/goods-receipts', [GoodsReceiptController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::post('stock/goods-receipts', [GoodsReceiptController::class, 'store'])
+                ->middleware('check.permission:stock,add');
+            Route::get('stock/goods-receipts/{goods_receipt}', [GoodsReceiptController::class, 'show'])
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/goods-receipts/{goods_receipt}', [GoodsReceiptController::class, 'update'])
+                ->middleware('check.permission:stock,edit');
+            Route::delete('stock/goods-receipts/{goods_receipt}', [GoodsReceiptController::class, 'destroy'])
+                ->middleware('check.permission:stock,delete');
+            Route::put('stock/goods-receipts/{goods_receipt}/lines/sync', [GoodsReceiptController::class, 'syncLines'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/goods-receipts/{goods_receipt}/post', [GoodsReceiptController::class, 'post'])
+                ->middleware('check.permission:stock,edit');
+
+            Route::get('stock/opening-stocks', [OpeningStockController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::post('stock/opening-stocks', [OpeningStockController::class, 'store'])
+                ->middleware('check.permission:stock,add');
+            Route::get('stock/opening-stocks/{opening_stock}', [OpeningStockController::class, 'show'])
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/opening-stocks/{opening_stock}', [OpeningStockController::class, 'update'])
+                ->middleware('check.permission:stock,edit');
+            Route::delete('stock/opening-stocks/{opening_stock}', [OpeningStockController::class, 'destroy'])
+                ->middleware('check.permission:stock,delete');
+            Route::put('stock/opening-stocks/{opening_stock}/lines/sync', [OpeningStockController::class, 'syncLines'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/opening-stocks/{opening_stock}/post', [OpeningStockController::class, 'post'])
+                ->middleware('check.permission:stock,edit');
+
+            Route::get('stock/adjustment-reasons', [StockAdjustmentReasonController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::post('stock/adjustment-reasons', [StockAdjustmentReasonController::class, 'store'])
+                ->middleware('check.permission:stock,add');
+            Route::get('stock/adjustment-reasons/{stock_adjustment_reason}', [StockAdjustmentReasonController::class, 'show'])
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/adjustment-reasons/{stock_adjustment_reason}', [StockAdjustmentReasonController::class, 'update'])
+                ->middleware('check.permission:stock,edit');
+            Route::delete('stock/adjustment-reasons/{stock_adjustment_reason}', [StockAdjustmentReasonController::class, 'destroy'])
+                ->middleware('check.permission:stock,delete');
+
+            Route::get('stock/adjustments', [StockAdjustmentController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::post('stock/adjustments', [StockAdjustmentController::class, 'store'])
+                ->middleware('check.permission:stock,add');
+            Route::get('stock/adjustments/{stock_adjustment}', [StockAdjustmentController::class, 'show'])
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/adjustments/{stock_adjustment}', [StockAdjustmentController::class, 'update'])
+                ->middleware('check.permission:stock,edit');
+            Route::delete('stock/adjustments/{stock_adjustment}', [StockAdjustmentController::class, 'destroy'])
+                ->middleware('check.permission:stock,delete');
+            Route::put('stock/adjustments/{stock_adjustment}/lines/sync', [StockAdjustmentController::class, 'syncLines'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/adjustments/{stock_adjustment}/post', [StockAdjustmentController::class, 'post'])
+                ->middleware('check.permission:stock,edit');
+
+            Route::get('stock/productions', [ProductionController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::post('stock/productions', [ProductionController::class, 'store'])
+                ->middleware('check.permission:stock,add');
+            Route::get('stock/productions/{production}', [ProductionController::class, 'show'])
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/productions/{production}', [ProductionController::class, 'update'])
+                ->middleware('check.permission:stock,edit');
+            Route::delete('stock/productions/{production}', [ProductionController::class, 'destroy'])
+                ->middleware('check.permission:stock,delete');
+            Route::put('stock/productions/{production}/lines/sync', [ProductionController::class, 'syncLines'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/productions/{production}/post', [ProductionController::class, 'post'])
+                ->middleware('check.permission:stock,edit');
+
+            Route::get('stock/bundle-explosions', [BundleExplosionController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::post('stock/bundle-explosions', [BundleExplosionController::class, 'store'])
+                ->middleware('check.permission:stock,add');
+            Route::get('stock/bundle-explosions/{bundle_explosion}', [BundleExplosionController::class, 'show'])
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/bundle-explosions/{bundle_explosion}', [BundleExplosionController::class, 'update'])
+                ->middleware('check.permission:stock,edit');
+            Route::delete('stock/bundle-explosions/{bundle_explosion}', [BundleExplosionController::class, 'destroy'])
+                ->middleware('check.permission:stock,delete');
+            Route::put('stock/bundle-explosions/{bundle_explosion}/lines/sync', [BundleExplosionController::class, 'syncLines'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/bundle-explosions/{bundle_explosion}/post', [BundleExplosionController::class, 'post'])
+                ->middleware('check.permission:stock,edit');
+
+            Route::get('stock/stock-counts', [StockCountController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::post('stock/stock-counts', [StockCountController::class, 'store'])
+                ->middleware('check.permission:stock,add');
+            Route::get('stock/stock-counts/{stock_count}', [StockCountController::class, 'show'])
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/stock-counts/{stock_count}', [StockCountController::class, 'update'])
+                ->middleware('check.permission:stock,edit');
+            Route::delete('stock/stock-counts/{stock_count}', [StockCountController::class, 'destroy'])
+                ->middleware('check.permission:stock,delete');
+            Route::put('stock/stock-counts/{stock_count}/lines/sync', [StockCountController::class, 'syncLines'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/stock-counts/{stock_count}/load-balances', [StockCountController::class, 'loadBalances'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/stock-counts/{stock_count}/post', [StockCountController::class, 'post'])
                 ->middleware('check.permission:stock,edit');
 
             Route::get('unit-groups/{unit_group}/units', [UnitGroupController::class, 'units'])

@@ -12,7 +12,10 @@ return new class extends Migration
             $table->id();
             $table->foreignUuid('item_id')->constrained('items')->restrictOnDelete();
             $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
+            $table->foreignId('lot_id')->nullable()->constrained('inventory_lots')->restrictOnDelete();
             $table->decimal('quantity_delta', 14, 6);
+            $table->decimal('unit_cost', 14, 4)->default(0);
+            $table->decimal('value_delta', 20, 4)->default(0);
             $table->string('type', 32);
             $table->string('reference_type', 100)->nullable();
             $table->uuid('reference_id')->nullable();
@@ -22,6 +25,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['item_id', 'warehouse_id']);
+            $table->index('lot_id');
             $table->index(['warehouse_id', 'created_at']);
             $table->index(['type', 'created_at']);
             $table->index(['reference_type', 'reference_id']);

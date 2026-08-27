@@ -6,6 +6,7 @@ use App\Modules\Inventory\Item\DTOs\ItemData;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Item\Support\ItemDeleteRules;
+use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Support\ListPagination;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -65,7 +66,7 @@ class ItemService
     public function names(): Collection
     {
         return Item::query()
-            ->select(['id', 'item_code', 'name', 'item_type_id', 'track_inventory', 'allow_purchase', 'is_active'])
+            ->select(['id', 'item_code', 'name', 'item_type_id', 'track_inventory', 'track_lots', 'allow_purchase', 'is_active'])
             ->with(['itemType:id,code,name'])
             ->orderBy('name')
             ->get();
@@ -86,6 +87,32 @@ class ItemService
             if (! $data->trackInventory) {
                 ItemUom::query()->where('item_id', $item->id)->delete();
                 $item->base_uom_id = null;
+            }
+
+            if ($data->trackLots && ! $item->track_lots) {
+                $hasUnlottedQty = StockBalance::query()
+                    ->where('item_id', $item->id)
+                    ->whereNull('lot_id')
+                    ->where('quantity', '>', 0)
+                    ->exists();
+                if ($hasUnlottedQty) {
+                    abort(422, 'Zero unlotted stock before enabling lot tracking.', [
+                        'X-Error-Code' => 'ITEM_LOTS_ENABLE_HAS_STOCK',
+                    ]);
+                }
+            }
+
+            if (! $data->trackLots && $item->track_lots) {
+                $hasLottedQty = StockBalance::query()
+                    ->where('item_id', $item->id)
+                    ->whereNotNull('lot_id')
+                    ->where('quantity', '>', 0)
+                    ->exists();
+                if ($hasLottedQty) {
+                    abort(422, 'Zero lotted stock before disabling lot tracking.', [
+                        'X-Error-Code' => 'ITEM_LOTS_DISABLE_HAS_STOCK',
+                    ]);
+                }
             }
 
             if (

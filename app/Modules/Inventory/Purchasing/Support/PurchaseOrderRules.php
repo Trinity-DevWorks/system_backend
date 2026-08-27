@@ -26,6 +26,10 @@ final class PurchaseOrderRules
             abort(422, 'Purchase order is already cancelled.', ['X-Error-Code' => 'PURCHASE_ORDER_ALREADY_CANCELLED']);
         }
 
+        if ($order->status === PurchaseOrderStatus::Closed) {
+            abort(422, 'Cannot cancel a closed purchase order.', ['X-Error-Code' => 'PURCHASE_ORDER_CLOSED']);
+        }
+
         if (in_array($order->status, [PurchaseOrderStatus::Confirmed, PurchaseOrderStatus::Sent], true)) {
             $hasReceipts = $order->lines()
                 ->where(function ($query): void {
@@ -73,8 +77,8 @@ final class PurchaseOrderRules
 
     public static function assertPrintable(PurchaseOrder $order): void
     {
-        if (! in_array($order->status, [PurchaseOrderStatus::Confirmed, PurchaseOrderStatus::Sent], true)) {
-            abort(422, 'Only confirmed or sent purchase orders can be printed.', ['X-Error-Code' => 'PURCHASE_ORDER_PDF_NOT_ALLOWED']);
+        if (! in_array($order->status, [PurchaseOrderStatus::Confirmed, PurchaseOrderStatus::Sent, PurchaseOrderStatus::Closed], true)) {
+            abort(422, 'Only confirmed, sent, or closed purchase orders can be printed.', ['X-Error-Code' => 'PURCHASE_ORDER_PDF_NOT_ALLOWED']);
         }
     }
 

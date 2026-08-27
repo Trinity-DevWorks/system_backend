@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Notification;
 
 use App\Models\User;
+use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Notification\Notifications\BusinessNotification;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
@@ -176,6 +177,85 @@ class NotificationSystemTest extends TestCase
                         (string) $order->id,
                     ),
             );
+        });
+    }
+
+    public function test_goods_receipt_posted_dispatches_typed_notification(): void
+    {
+        Notification::fake();
+
+        $this->tenant->run(function (): void {
+            $warehouse = Warehouse::query()->create([
+                'name' => 'GRN Notify Warehouse',
+                'shortcut_name' => 'GNW',
+                'type' => 'central',
+                'is_active' => true,
+            ]);
+
+            $receipt = new GoodsReceipt([
+                'grn_number' => 'GRN-000042',
+                'warehouse_id' => $warehouse->id,
+                'created_by' => (string) $this->tenantUser->id,
+            ]);
+            $receipt->setAttribute('id', (string) Str::uuid());
+
+            app(DomainNotificationPublisher::class)->goodsReceiptPosted($receipt, null);
+
+            Notification::assertSentTo(
+                $this->tenantUser,
+                BusinessNotification::class,
+                fn (BusinessNotification $notification): bool => $notification->businessType === 'goods_receipt.posted'
+                    && ($notification->payload['params']['grn_number'] ?? null) === 'GRN-000042'
+                    && str_contains(
+                        (string) ($notification->payload['action_path'] ?? ''),
+                        (string) $receipt->id,
+                    ),
+            );
+        });
+    }
+
+    public function test_purchase_order_closed_dispatches_typed_notification(): void
+    {
+        Notification::fake();
+
+        $this->tenant->run(function (): void {
+            $warehouse = Warehouse::query()->create([
+                'name' => 'PO Closed Warehouse',
+                'shortcut_name' => 'PCW',
+                'type' => 'central',
+                'is_active' => true,
+            ]);
+
+            $order = new PurchaseOrder([
+                'po_number' => 'PO-CLOSED-001',
+                'warehouse_id' => $warehouse->id,
+                'created_by' => (string) $this->tenantUser->id,
+            ]);
+            $order->setAttribute('id', (string) Str::uuid());
+
+            app(DomainNotificationPublisher::class)->purchaseOrderClosed($order, null);
+
+            Notification::assertSentTo(
+                $this->tenantUser,
+                BusinessNotification::class,
+                fn (BusinessNotification $notification): bool => $notification->businessType === 'purchase_order.closed'
+                    && ($notification->payload['params']['po_number'] ?? null) === 'PO-CLOSED-001'
+                    && str_contains(
+                        (string) ($notification->payload['action_path'] ?? ''),
+                        (string) $order->id,
+                    ),
+            );
+        });
+    }
+
+    public function test_lot_expiry_digest_skips_when_no_on_hand_lots_are_expiring(): void
+    {
+        $this->tenant->run(function (): void {
+            $result = app(DomainNotificationPublisher::class)->lotExpiryDigest();
+
+            $this->assertFalse($result['sent']);
+            $this->assertSame('no_lots', $result['reason'] ?? null);
+            $this->assertSame(0, $result['lot_count']);
         });
     }
 

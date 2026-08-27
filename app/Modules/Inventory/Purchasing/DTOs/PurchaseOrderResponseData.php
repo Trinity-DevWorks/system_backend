@@ -53,6 +53,8 @@ readonly class PurchaseOrderResponseData
             $lines = PurchaseOrderLineResponseData::collectionToArray($order->lines);
             $payload['lines'] = $lines;
             $payload['total_amount'] = self::sumLineTotals($lines);
+            $payload['can_receive'] = in_array($order->status, [PurchaseOrderStatus::Confirmed, PurchaseOrderStatus::Sent], true)
+                && self::hasOpenQuantity($lines);
         }
 
         return $payload;
@@ -138,5 +140,19 @@ readonly class PurchaseOrderResponseData
         }
 
         return $total;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    private static function hasOpenQuantity(array $lines): bool
+    {
+        foreach ($lines as $line) {
+            if (isset($line['open_quantity']) && bccomp((string) $line['open_quantity'], '0', 6) > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

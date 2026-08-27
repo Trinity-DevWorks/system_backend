@@ -5,7 +5,9 @@ namespace App\Modules\Inventory\Item\Http\Requests;
 use App\Modules\Category\Support\CategoryTree;
 use App\Modules\Inventory\Item\Support\ItemPosFieldValidator;
 use App\Modules\Inventory\ItemType\Models\ItemType;
+use App\Modules\Inventory\Stock\Enums\InventoryCostingMethod;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class StoreItemRequest extends FormRequest
@@ -22,11 +24,11 @@ class StoreItemRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'sku' => ['required', 'string', 'max:100', 'unique:items,sku'],
+            'sku' => ['nullable', 'string', 'max:100', 'unique:items,sku'],
             'item_code' => ['nullable', 'string', 'max:100', 'unique:items,item_code'],
             'plu_code' => ['nullable', 'string', 'max:100', 'unique:items,plu_code'],
             'item_type_id' => ['required', 'integer', 'exists:item_types,id'],
-            'category_id' => ['required', 'integer', 'exists:categories,id'],
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'brand_id' => ['nullable', 'integer', 'exists:brands,id'],
             'unit_group_id' => ['required', 'integer', 'exists:unit_groups,id'],
             'vat_group_id' => ['nullable', 'integer', 'exists:vat_groups,id'],
@@ -39,6 +41,8 @@ class StoreItemRequest extends FormRequest
             'pos_name' => ['nullable', 'string', 'max:255'],
             'color' => ['nullable', 'string', 'max:32', 'regex:/^#(?:[0-9a-fA-F]{3}){1,2}$/'],
             'track_inventory' => ['nullable', 'boolean'],
+            'track_lots' => ['nullable', 'boolean'],
+            'costing_method' => ['nullable', Rule::enum(InventoryCostingMethod::class)],
             'allow_sale' => ['nullable', 'boolean'],
             'allow_purchase' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],

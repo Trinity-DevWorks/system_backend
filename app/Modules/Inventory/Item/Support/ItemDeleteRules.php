@@ -5,7 +5,12 @@ namespace App\Modules\Inventory\Item\Support;
 use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\RecipeItem;
+use App\Modules\Inventory\Stock\Models\BundleExplosion;
+use App\Modules\Inventory\Stock\Models\BundleExplosionLine;
+use App\Modules\Inventory\Stock\Models\Production;
+use App\Modules\Inventory\Stock\Models\ProductionLine;
 use App\Modules\Inventory\Stock\Models\StockBalance;
+use App\Modules\Inventory\Stock\Models\StockCountLine;
 use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Inventory\Stock\Models\StockTransferLine;
 use App\Modules\Supplier\Models\SupplierItem;
@@ -22,6 +27,11 @@ final class ItemDeleteRules
             StockBalance::query()->where('item_id', $item->id)->exists()
             || StockMovement::query()->where('item_id', $item->id)->exists()
             || StockTransferLine::query()->where('item_id', $item->id)->exists()
+            || Production::query()->where('item_id', $item->id)->exists()
+            || ProductionLine::query()->where('item_id', $item->id)->exists()
+            || BundleExplosion::query()->where('item_id', $item->id)->exists()
+            || BundleExplosionLine::query()->where('item_id', $item->id)->exists()
+            || StockCountLine::query()->where('item_id', $item->id)->exists()
         ) {
             abort(409, 'Cannot delete item: stock records exist.', ['X-Error-Code' => 'ITEM_DELETE_REFERENCED_BY_STOCK']);
         }
