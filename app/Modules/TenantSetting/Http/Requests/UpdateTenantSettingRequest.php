@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\TenantSetting\Http\Requests;
 
+use App\Modules\Inventory\Stock\Enums\InventoryCostingMethod;
 use App\Modules\TenantSetting\Enums\DateFormat;
 use App\Modules\TenantSetting\Enums\NumberFormat;
 use App\Modules\TenantSetting\Enums\PreferredLanguage;
 use App\Modules\TenantSetting\Enums\PriceRoundingMode;
+use App\Modules\TenantSetting\Enums\TaxPriceMode;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -31,7 +33,9 @@ class UpdateTenantSettingRequest extends FormRequest
             'date_format' => ['sometimes', 'required', Rule::enum(DateFormat::class)],
             'number_format' => ['sometimes', 'required', Rule::enum(NumberFormat::class)],
             'tax_enabled' => ['sometimes', 'required', 'boolean'],
+            'tax_price_mode' => ['sometimes', 'required', Rule::enum(TaxPriceMode::class)],
             'allow_negative_stock' => ['sometimes', 'required', 'boolean'],
+            'inventory_costing_method' => ['sometimes', 'required', Rule::enum(InventoryCostingMethod::class)],
             'price_rounding_mode' => ['sometimes', 'required', Rule::enum(PriceRoundingMode::class)],
             'price_decimal_places' => ['sometimes', 'required', 'integer', 'min:0', 'max:6'],
         ];

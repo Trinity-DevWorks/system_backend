@@ -50,6 +50,7 @@ class CustomerController extends Controller
                 'status' => $c->status instanceof CustomerStatus
                     ? $c->status->value
                     : (string) ($c->status ?? CustomerStatus::Active->value),
+                'is_system' => (bool) $c->is_system,
                 'created_at' => (string) $c->created_at,
                 'updated_at' => (string) $c->updated_at,
             ])->values()->all();

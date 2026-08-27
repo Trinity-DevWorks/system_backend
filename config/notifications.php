@@ -39,6 +39,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Lot expiry digest
+    |--------------------------------------------------------------------------
+    | Daily summary of on-hand lots that are already expired or expire within
+    | `within_days`. Tenant-wide cooldown avoids repeating the same digest.
+    */
+    'lot_expiry' => [
+        'within_days' => 7,
+        'cooldown_hours' => 24,
+        'cache_key_prefix' => 'notifications:lot_expiry_digest',
+        'instant_suppression_fallback_hours' => 48,
+        'instant_cache_key_prefix' => 'notifications:instant_lot_expiry',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Type catalog
     |--------------------------------------------------------------------------
     | `default_channels`: used when the user has no preference row.
@@ -100,6 +115,18 @@ return [
             'mail_subject' => 'Purchase order :po_number cancelled',
             'permission' => ['resource' => 'stock', 'action' => 'view'],
         ],
+        'purchase_order.closed' => [
+            'severity' => 'info',
+            'default_channels' => ['database', 'mail'],
+            'mail_subject' => 'Purchase order :po_number closed',
+            'permission' => ['resource' => 'stock', 'action' => 'view'],
+        ],
+        'goods_receipt.posted' => [
+            'severity' => 'success',
+            'default_channels' => ['database'],
+            'mail_subject' => 'Goods receipt :grn_number posted',
+            'permission' => ['resource' => 'stock', 'action' => 'view'],
+        ],
         'stock_transfer.dispatched' => [
             'severity' => 'info',
             'default_channels' => ['database'],
@@ -116,6 +143,18 @@ return [
             'severity' => 'warning',
             'default_channels' => ['database', 'mail'],
             'mail_subject' => 'Stock transfer :transfer_number cancelled',
+            'permission' => ['resource' => 'stock', 'action' => 'view'],
+        ],
+        'stock.lot_expiry' => [
+            'severity' => 'warning',
+            'default_channels' => ['database', 'mail'],
+            'mail_subject' => 'Lots expiring (:lot_count on hand)',
+            'permission' => ['resource' => 'stock', 'action' => 'view'],
+        ],
+        'stock.lot_expiry_item' => [
+            'severity' => 'warning',
+            'default_channels' => ['database'],
+            'mail_subject' => 'Lot :lot_number of :item_code expires :expiry_date',
             'permission' => ['resource' => 'stock', 'action' => 'view'],
         ],
         'stock_movement.posted' => [

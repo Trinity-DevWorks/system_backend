@@ -34,6 +34,7 @@ class CustomerService
                 'phone',
                 'email',
                 'status',
+                'is_system',
                 'created_at',
                 'updated_at',
             ])
@@ -57,6 +58,7 @@ class CustomerService
                 'phone',
                 'email',
                 'status',
+                'is_system',
                 'created_at',
                 'updated_at',
             ])
@@ -82,7 +84,7 @@ class CustomerService
     public function names(): Collection
     {
         return Customer::query()
-            ->select(['id', 'customer_code', 'name', 'status', 'created_at', 'updated_at'])
+            ->select(['id', 'customer_code', 'name', 'status', 'is_system', 'created_at', 'updated_at'])
             ->orderBy('name')
             ->get();
     }
@@ -187,7 +189,18 @@ class CustomerService
             $customer = $this->lockCustomerForBalanceWrites($customer);
 
             $currencyBalances = $patch['currency_balances'] ?? null;
-            $scalar = collect($patch)->except(['currency_balances'])->all();
+            $scalar = collect($patch)->except(['currency_balances', 'is_system'])->all();
+
+            if ($customer->is_system && array_key_exists('status', $scalar)) {
+                $next = $scalar['status'] instanceof CustomerStatus
+                    ? $scalar['status']
+                    : CustomerStatus::tryFrom((string) $scalar['status']);
+                if ($next !== null && $next !== CustomerStatus::Active) {
+                    abort(422, 'Cannot suspend or blacklist the walk-in customer.', [
+                        'X-Error-Code' => 'CUSTOMER_SYSTEM_STATUS_FORBIDDEN',
+                    ]);
+                }
+            }
 
             $customer->fill($scalar);
             if (! $customer->is_vat_registered) {
@@ -300,6 +313,12 @@ class CustomerService
 
     public function delete(Customer $customer): void
     {
+        if ($customer->is_system) {
+            abort(422, 'Cannot delete the walk-in customer.', [
+                'X-Error-Code' => 'CUSTOMER_SYSTEM_DELETE_FORBIDDEN',
+            ]);
+        }
+
         $customer->delete();
     }
 

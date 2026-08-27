@@ -7,6 +7,7 @@ use App\Models\Attachment;
 use App\Modules\Brand\Models\Brand;
 use App\Modules\Category\Models\Category;
 use App\Modules\Inventory\ItemType\Models\ItemType;
+use App\Modules\Inventory\Stock\Models\InventoryLot;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
@@ -45,6 +46,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'pos_name',
     'color',
     'track_inventory',
+    'track_lots',
+    'costing_method',
     'allow_sale',
     'allow_purchase',
     'is_active',
@@ -65,6 +68,7 @@ class Item extends Model implements AuditableContract
             'send_to_kitchen' => 'boolean',
             'qr_enabled' => 'boolean',
             'track_inventory' => 'boolean',
+            'track_lots' => 'boolean',
             'allow_sale' => 'boolean',
             'allow_purchase' => 'boolean',
             'is_active' => 'boolean',
@@ -141,6 +145,14 @@ class Item extends Model implements AuditableContract
     public function warehouseReplenishments(): HasMany
     {
         return $this->hasMany(ItemWarehouseReplenishment::class);
+    }
+
+    /**
+     * @return HasMany<InventoryLot, $this>
+     */
+    public function lots(): HasMany
+    {
+        return $this->hasMany(InventoryLot::class);
     }
 
     /**

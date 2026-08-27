@@ -47,6 +47,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'exempted_to',
     'vat_number',
     'notes',
+    'is_system',
 ])]
 class Customer extends Model implements AuditableContract
 {
@@ -65,6 +66,7 @@ class Customer extends Model implements AuditableContract
             'status' => CustomerStatus::class,
             'is_vat_registered' => 'boolean',
             'is_exempted' => 'boolean',
+            'is_system' => 'boolean',
             'exempted_from' => 'date',
             'exempted_to' => 'date',
         ];

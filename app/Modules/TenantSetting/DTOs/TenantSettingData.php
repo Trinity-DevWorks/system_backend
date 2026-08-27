@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\TenantSetting\DTOs;
 
+use App\Modules\Inventory\Stock\Enums\InventoryCostingMethod;
 use App\Modules\TenantSetting\Enums\DateFormat;
 use App\Modules\TenantSetting\Enums\NumberFormat;
 use App\Modules\TenantSetting\Enums\PreferredLanguage;
 use App\Modules\TenantSetting\Enums\PriceRoundingMode;
+use App\Modules\TenantSetting\Enums\TaxPriceMode;
 use App\Modules\TenantSetting\Http\Requests\UpdateTenantSettingRequest;
 use App\Modules\TenantSetting\Models\TenantSetting;
 
@@ -20,7 +22,9 @@ readonly class TenantSettingData
         public DateFormat $dateFormat,
         public NumberFormat $numberFormat,
         public bool $taxEnabled,
+        public TaxPriceMode $taxPriceMode,
         public bool $allowNegativeStock,
+        public InventoryCostingMethod $inventoryCostingMethod,
         public PriceRoundingMode $priceRoundingMode,
         public int $priceDecimalPlaces,
     ) {}
@@ -48,9 +52,15 @@ readonly class TenantSettingData
             taxEnabled: array_key_exists('tax_enabled', $data)
                 ? (bool) $data['tax_enabled']
                 : (bool) $settings->tax_enabled,
+            taxPriceMode: array_key_exists('tax_price_mode', $data)
+                ? TaxPriceMode::from((string) $data['tax_price_mode'])
+                : $settings->tax_price_mode,
             allowNegativeStock: array_key_exists('allow_negative_stock', $data)
                 ? (bool) $data['allow_negative_stock']
                 : (bool) $settings->allow_negative_stock,
+            inventoryCostingMethod: array_key_exists('inventory_costing_method', $data)
+                ? InventoryCostingMethod::from((string) $data['inventory_costing_method'])
+                : $settings->inventory_costing_method,
             priceRoundingMode: array_key_exists('price_rounding_mode', $data)
                 ? PriceRoundingMode::from((string) $data['price_rounding_mode'])
                 : $settings->price_rounding_mode,
@@ -68,7 +78,9 @@ readonly class TenantSettingData
      *     date_format: string,
      *     number_format: string,
      *     tax_enabled: bool,
+     *     tax_price_mode: string,
      *     allow_negative_stock: bool,
+     *     inventory_costing_method: string,
      *     price_rounding_mode: string,
      *     price_decimal_places: int
      * }
@@ -82,7 +94,9 @@ readonly class TenantSettingData
             'date_format' => $this->dateFormat->value,
             'number_format' => $this->numberFormat->value,
             'tax_enabled' => $this->taxEnabled,
+            'tax_price_mode' => $this->taxPriceMode->value,
             'allow_negative_stock' => $this->allowNegativeStock,
+            'inventory_costing_method' => $this->inventoryCostingMethod->value,
             'price_rounding_mode' => $this->priceRoundingMode->value,
             'price_decimal_places' => $this->priceDecimalPlaces,
         ];

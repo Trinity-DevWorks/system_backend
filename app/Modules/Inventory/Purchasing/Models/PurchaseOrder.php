@@ -106,4 +106,12 @@ class PurchaseOrder extends Model implements AuditableContract
     {
         return $this->hasMany(PurchaseOrderLine::class);
     }
+
+    /**
+     * @return HasMany<GoodsReceipt, $this>
+     */
+    public function goodsReceipts(): HasMany
+    {
+        return $this->hasMany(GoodsReceipt::class);
+    }
 }

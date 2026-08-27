@@ -33,6 +33,8 @@ return new class extends Migration
             $table->date('exempted_to')->nullable();
             $table->string('vat_number', 128)->nullable();
             $table->text('notes')->nullable();
+            /** Seeded walk-in / cash customer — cannot be deleted */
+            $table->boolean('is_system')->default(false);
             $table->timestamps();
             $table->softDeletes();
         });

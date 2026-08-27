@@ -23,9 +23,22 @@ use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
+use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
+use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
+use App\Modules\Inventory\Stock\Models\BundleExplosion;
+use App\Modules\Inventory\Stock\Models\BundleExplosionLine;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
+use App\Modules\Inventory\Stock\Models\OpeningStock;
+use App\Modules\Inventory\Stock\Models\OpeningStockLine;
+use App\Modules\Inventory\Stock\Models\Production;
+use App\Modules\Inventory\Stock\Models\ProductionLine;
+use App\Modules\Inventory\Stock\Models\StockAdjustment;
+use App\Modules\Inventory\Stock\Models\StockAdjustmentLine;
+use App\Modules\Inventory\Stock\Models\StockAdjustmentReason;
+use App\Modules\Inventory\Stock\Models\StockCount;
+use App\Modules\Inventory\Stock\Models\StockCountLine;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferLine;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
@@ -109,6 +122,19 @@ class AppServiceProvider extends ServiceProvider
             'stock_transfer_line' => StockTransferLine::class,
             'purchase_order' => PurchaseOrder::class,
             'purchase_order_line' => PurchaseOrderLine::class,
+            'goods_receipt' => GoodsReceipt::class,
+            'goods_receipt_line' => GoodsReceiptLine::class,
+            'opening_stock' => OpeningStock::class,
+            'opening_stock_line' => OpeningStockLine::class,
+            'stock_adjustment' => StockAdjustment::class,
+            'stock_adjustment_line' => StockAdjustmentLine::class,
+            'stock_adjustment_reason' => StockAdjustmentReason::class,
+            'production' => Production::class,
+            'production_line' => ProductionLine::class,
+            'bundle_explosion' => BundleExplosion::class,
+            'bundle_explosion_line' => BundleExplosionLine::class,
+            'stock_count' => StockCount::class,
+            'stock_count_line' => StockCountLine::class,
             'item_warehouse_replenishment' => ItemWarehouseReplenishment::class,
             'unit_group' => UnitGroup::class,
             'unit_of_measurement' => UnitOfMeasurement::class,

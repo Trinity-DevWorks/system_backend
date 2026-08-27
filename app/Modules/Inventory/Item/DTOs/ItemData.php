@@ -12,11 +12,11 @@ readonly class ItemData
 {
     public function __construct(
         public string $name,
-        public string $sku,
+        public ?string $sku,
         public ?string $itemCode,
         public ?string $pluCode,
         public int $itemTypeId,
-        public int $categoryId,
+        public ?int $categoryId,
         public ?int $brandId,
         public int $unitGroupId,
         public ?int $vatGroupId,
@@ -29,6 +29,8 @@ readonly class ItemData
         public ?string $posName,
         public ?string $color,
         public bool $trackInventory,
+        public bool $trackLots,
+        public ?string $costingMethod,
         public bool $allowSale,
         public bool $allowPurchase,
         public bool $isActive,
@@ -46,14 +48,17 @@ readonly class ItemData
             : $defaults['allow_sale'];
 
         $pos = self::resolvePosFields($data, $posDefaults, $allowSale);
+        $trackInventory = array_key_exists('track_inventory', $data)
+            ? (bool) $data['track_inventory']
+            : $defaults['track_inventory'];
 
         return new self(
             name: $data['name'],
-            sku: self::normalizeSku($data['sku']),
+            sku: self::normalizeSku($data['sku'] ?? null),
             itemCode: self::normalizeItemCode($data['item_code'] ?? null),
             pluCode: self::normalizePluCode($data['plu_code'] ?? null),
             itemTypeId: (int) $data['item_type_id'],
-            categoryId: (int) $data['category_id'],
+            categoryId: isset($data['category_id']) ? (int) $data['category_id'] : null,
             brandId: isset($data['brand_id']) ? (int) $data['brand_id'] : null,
             unitGroupId: (int) $data['unit_group_id'],
             vatGroupId: isset($data['vat_group_id']) ? (int) $data['vat_group_id'] : null,
@@ -65,9 +70,11 @@ readonly class ItemData
             qrDescription: $pos['qr_description'],
             posName: $pos['pos_name'],
             color: $pos['color'],
-            trackInventory: array_key_exists('track_inventory', $data)
-                ? (bool) $data['track_inventory']
-                : $defaults['track_inventory'],
+            trackInventory: $trackInventory,
+            trackLots: $trackInventory && (bool) ($data['track_lots'] ?? false),
+            costingMethod: $trackInventory
+                ? self::normalizeCostingMethod($data['costing_method'] ?? null)
+                : null,
             allowSale: $allowSale,
             allowPurchase: array_key_exists('allow_purchase', $data)
                 ? (bool) $data['allow_purchase']
@@ -92,6 +99,9 @@ readonly class ItemData
 
         $posInput = self::mergePosInputForUpdate($data, $item);
         $pos = self::resolvePosFields($posInput, $posDefaults, $allowSale);
+        $trackInventory = array_key_exists('track_inventory', $data)
+            ? (bool) $data['track_inventory']
+            : (bool) $item->track_inventory;
 
         return new self(
             name: $data['name'] ?? $item->name,
@@ -104,8 +114,8 @@ readonly class ItemData
                 : $item->plu_code,
             itemTypeId: $itemTypeId,
             categoryId: array_key_exists('category_id', $data)
-                ? (int) $data['category_id']
-                : (int) $item->category_id,
+                ? ($data['category_id'] === null ? null : (int) $data['category_id'])
+                : $item->category_id,
             brandId: array_key_exists('brand_id', $data)
                 ? ($data['brand_id'] === null ? null : (int) $data['brand_id'])
                 : $item->brand_id,
@@ -125,9 +135,15 @@ readonly class ItemData
             qrDescription: $pos['qr_description'],
             posName: $pos['pos_name'],
             color: $pos['color'],
-            trackInventory: array_key_exists('track_inventory', $data)
-                ? (bool) $data['track_inventory']
-                : (bool) $item->track_inventory,
+            trackInventory: $trackInventory,
+            trackLots: $trackInventory && (array_key_exists('track_lots', $data)
+                ? (bool) $data['track_lots']
+                : (bool) $item->track_lots),
+            costingMethod: $trackInventory
+                ? (array_key_exists('costing_method', $data)
+                    ? self::normalizeCostingMethod($data['costing_method'])
+                    : $item->costing_method)
+                : null,
             allowSale: $allowSale,
             allowPurchase: array_key_exists('allow_purchase', $data)
                 ? (bool) $data['allow_purchase']
@@ -162,6 +178,8 @@ readonly class ItemData
             'pos_name' => $this->posName,
             'color' => $this->color,
             'track_inventory' => $this->trackInventory,
+            'track_lots' => $this->trackLots,
+            'costing_method' => $this->costingMethod,
             'allow_sale' => $this->allowSale,
             'allow_purchase' => $this->allowPurchase,
             'is_active' => $this->isActive,
@@ -233,9 +251,15 @@ readonly class ItemData
         ];
     }
 
-    private static function normalizeSku(string $value): string
+    private static function normalizeSku(mixed $value): ?string
     {
-        return strtoupper(trim($value));
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $normalized = strtoupper(trim((string) $value));
+
+        return $normalized === '' ? null : $normalized;
     }
 
     private static function normalizeItemCode(mixed $value): ?string
@@ -267,6 +291,17 @@ readonly class ItemData
         }
 
         $normalized = trim((string) $value);
+
+        return $normalized === '' ? null : $normalized;
+    }
+
+    private static function normalizeCostingMethod(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $normalized = strtolower(trim((string) $value));
 
         return $normalized === '' ? null : $normalized;
     }

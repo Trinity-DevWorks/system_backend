@@ -6,8 +6,10 @@ namespace App\Modules\Notification\Services;
 
 use App\Models\User;
 use App\Modules\Branch\Models\Branch;
+use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
+use App\Modules\Inventory\Stock\Services\InventoryLotService;
 use App\Modules\Inventory\Stock\Services\PurchasingAlertService;
 use App\Modules\Notification\Support\RecipientQuery;
 use App\Modules\Rbac\Models\Role;
@@ -17,7 +19,7 @@ use Illuminate\Support\Facades\Cache;
 /**
  * Domain-facing helpers that build payloads and dispatch Phase 1 business notifications.
  *
- * What: Translates PO / transfer / user / low-stock events into NotificationDispatcher calls.
+ * What: Translates PO / GRN / transfer / user / low-stock / lot-expiry events into NotificationDispatcher calls.
  * Used for: Hooks at the end of domain service methods (and the daily low-stock digest command).
  * Solves: Keeps payload shape, recipients, and action paths consistent without cluttering domain services.
  */
@@ -28,6 +30,8 @@ class DomainNotificationPublisher
         private readonly RecipientResolver $recipientResolver,
         private readonly PurchasingAlertService $purchasingAlerts,
         private readonly InstantLowStockNotifier $instantLowStockNotifier,
+        private readonly InstantLotExpiryNotifier $instantLotExpiryNotifier,
+        private readonly InventoryLotService $inventoryLots,
     ) {}
 
     public function userCreated(User $user): void
@@ -154,6 +158,44 @@ class DomainNotificationPublisher
         ]);
     }
 
+    public function purchaseOrderClosed(PurchaseOrder $order, ?string $actorId): void
+    {
+        $this->dispatchPurchaseOrderEvent('purchase_order.closed', $order, $actorId, [
+            'Purchase order :po_number was fully received and closed.',
+        ]);
+    }
+
+    public function goodsReceiptPosted(GoodsReceipt $receipt, ?string $actorId): void
+    {
+        $receipt->loadMissing(['warehouse:id,name,branch_id', 'purchaseOrder:id,po_number,created_by,warehouse_id']);
+
+        $branchId = $this->branchIdForWarehouse((int) $receipt->warehouse_id);
+        $poNumber = $receipt->purchaseOrder?->po_number;
+        $userIds = array_values(array_filter([
+            $receipt->created_by ? (string) $receipt->created_by : null,
+            $receipt->purchaseOrder?->created_by ? (string) $receipt->purchaseOrder->created_by : null,
+        ]));
+
+        $this->dispatcher->dispatch(
+            'goods_receipt.posted',
+            [
+                'params' => [
+                    'grn_number' => (string) $receipt->grn_number,
+                    'po_number' => $poNumber ? (string) $poNumber : '',
+                    'warehouse_name' => (string) ($receipt->warehouse?->name ?? ''),
+                ],
+                'mail_lines' => $poNumber
+                    ? ['Goods receipt :grn_number was posted against purchase order :po_number.']
+                    : ['Goods receipt :grn_number was posted at :warehouse_name.'],
+                'action_path' => '/main/stock/goods-receipts?drawer='.rawurlencode((string) $receipt->id).'&mode=view',
+                'resource_type' => GoodsReceipt::REFERENCE_TYPE,
+                'resource_id' => (string) $receipt->id,
+            ],
+            RecipientQuery::usersAndPermission($userIds, 'stock', 'view', $branchId),
+            $actorId,
+        );
+    }
+
     public function stockTransferDispatched(StockTransfer $transfer, ?string $actorId): void
     {
         $this->dispatchStockTransferEvent('stock_transfer.dispatched', $transfer, $actorId, [
@@ -241,6 +283,60 @@ class DomainNotificationPublisher
         Cache::put($cacheKey, true, now()->addHours($hours));
 
         return ['sent' => true, 'alert_count' => $alertCount];
+    }
+
+    /**
+     * Daily digest of on-hand lots that are expired or expire within the configured window.
+     *
+     * @return array{sent: bool, lot_count: int, expired_count: int, reason?: string}
+     */
+    public function lotExpiryDigest(): array
+    {
+        $withinDays = max(1, (int) config('notifications.lot_expiry.within_days', 7));
+        $until = now()->addDays($withinDays)->toDateString();
+        $rows = $this->inventoryLots->listOnHandExpiringOnOrBefore($until);
+        $lotCount = count($rows);
+        $expiredCount = collect($rows)->where('is_expired', true)->count();
+
+        if ($lotCount === 0) {
+            return ['sent' => false, 'lot_count' => 0, 'expired_count' => 0, 'reason' => 'no_lots'];
+        }
+
+        $hours = max(1, (int) config('notifications.lot_expiry.cooldown_hours', 24));
+        $cachePrefix = (string) config(
+            'notifications.lot_expiry.cache_key_prefix',
+            'notifications:lot_expiry_digest'
+        );
+        $tenantId = function_exists('tenant') ? (string) (tenant('id') ?? 'central') : 'central';
+        $cacheKey = $cachePrefix.':'.$tenantId;
+        if (Cache::has($cacheKey)) {
+            return ['sent' => false, 'lot_count' => $lotCount, 'expired_count' => $expiredCount, 'reason' => 'cooldown'];
+        }
+
+        $this->dispatcher->dispatch(
+            'stock.lot_expiry',
+            [
+                'severity' => $expiredCount > 0 ? 'critical' : 'warning',
+                'params' => [
+                    'lot_count' => $lotCount,
+                    'expired_count' => $expiredCount,
+                    'within_days' => $withinDays,
+                ],
+                'mail_lines' => [
+                    'There are :lot_count lot(s) on hand that expire within :within_days day(s) (:expired_count already expired).',
+                    'Open Lots in the app to review expiry dates.',
+                ],
+                'action_path' => '/main/stock/lots',
+                'resource_type' => 'inventory_lot',
+                'resource_id' => null,
+            ],
+            RecipientQuery::permission('stock', 'view'),
+        );
+
+        $this->instantLotExpiryNotifier->releaseAfterDigest($rows);
+        Cache::put($cacheKey, true, now()->addHours($hours));
+
+        return ['sent' => true, 'lot_count' => $lotCount, 'expired_count' => $expiredCount];
     }
 
     /**

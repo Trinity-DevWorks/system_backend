@@ -36,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('notifications:prune')->dailyAt('02:45')->withoutOverlapping();
         // Daily low-stock / purchasing-alert digest emails + in-app notifications (Phase 1).
         $schedule->command('notifications:low-stock-digest')->dailyAt('07:00')->withoutOverlapping();
+        $schedule->command('notifications:lot-expiry-digest')->dailyAt('07:15')->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(HandleCors::class);

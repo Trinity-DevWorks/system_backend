@@ -14,19 +14,31 @@ readonly class StockMovementResponseData
     public static function fromModel(StockMovement $movement, ?string $quantityOnHand = null): array
     {
         $movement->loadMissing([
-            'item:id,item_code,name,base_uom_id',
+            'item:id,item_code,name,base_uom_id,track_lots',
             'item.baseUom:id,code,name',
             'warehouse:id,name,shortcut_name',
             'itemUom:id,uom_id',
             'itemUom.uom:id,code,name',
             'user:id,name,email',
+            'lot:id,lot_number,expiry_date',
         ]);
+
+        $lot = $movement->lot;
 
         return [
             'id' => $movement->id,
             'item_id' => $movement->item_id,
             'warehouse_id' => $movement->warehouse_id,
+            'lot_id' => $movement->lot_id,
+            'lot' => $lot ? [
+                'id' => $lot->id,
+                'lot_number' => $lot->lot_number,
+                'expiry_date' => $lot->expiry_date?->toDateString(),
+                'is_expired' => $lot->isExpired(),
+            ] : null,
             'quantity_delta' => (string) $movement->quantity_delta,
+            'unit_cost' => (string) $movement->unit_cost,
+            'value_delta' => (string) $movement->value_delta,
             'quantity_on_hand' => $quantityOnHand,
             'type' => $movement->type->value,
             'reference_type' => $movement->reference_type,

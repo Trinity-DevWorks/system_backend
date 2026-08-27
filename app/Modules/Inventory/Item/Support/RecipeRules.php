@@ -23,7 +23,6 @@ final class RecipeRules
     private const DISALLOWED_INGREDIENT_TYPE_CODES = [
         'BUNDLE',
         'SERVICE',
-        'PLU',
         'NON_INVENTORY',
     ];
 

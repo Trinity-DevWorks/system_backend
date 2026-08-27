@@ -16,6 +16,5 @@ return [
         ['code' => 'PRODUCE', 'name' => 'produce'],
         ['code' => 'BUNDLE', 'name' => 'bundle'],
         ['code' => 'NON_INVENTORY', 'name' => 'non_inventory'],
-        ['code' => 'PLU', 'name' => 'plu'],
     ],
 ];

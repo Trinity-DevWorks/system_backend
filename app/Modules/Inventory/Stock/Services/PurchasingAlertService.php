@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Stock\Services;
 use App\Modules\Inventory\Stock\DTOs\PurchasingAlertResponseData;
 use App\Modules\Inventory\Stock\Enums\ReplenishmentAlertStatus;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
+use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Support\ReplenishmentAlertRules;
 use App\Modules\Supplier\Models\SupplierItem;
 use App\Modules\Warehouse\Services\WarehouseService;
@@ -34,7 +35,7 @@ class PurchasingAlertService
      */
     public function list(array $filters = []): array
     {
-        /** @var Collection<int, ItemWarehouseReplenishment&object{on_hand_quantity: string|float|int}> $rows */
+        /** @var Collection<int, ItemWarehouseReplenishment&object{on_hand_quantity: string|float|int, on_order_quantity?: string|float|int, in_transit_in_quantity?: string|float|int}> $rows */
         $rows = $this->filteredAlertQuery($filters)
             ->orderBy('items.name')
             ->orderBy('item_warehouse_replenishments.warehouse_id')
@@ -47,19 +48,7 @@ class PurchasingAlertService
         $results = [];
 
         foreach ($rows as $row) {
-            $onHand = (float) $row->on_hand_quantity;
-            $status = ReplenishmentAlertRules::status(
-                $onHand,
-                (float) $row->reorder_point_qty,
-                (float) $row->safety_stock_qty,
-            );
-
-            $results[] = PurchasingAlertResponseData::fromRow(
-                $row,
-                $onHand,
-                $status,
-                $preferredSuppliers,
-            );
+            $results[] = $this->presentAlertRow($row, $preferredSuppliers);
         }
 
         return $results;
@@ -89,19 +78,7 @@ class PurchasingAlertService
 
         $paginator->getCollection()->transform(
             function (ItemWarehouseReplenishment $row) use ($preferredSuppliers): array {
-                $onHand = (float) $row->on_hand_quantity;
-                $status = ReplenishmentAlertRules::status(
-                    $onHand,
-                    (float) $row->reorder_point_qty,
-                    (float) $row->safety_stock_qty,
-                );
-
-                return PurchasingAlertResponseData::fromRow(
-                    $row,
-                    $onHand,
-                    $status,
-                    $preferredSuppliers,
-                );
+                return $this->presentAlertRow($row, $preferredSuppliers);
             }
         );
 
@@ -120,7 +97,7 @@ class PurchasingAlertService
             return [];
         }
 
-        /** @var Collection<int, ItemWarehouseReplenishment&object{on_hand_quantity: string|float|int}> $rows */
+        /** @var Collection<int, ItemWarehouseReplenishment&object{on_hand_quantity: string|float|int, on_order_quantity?: string|float|int, in_transit_in_quantity?: string|float|int}> $rows */
         $rows = $this->baseAlertQuery()
             ->whereIn('item_warehouse_replenishments.id', $replenishmentIds)
             ->get()
@@ -138,19 +115,7 @@ class PurchasingAlertService
                 continue;
             }
 
-            $onHand = (float) $row->on_hand_quantity;
-            $status = ReplenishmentAlertRules::status(
-                $onHand,
-                (float) $row->reorder_point_qty,
-                (float) $row->safety_stock_qty,
-            );
-
-            $results[$replenishmentId] = PurchasingAlertResponseData::fromRow(
-                $row,
-                $onHand,
-                $status,
-                $preferredSuppliers,
-            );
+            $results[$replenishmentId] = $this->presentAlertRow($row, $preferredSuppliers);
         }
 
         return $results;
@@ -173,20 +138,20 @@ class PurchasingAlertService
     {
         return $this->baseAlertQuery()
             ->where(function (Builder $query): void {
-                $onHand = 'COALESCE(stock_balances.quantity, 0)';
+                $available = self::availableSql();
 
-                $query->whereRaw("{$onHand} <= 0")
-                    ->orWhere(function (Builder $q) use ($onHand): void {
+                $query->whereRaw("{$available} <= 0")
+                    ->orWhere(function (Builder $q) use ($available): void {
                         $q->where('item_warehouse_replenishments.safety_stock_qty', '>', 0)
-                            ->whereRaw("{$onHand} <= item_warehouse_replenishments.safety_stock_qty");
+                            ->whereRaw("{$available} <= item_warehouse_replenishments.safety_stock_qty");
                     })
-                    ->orWhere(function (Builder $q) use ($onHand): void {
-                        $q->whereRaw("{$onHand} > 0")
-                            ->where(function (Builder $inner) use ($onHand): void {
+                    ->orWhere(function (Builder $q) use ($available): void {
+                        $q->whereRaw("{$available} > 0")
+                            ->where(function (Builder $inner) use ($available): void {
                                 $inner->where('item_warehouse_replenishments.safety_stock_qty', '<=', 0)
-                                    ->orWhereRaw("{$onHand} > item_warehouse_replenishments.safety_stock_qty");
+                                    ->orWhereRaw("{$available} > item_warehouse_replenishments.safety_stock_qty");
                             })
-                            ->whereRaw("{$onHand} <= item_warehouse_replenishments.reorder_point_qty");
+                            ->whereRaw("{$available} <= item_warehouse_replenishments.reorder_point_qty");
                     });
             })
             ->count();
@@ -272,28 +237,28 @@ class PurchasingAlertService
 
     private function applySingleComputedStatus(Builder $query, ReplenishmentAlertStatus $status): void
     {
-        $onHand = 'COALESCE(stock_balances.quantity, 0)';
+        $available = self::availableSql();
 
         match ($status) {
-            ReplenishmentAlertStatus::OutOfStock => $query->whereRaw("{$onHand} <= 0"),
+            ReplenishmentAlertStatus::OutOfStock => $query->whereRaw("{$available} <= 0"),
             ReplenishmentAlertStatus::BelowSafety => $query
-                ->whereRaw("{$onHand} > 0")
+                ->whereRaw("{$available} > 0")
                 ->where('item_warehouse_replenishments.safety_stock_qty', '>', 0)
-                ->whereRaw("{$onHand} <= item_warehouse_replenishments.safety_stock_qty"),
+                ->whereRaw("{$available} <= item_warehouse_replenishments.safety_stock_qty"),
             ReplenishmentAlertStatus::BelowReorder => $query
-                ->whereRaw("{$onHand} > 0")
-                ->where(function (Builder $q) use ($onHand): void {
+                ->whereRaw("{$available} > 0")
+                ->where(function (Builder $q) use ($available): void {
                     $q->where('item_warehouse_replenishments.safety_stock_qty', '<=', 0)
-                        ->orWhereRaw("{$onHand} > item_warehouse_replenishments.safety_stock_qty");
+                        ->orWhereRaw("{$available} > item_warehouse_replenishments.safety_stock_qty");
                 })
-                ->whereRaw("{$onHand} <= item_warehouse_replenishments.reorder_point_qty"),
+                ->whereRaw("{$available} <= item_warehouse_replenishments.reorder_point_qty"),
             ReplenishmentAlertStatus::Ok => $query
-                ->whereRaw("{$onHand} > 0")
-                ->where(function (Builder $q) use ($onHand): void {
+                ->whereRaw("{$available} > 0")
+                ->where(function (Builder $q) use ($available): void {
                     $q->where('item_warehouse_replenishments.safety_stock_qty', '<=', 0)
-                        ->orWhereRaw("{$onHand} > item_warehouse_replenishments.safety_stock_qty");
+                        ->orWhereRaw("{$available} > item_warehouse_replenishments.safety_stock_qty");
                 })
-                ->whereRaw("{$onHand} > item_warehouse_replenishments.reorder_point_qty"),
+                ->whereRaw("{$available} > item_warehouse_replenishments.reorder_point_qty"),
         };
     }
 
@@ -302,11 +267,35 @@ class PurchasingAlertService
         $query = ItemWarehouseReplenishment::query()
             ->select('item_warehouse_replenishments.*')
             ->join('items', 'items.id', '=', 'item_warehouse_replenishments.item_id')
-            ->leftJoin('stock_balances', function ($join): void {
-                $join->on('stock_balances.item_id', '=', 'item_warehouse_replenishments.item_id')
-                    ->on('stock_balances.warehouse_id', '=', 'item_warehouse_replenishments.warehouse_id');
-            })
+            ->leftJoinSub(
+                StockBalance::query()
+                    ->select('item_id', 'warehouse_id', DB::raw('SUM(quantity) as quantity'))
+                    ->groupBy('item_id', 'warehouse_id'),
+                'stock_balances',
+                function ($join): void {
+                    $join->on('stock_balances.item_id', '=', 'item_warehouse_replenishments.item_id')
+                        ->on('stock_balances.warehouse_id', '=', 'item_warehouse_replenishments.warehouse_id');
+                }
+            )
+            ->leftJoinSub(
+                StockPipelineService::openPurchaseOrderQuery(),
+                'open_pos',
+                function ($join): void {
+                    $join->on('open_pos.item_id', '=', 'item_warehouse_replenishments.item_id')
+                        ->on('open_pos.warehouse_id', '=', 'item_warehouse_replenishments.warehouse_id');
+                }
+            )
+            ->leftJoinSub(
+                StockPipelineService::inTransitQuery('to_warehouse_id'),
+                'in_transit_in',
+                function ($join): void {
+                    $join->on('in_transit_in.item_id', '=', 'item_warehouse_replenishments.item_id')
+                        ->on('in_transit_in.to_warehouse_id', '=', 'item_warehouse_replenishments.warehouse_id');
+                }
+            )
             ->addSelect(DB::raw('COALESCE(stock_balances.quantity, 0) as on_hand_quantity'))
+            ->addSelect(DB::raw('COALESCE(open_pos.quantity, 0) as on_order_quantity'))
+            ->addSelect(DB::raw('COALESCE(in_transit_in.quantity, 0) as in_transit_in_quantity'))
             ->where('item_warehouse_replenishments.is_active', true)
             ->where('items.track_inventory', true)
             ->where('items.allow_purchase', true)
@@ -318,6 +307,37 @@ class PurchasingAlertService
         );
 
         return $query;
+    }
+
+    /**
+     * @param  array<string, SupplierItem>  $preferredSuppliers
+     * @return array<string, mixed>
+     */
+    private function presentAlertRow(ItemWarehouseReplenishment $row, array $preferredSuppliers): array
+    {
+        $onHand = (float) $row->on_hand_quantity;
+        $onOrder = (float) ($row->on_order_quantity ?? 0);
+        $inTransitIn = (float) ($row->in_transit_in_quantity ?? 0);
+        $projected = $onHand + $onOrder + $inTransitIn;
+        $status = ReplenishmentAlertRules::status(
+            $projected,
+            (float) $row->reorder_point_qty,
+            (float) $row->safety_stock_qty,
+        );
+
+        return PurchasingAlertResponseData::fromRow(
+            $row,
+            $onHand,
+            $status,
+            $preferredSuppliers,
+            $onOrder,
+            $inTransitIn,
+        );
+    }
+
+    private static function availableSql(): string
+    {
+        return '(COALESCE(stock_balances.quantity, 0) + COALESCE(open_pos.quantity, 0) + COALESCE(in_transit_in.quantity, 0))';
     }
 
     /**

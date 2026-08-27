@@ -31,10 +31,12 @@ final class ItemTypeCatalogService
 
     /**
      * Insert or update catalog rows from config (tenant context required).
+     * System types missing from config are deactivated (kept for FKs).
      */
     public function syncFromConfig(): void
     {
         $types = config('item_types.types', []);
+        $syncedCodes = [];
 
         foreach ($types as $entry) {
             if (! is_array($entry)) {
@@ -48,6 +50,8 @@ final class ItemTypeCatalogService
                 continue;
             }
 
+            $syncedCodes[] = $code;
+
             ItemType::query()->updateOrCreate(
                 ['code' => $code],
                 [
@@ -56,6 +60,13 @@ final class ItemTypeCatalogService
                     'is_active' => true,
                 ]
             );
+        }
+
+        if ($syncedCodes !== []) {
+            ItemType::query()
+                ->where('is_system', true)
+                ->whereNotIn('code', $syncedCodes)
+                ->update(['is_active' => false]);
         }
 
         $this->forget();

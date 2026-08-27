@@ -1,9 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Modules\Inventory\Stock\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class StoreStockAdjustmentRequest extends FormRequest
 {
@@ -18,17 +19,29 @@ class StoreStockAdjustmentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'item_id' => ['required', 'uuid', 'exists:items,id'],
             'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
-            'quantity_delta' => ['required', 'numeric', 'not_in:0'],
-            'item_uom_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('item_uoms', 'id')->where(function ($query): void {
-                    $query->where('item_id', $this->input('item_id'));
-                }),
-            ],
-            'notes' => ['nullable', 'string', 'max:1000'],
+            'stock_adjustment_reason_id' => ['required', 'integer', 'exists:stock_adjustment_reasons,id'],
+            'adjustment_date' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'lines' => ['sometimes', 'array'],
+            ...self::lineRules(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function lineRules(): array
+    {
+        return [
+            'lines.*.item_id' => ['required', 'uuid', 'exists:items,id'],
+            'lines.*.quantity' => ['required', 'numeric', 'not_in:0', 'max:999999.999999', 'min:-999999.999999'],
+            'lines.*.item_uom_id' => ['nullable', 'integer', 'exists:item_uoms,id'],
+            'lines.*.unit_cost' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.lot_id' => ['nullable', 'integer', 'exists:inventory_lots,id'],
+            'lines.*.lot_number' => ['nullable', 'string', 'max:64'],
+            'lines.*.expiry_date' => ['nullable', 'date'],
+            'lines.*.notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
 }

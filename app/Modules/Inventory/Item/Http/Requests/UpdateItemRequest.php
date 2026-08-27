@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Item\Http\Requests;
 use App\Modules\Category\Support\CategoryTree;
 use App\Modules\Inventory\Item\Support\ItemPosFieldValidator;
 use App\Modules\Inventory\ItemType\Models\ItemType;
+use App\Modules\Inventory\Stock\Enums\InventoryCostingMethod;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -25,6 +26,7 @@ class UpdateItemRequest extends FormRequest
             'name' => ['sometimes', 'string', 'max:255'],
             'sku' => [
                 'sometimes',
+                'nullable',
                 'string',
                 'max:100',
                 Rule::unique('items', 'sku')->ignore($this->route('item')),
@@ -44,7 +46,7 @@ class UpdateItemRequest extends FormRequest
                 Rule::unique('items', 'plu_code')->ignore($this->route('item')),
             ],
             'item_type_id' => ['sometimes', 'integer', 'exists:item_types,id'],
-            'category_id' => ['sometimes', 'integer', 'exists:categories,id'],
+            'category_id' => ['sometimes', 'nullable', 'integer', 'exists:categories,id'],
             'brand_id' => ['sometimes', 'nullable', 'integer', 'exists:brands,id'],
             'unit_group_id' => ['sometimes', 'integer', 'exists:unit_groups,id'],
             'vat_group_id' => ['sometimes', 'nullable', 'integer', 'exists:vat_groups,id'],
@@ -57,6 +59,8 @@ class UpdateItemRequest extends FormRequest
             'pos_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'color' => ['sometimes', 'nullable', 'string', 'max:32', 'regex:/^#(?:[0-9a-fA-F]{3}){1,2}$/'],
             'track_inventory' => ['sometimes', 'boolean'],
+            'track_lots' => ['sometimes', 'boolean'],
+            'costing_method' => ['sometimes', 'nullable', Rule::enum(InventoryCostingMethod::class)],
             'allow_sale' => ['sometimes', 'boolean'],
             'allow_purchase' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
