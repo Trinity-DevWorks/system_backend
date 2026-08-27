@@ -356,7 +356,8 @@ class StockTransferService
      */
     private function transferOutUnitCosts(string $transferId): \Illuminate\Support\Collection
     {
-        return StockMovement::query()
+        /** @var \Illuminate\Support\Collection<string, string> $costs */
+        $costs = StockMovement::query()
             ->where('reference_type', 'stock_transfer')
             ->where('reference_id', $transferId)
             ->where('type', StockMovementType::TransferOut)
@@ -364,6 +365,8 @@ class StockTransferService
             ->mapWithKeys(fn (StockMovement $movement): array => [
                 self::costKey((string) $movement->item_id, $movement->lot_id ? (int) $movement->lot_id : null) => (string) $movement->unit_cost,
             ]);
+
+        return $costs;
     }
 
     private static function costKey(string $itemId, ?int $lotId): string

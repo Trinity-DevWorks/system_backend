@@ -115,7 +115,8 @@ class InventoryLotService
             ->groupBy('lot_id')
             ->pluck('quantity', 'lot_id');
 
-        return InventoryLot::query()
+        /** @var Collection<int, array<string, mixed>> $lots */
+        $lots = InventoryLot::query()
             ->where('item_id', $item->id)
             ->orderByRaw('expiry_date is null')
             ->orderBy('expiry_date')
@@ -134,6 +135,8 @@ class InventoryLotService
                 ];
             })
             ->values();
+
+        return $lots;
     }
 
     /**

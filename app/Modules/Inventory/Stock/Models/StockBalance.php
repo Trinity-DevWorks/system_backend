@@ -23,16 +23,25 @@ class StockBalance extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<Item, $this>
+     */
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);
     }
 
+    /**
+     * @return BelongsTo<Warehouse, $this>
+     */
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
     }
 
+    /**
+     * @return BelongsTo<InventoryLot, $this>
+     */
     public function lot(): BelongsTo
     {
         return $this->belongsTo(InventoryLot::class, 'lot_id');

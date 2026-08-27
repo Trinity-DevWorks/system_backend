@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Stock\Enums\InventoryCostingMethod;
 use App\Modules\Inventory\Stock\Models\InventoryCostLayer;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath as Math;
-use App\Modules\CompanySetting\Models\CompanySetting;
 
 class InventoryCostingService
 {

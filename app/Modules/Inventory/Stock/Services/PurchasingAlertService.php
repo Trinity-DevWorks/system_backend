@@ -82,6 +82,7 @@ class PurchasingAlertService
             }
         );
 
+        /** @var LengthAwarePaginator<int, array<string, mixed>> $paginator */
         return $paginator;
     }
 

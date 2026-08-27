@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
@@ -11,7 +12,6 @@ use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Notification\Services\InstantLotExpiryNotifier;
 use App\Modules\Notification\Services\InstantLowStockNotifier;
-use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Support\Facades\DB;
