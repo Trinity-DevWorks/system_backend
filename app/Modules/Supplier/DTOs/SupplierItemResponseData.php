@@ -16,7 +16,7 @@ readonly class SupplierItemResponseData
     {
         $row->loadMissing([
             'supplier:id,supplier_code,name,is_active',
-            'item:id,sku,name,allow_purchase,is_active',
+            'item:id,item_code,name,allow_purchase,is_active',
             'currency:id,code,name,symbol,iso_code',
         ]);
 
@@ -24,7 +24,7 @@ readonly class SupplierItemResponseData
             'id' => $row->id,
             'supplier_id' => $row->supplier_id,
             'item_id' => $row->item_id,
-            'supplier_sku' => $row->supplier_sku,
+            'supplier_item_code' => $row->supplier_item_code,
             'last_purchase_price' => $row->last_purchase_price !== null ? (string) $row->last_purchase_price : null,
             'currency_id' => $row->currency_id,
             'lead_time_days' => $row->lead_time_days,
@@ -77,7 +77,7 @@ readonly class SupplierItemResponseData
 
         return [
             'id' => $item->id,
-            'sku' => $item->sku,
+            'item_code' => $item->item_code,
             'name' => $item->name,
             'allow_purchase' => (bool) $item->allow_purchase,
             'is_active' => (bool) $item->is_active,

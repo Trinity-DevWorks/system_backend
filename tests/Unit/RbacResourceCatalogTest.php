@@ -46,4 +46,14 @@ class RbacResourceCatalogTest extends TestCase
         $this->assertFalse(RbacResourceCatalog::allows('users', 'import'));
         $this->assertFalse(RbacResourceCatalog::allows('users', 'export'));
     }
+
+    public function test_stock_allows_full_crud(): void
+    {
+        $this->assertSame(
+            ['view', 'add', 'edit', 'delete'],
+            RbacResourceCatalog::actions('stock'),
+        );
+        $this->assertTrue(RbacResourceCatalog::allows('stock', 'add'));
+        $this->assertTrue(RbacResourceCatalog::allows('stock', 'delete'));
+    }
 }

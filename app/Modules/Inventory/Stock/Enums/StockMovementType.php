@@ -12,9 +12,11 @@ enum StockMovementType: string
     case Purchase = 'purchase';
     case TransferIn = 'transfer_in';
     case TransferOut = 'transfer_out';
+    case TransferReturn = 'transfer_return';
     case ProductionIn = 'production_in';
     case ProductionOut = 'production_out';
     case BundleSale = 'bundle_sale';
+    case Count = 'count';
 
     /**
      * @return list<string>

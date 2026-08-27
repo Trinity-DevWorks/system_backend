@@ -44,4 +44,39 @@ final class StockAdjustmentQuantity
 
         return $absBase;
     }
+
+    /**
+     * Unit cost converted to base UOM (cost per selected UOM / conversion factor).
+     */
+    public static function resolveBaseUnitCost(Item $item, mixed $unitCost, ?int $itemUomId): ?string
+    {
+        if ($unitCost === null || $unitCost === '') {
+            return null;
+        }
+
+        $entered = number_format((float) $unitCost, 4, '.', '');
+        if (bccomp($entered, '0', 4) < 0) {
+            abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
+        }
+
+        if ($itemUomId === null) {
+            return $entered;
+        }
+
+        $itemUom = ItemUom::query()
+            ->where('item_id', $item->id)
+            ->whereKey($itemUomId)
+            ->first();
+
+        if (! $itemUom) {
+            abort(422, 'Item UOM does not belong to this item.', ['X-Error-Code' => 'STOCK_ITEM_UOM_MISMATCH']);
+        }
+
+        $factor = (string) $itemUom->conversion_factor;
+        if (bccomp($factor, '0', 6) <= 0) {
+            abort(422, 'Item UOM conversion factor is invalid.', ['X-Error-Code' => 'STOCK_ITEM_UOM_MISMATCH']);
+        }
+
+        return bcdiv($entered, $factor, 4);
+    }
 }

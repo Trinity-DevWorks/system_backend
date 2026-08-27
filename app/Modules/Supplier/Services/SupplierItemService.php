@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Services;
 
+use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Supplier\DTOs\SupplierItemData;
 use App\Modules\Supplier\Models\Supplier;
@@ -18,7 +19,7 @@ class SupplierItemService
         return SupplierItem::query()
             ->where('supplier_id', $supplier->id)
             ->with([
-                'item:id,sku,name,allow_purchase,is_active',
+                'item:id,item_code,name,allow_purchase,is_active',
                 'currency:id,code,name,symbol,iso_code',
             ])
             ->orderByDesc('is_preferred')
@@ -75,16 +76,41 @@ class SupplierItemService
     }
 
     /**
-     * Update last purchase price snapshot (call from purchase receipt flow later).
+     * Snapshot last purchase price from a posted goods receipt.
+     * Updates an existing supplier-item link, or creates one using the primary currency.
      */
-    public function recordLastPurchasePrice(SupplierItem $row, string $price, int $currencyId): SupplierItem
+    public function rememberLastPurchasePrice(string $supplierId, string $itemId, string $price): void
     {
-        $row->update([
-            'last_purchase_price' => number_format((float) $price, 4, '.', ''),
-            'currency_id' => $currencyId,
-        ]);
+        $normalized = number_format((float) $price, 4, '.', '');
+        if (bccomp($normalized, '0', 4) < 0) {
+            return;
+        }
 
-        return $row->refresh();
+        $row = SupplierItem::query()
+            ->where('supplier_id', $supplierId)
+            ->where('item_id', $itemId)
+            ->lockForUpdate()
+            ->first();
+
+        if ($row) {
+            $row->update(['last_purchase_price' => $normalized]);
+
+            return;
+        }
+
+        $primary = Currency::getPrimary();
+        if (! $primary) {
+            return;
+        }
+
+        SupplierItem::query()->create([
+            'supplier_id' => $supplierId,
+            'item_id' => $itemId,
+            'last_purchase_price' => $normalized,
+            'currency_id' => (int) $primary->id,
+            'lead_time_days' => 0,
+            'is_preferred' => false,
+        ]);
     }
 
     private function assertActiveSupplier(Supplier $supplier): void

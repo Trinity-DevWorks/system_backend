@@ -105,7 +105,21 @@ class AuditService
         }
 
         if (! empty($filters['tags'])) {
-            $query->where('tags', 'like', '%'.(string) $filters['tags'].'%');
+            $query->where('tags', 'like', '%'.addcslashes((string) $filters['tags'], '%_\\').'%');
+        }
+
+        if (! empty($filters['search'])) {
+            $search = '%'.addcslashes((string) $filters['search'], '%_\\').'%';
+            $query->where(function (Builder $q) use ($search): void {
+                $q->where('event', 'like', $search)
+                    ->orWhere('tags', 'like', $search)
+                    ->orWhere('ip_address', 'like', $search)
+                    ->orWhere('url', 'like', $search)
+                    ->orWhere('auditable_type', 'like', $search)
+                    ->orWhere('auditable_id', 'like', $search)
+                    ->orWhereHas('user', fn (Builder $uq) => $uq->where('name', 'like', $search)
+                        ->orWhere('email', 'like', $search));
+            });
         }
 
         if (! empty($filters['from'])) {

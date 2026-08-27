@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\DTOs;
 
 use App\Models\User;
+use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Warehouse\Models\Warehouse;
@@ -38,7 +39,7 @@ readonly class PurchaseOrderResponseData
             'confirmed_at' => $order->confirmed_at?->toIso8601String(),
             'sent_by' => self::userBrief($order->sentByUser),
             'sent_at' => $order->sent_at?->toIso8601String(),
-            'is_sent' => $order->sent_at !== null,
+            'is_sent' => $order->status === PurchaseOrderStatus::Sent,
             'lines_count' => $order->lines_count ?? null,
             'created_at' => (string) $order->created_at,
             'updated_at' => (string) $order->updated_at,
@@ -52,6 +53,8 @@ readonly class PurchaseOrderResponseData
             $lines = PurchaseOrderLineResponseData::collectionToArray($order->lines);
             $payload['lines'] = $lines;
             $payload['total_amount'] = self::sumLineTotals($lines);
+            $payload['can_receive'] = in_array($order->status, [PurchaseOrderStatus::Confirmed, PurchaseOrderStatus::Sent], true)
+                && self::hasOpenQuantity($lines);
         }
 
         return $payload;
@@ -137,5 +140,19 @@ readonly class PurchaseOrderResponseData
         }
 
         return $total;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    private static function hasOpenQuantity(array $lines): bool
+    {
+        foreach ($lines as $line) {
+            if (isset($line['open_quantity']) && bccomp((string) $line['open_quantity'], '0', 6) > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -45,11 +45,6 @@ final class ItemTypeDefaults
                 'allow_sale' => true,
                 'allow_purchase' => true,
             ],
-            'PLU' => [
-                'track_inventory' => false,
-                'allow_sale' => true,
-                'allow_purchase' => false,
-            ],
             default => [
                 'track_inventory' => true,
                 'allow_sale' => true,
@@ -69,7 +64,7 @@ final class ItemTypeDefaults
     public static function posFlagsForCode(string $code): array
     {
         return match (strtoupper(trim($code))) {
-            'SERVICE', 'PRODUCE', 'PLU', 'BUNDLE' => [
+            'SERVICE', 'PRODUCE', 'BUNDLE' => [
                 'send_to_kitchen' => true,
                 'qr_enabled' => false,
             ],

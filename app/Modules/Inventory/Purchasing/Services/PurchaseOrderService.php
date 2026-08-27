@@ -10,8 +10,10 @@ use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderLineQuantity;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
+use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderService
@@ -19,6 +21,7 @@ class PurchaseOrderService
     public function __construct(
         private readonly PurchaseOrderQueryService $purchaseOrderQueryService,
         private readonly WarehouseService $warehouseService,
+        private readonly DomainNotificationPublisher $notifications,
     ) {}
 
     /**
@@ -28,14 +31,13 @@ class PurchaseOrderService
      *   warehouse_id?:int,
      *   search?:string,
      *   from?:string,
-     *   to?:string,
-     *   limit?:int
+     *   to?:string
      * }  $filters
-     * @return Collection<int, PurchaseOrder>
+     * @return LengthAwarePaginator<int, PurchaseOrder>
      */
-    public function list(array $filters = []): Collection
+    public function list(array $filters, int $perPage = 20): LengthAwarePaginator
     {
-        return $this->purchaseOrderQueryService->list($filters);
+        return $this->purchaseOrderQueryService->paginate($filters, $perPage);
     }
 
     public function find(string $id): PurchaseOrder
@@ -181,7 +183,7 @@ class PurchaseOrderService
 
     public function cancel(PurchaseOrder $order): PurchaseOrder
     {
-        return DB::transaction(function () use ($order): PurchaseOrder {
+        $cancelled = DB::transaction(function () use ($order): PurchaseOrder {
             $locked = PurchaseOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
             $this->assertOrderWarehouseVisible($locked);
             PurchaseOrderRules::assertCancellable($locked);
@@ -189,11 +191,16 @@ class PurchaseOrderService
 
             return $this->find($locked->id);
         });
+
+        $actorId = auth()->id() ? (string) auth()->id() : null;
+        $this->notifications->purchaseOrderCancelled($cancelled, $actorId);
+
+        return $cancelled;
     }
 
     public function confirm(PurchaseOrder $order, ?string $userId): PurchaseOrder
     {
-        return DB::transaction(function () use ($order, $userId): PurchaseOrder {
+        $confirmed = DB::transaction(function () use ($order, $userId): PurchaseOrder {
             $order = $this->lockDraftOrder($order);
 
             $lineCount = PurchaseOrderLine::query()
@@ -212,22 +219,31 @@ class PurchaseOrderService
 
             return $this->find($order->id);
         });
+
+        $this->notifications->purchaseOrderConfirmed($confirmed, $userId);
+
+        return $confirmed;
     }
 
     public function markAsSent(PurchaseOrder $order, ?string $userId): PurchaseOrder
     {
-        return DB::transaction(function () use ($order, $userId): PurchaseOrder {
+        $sent = DB::transaction(function () use ($order, $userId): PurchaseOrder {
             $locked = PurchaseOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
             $this->assertOrderWarehouseVisible($locked);
             PurchaseOrderRules::assertMarkAsSent($locked);
 
             $locked->update([
+                'status' => PurchaseOrderStatus::Sent,
                 'sent_at' => now(),
                 'sent_by' => $userId,
             ]);
 
             return $this->find($locked->id);
         });
+
+        $this->notifications->purchaseOrderSent($sent, $userId);
+
+        return $sent;
     }
 
     /**

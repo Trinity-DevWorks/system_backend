@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Branch\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Branch\DTOs\BranchData;
@@ -12,18 +13,35 @@ use App\Modules\Branch\Http\Requests\StoreBranchRequest;
 use App\Modules\Branch\Http\Requests\UpdateBranchRequest;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Branch\Services\BranchService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class BranchController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly BranchService $branchService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            BranchResponseData::collectionToArray($this->branchService->list()),
+        $names = $this->namesResponse(
+            $request,
+            fn () => BranchResponseData::collectionToArray($this->branchService->list()),
+            'Branch names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->branchService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (Branch $branch): array => BranchResponseData::fromModel($branch)->toArray(),
             'Branches fetched successfully.'
         );
     }

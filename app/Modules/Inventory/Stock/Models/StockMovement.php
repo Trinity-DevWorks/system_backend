@@ -17,7 +17,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'item_id',
     'warehouse_id',
+    'lot_id',
     'quantity_delta',
+    'unit_cost',
+    'value_delta',
     'type',
     'reference_type',
     'reference_id',
@@ -34,6 +37,8 @@ class StockMovement extends Model
     {
         return [
             'quantity_delta' => 'decimal:6',
+            'unit_cost' => 'decimal:4',
+            'value_delta' => 'decimal:4',
             'type' => StockMovementType::class,
         ];
     }
@@ -52,6 +57,14 @@ class StockMovement extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    /**
+     * @return BelongsTo<InventoryLot, $this>
+     */
+    public function lot(): BelongsTo
+    {
+        return $this->belongsTo(InventoryLot::class, 'lot_id');
     }
 
     /**

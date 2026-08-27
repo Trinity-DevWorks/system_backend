@@ -29,7 +29,7 @@ class AuditController extends Controller
     {
         $filters = $request->validated();
         $perPage = min(100, max(1, (int) ($filters['per_page'] ?? 25)));
-        unset($filters['per_page'], $filters['format']);
+        unset($filters['per_page'], $filters['format'], $filters['page']);
 
         $paginator = $this->auditService->paginate($filters, $perPage);
         $paginator->through(

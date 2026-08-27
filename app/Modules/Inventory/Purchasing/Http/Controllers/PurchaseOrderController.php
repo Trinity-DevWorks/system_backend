@@ -16,6 +16,7 @@ use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Services\PurchaseOrderFromAlertsService;
 use App\Modules\Inventory\Purchasing\Services\PurchaseOrderPdfService;
 use App\Modules\Inventory\Purchasing\Services\PurchaseOrderService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -34,14 +35,14 @@ class PurchaseOrderController extends Controller
             'status' => $request->string('status')->toString() ?: null,
             'supplier_id' => $request->string('supplier_id')->toString() ?: null,
             'warehouse_id' => $request->integer('warehouse_id') ?: null,
-            'search' => $request->string('search')->toString() ?: null,
+            'search' => ListPagination::search($request),
             'from' => $request->string('from')->toString() ?: null,
             'to' => $request->string('to')->toString() ?: null,
-            'limit' => $request->integer('limit') ?: 100,
         ];
 
-        return ApiResponse::success(
-            PurchaseOrderResponseData::collectionToArray($this->purchaseOrderService->list($filters)),
+        return ListPagination::json(
+            $this->purchaseOrderService->list($filters, ListPagination::perPage($request, 50)),
+            fn (PurchaseOrder $order): array => PurchaseOrderResponseData::fromModel($order, false),
             'Purchase orders fetched successfully.'
         );
     }

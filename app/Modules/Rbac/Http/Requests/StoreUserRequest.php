@@ -21,7 +21,7 @@ class StoreUserRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255', 'regex:/^[\p{L}\p{M}][\p{L}\p{M} .\'\x{2019}-]*$/u'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:32'],
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
@@ -37,6 +37,19 @@ class StoreUserRequest extends FormRequest
         if ($this->has('phone') && $this->input('phone') === '') {
             $this->merge(['phone' => null]);
         }
+        if ($this->has('name') && is_string($this->input('name'))) {
+            $this->merge(['name' => trim($this->input('name'))]);
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'name.regex' => 'The name must contain letters and cannot be numeric.',
+        ];
     }
 
     public function withValidator(Validator $validator): void

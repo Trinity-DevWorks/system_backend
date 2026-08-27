@@ -7,7 +7,8 @@ namespace App\Modules\Inventory\Stock\Services;
 use App\Modules\Inventory\Stock\Enums\StockTransferStatus;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Warehouse\Services\WarehouseService;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class StockTransferQueryService
 {
@@ -22,19 +23,37 @@ class StockTransferQueryService
      *   to_warehouse_id?:int,
      *   search?:string,
      *   from?:string,
-     *   to?:string,
-     *   limit?:int
+     *   to?:string
      * }  $filters
-     * @return Collection<int, StockTransfer>
+     * @return LengthAwarePaginator<int, StockTransfer>
      */
-    public function list(array $filters = []): Collection
+    public function paginate(array $filters, int $perPage): LengthAwarePaginator
+    {
+        return $this->filteredQuery($filters)
+            ->orderByDesc('id')
+            ->paginate($perPage);
+    }
+
+    /**
+     * @param  array{
+     *   status?:string,
+     *   from_warehouse_id?:int,
+     *   to_warehouse_id?:int,
+     *   search?:string,
+     *   from?:string,
+     *   to?:string
+     * }  $filters
+     * @return Builder<StockTransfer>
+     */
+    private function filteredQuery(array $filters = []): Builder
     {
         $query = StockTransfer::query()
             ->with([
                 'fromWarehouse:id,name,shortcut_name,is_active',
                 'toWarehouse:id,name,shortcut_name,is_active',
                 'createdByUser:id,name,email',
-                'postedByUser:id,name,email',
+                'dispatchedByUser:id,name,email',
+                'receivedByUser:id,name,email',
             ])
             ->withCount('lines');
 
@@ -69,7 +88,10 @@ class StockTransferQueryService
 
         if (! empty($filters['search'])) {
             $search = '%'.addcslashes((string) $filters['search'], '%_\\').'%';
-            $query->where('transfer_number', 'like', $search);
+            $query->where(function ($q) use ($search): void {
+                $q->where('transfer_number', 'like', $search)
+                    ->orWhere('notes', 'like', $search);
+            });
         }
 
         if (! empty($filters['from'])) {
@@ -80,11 +102,6 @@ class StockTransferQueryService
             $query->where('created_at', '<=', $filters['to']);
         }
 
-        $limit = min(max((int) ($filters['limit'] ?? 100), 1), 500);
-
-        return $query
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get();
+        return $query;
     }
 }

@@ -16,8 +16,10 @@ return new class extends Migration
             $table->string('status', 20)->default('draft');
             $table->text('notes')->nullable();
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->timestamp('posted_at')->nullable();
+            $table->foreignUuid('dispatched_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('dispatched_at')->nullable();
+            $table->foreignUuid('received_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('received_at')->nullable();
             $table->timestamps();
 
             $table->index(['status', 'created_at']);

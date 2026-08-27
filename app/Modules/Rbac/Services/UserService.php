@@ -7,10 +7,13 @@ namespace App\Modules\Rbac\Services;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchContextService;
+use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
 use App\Services\PermissionService;
+use App\Support\ListPagination;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
@@ -21,6 +24,7 @@ class UserService
     public function __construct(
         private readonly PermissionService $permissionService,
         private readonly BranchContextService $branchContext,
+        private readonly DomainNotificationPublisher $notifications,
     ) {}
 
     /**
@@ -39,6 +43,34 @@ class UserService
         $this->eagerLoadBranchRolesForMany($users);
 
         return $users;
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = User::query()
+            ->with([
+                'branches' => fn ($q) => $q->select('branches.id', 'branches.name'),
+                'avatarAttachment',
+            ])
+            ->orderBy('name');
+
+        ListPagination::applySearch($query, $search, ['name', 'email']);
+
+        $paginator = $query->paginate($perPage);
+        $this->eagerLoadBranchRolesForMany($paginator->getCollection());
+
+        return $paginator;
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function names(): Collection
+    {
+        return User::query()
+            ->select(['id', 'name', 'email'])
+            ->orderBy('name')
+            ->get();
     }
 
     public function find(User $user): User
@@ -78,7 +110,13 @@ class UserService
 
             $this->permissionService->invalidateCacheForUser($user->fresh() ?? $user);
 
-            return $this->find($user);
+            $created = $this->find($user);
+            $this->notifications->userCreated($created);
+            if ($data['branch_assignments'] !== []) {
+                $this->notifications->userRoleAssigned($created, $data['branch_assignments']);
+            }
+
+            return $created;
         });
     }
 
@@ -151,7 +189,17 @@ class UserService
                 $user->tokens()->delete();
             }
 
-            return $this->find($user->refresh());
+            $updated = $this->find($user->refresh());
+
+            if ($wasActive && ! $data['is_active']) {
+                $this->notifications->userDeactivated($updated);
+            }
+
+            if ($assignmentsChanged) {
+                $this->notifications->userRoleAssigned($updated, $data['branch_assignments']);
+            }
+
+            return $updated;
         });
     }
 
@@ -160,8 +208,8 @@ class UserService
      *
      * @param  array{
      *   name: string,
-     *   email: string,
      *   phone?: string|null,
+     *   current_password?: string|null,
      *   password?: string|null,
      *   preferred_branch_id?: int|null
      * }  $data
@@ -171,7 +219,6 @@ class UserService
         return DB::transaction(function () use ($user, $data): User {
             $payload = [
                 'name' => $data['name'],
-                'email' => $data['email'],
             ];
 
             if (array_key_exists('phone', $data)) {
@@ -192,6 +239,20 @@ class UserService
             }
 
             if (! empty($data['password'])) {
+                $currentPassword = (string) ($data['current_password'] ?? '');
+                if ($currentPassword === '' || ! Hash::check($currentPassword, (string) $user->getAuthPassword())) {
+                    throw new HttpResponseException(
+                        ApiResponse::error(
+                            'The current password is incorrect.',
+                            422,
+                            null,
+                            ['current_password' => ['The current password is incorrect.']],
+                            null,
+                            null,
+                            'CURRENT_PASSWORD_INVALID'
+                        )
+                    );
+                }
                 if (Hash::check((string) $data['password'], (string) $user->getAuthPassword())) {
                     throw new HttpResponseException(
                         ApiResponse::error(
@@ -223,7 +284,7 @@ class UserService
      */
     public function assignRole(User $user, int $roleId, ?int $branchId = null): User
     {
-        return DB::transaction(function () use ($user, $roleId, $branchId): User {
+        $result = DB::transaction(function () use ($user, $roleId, $branchId): array {
             $user->loadMissing('branches');
 
             if ($branchId !== null) {
@@ -267,8 +328,18 @@ class UserService
                 $this->permissionService->invalidateCacheForUser($user->fresh() ?? $user);
             }
 
-            return $this->find($user->refresh());
+            return [
+                'user' => $this->find($user->refresh()),
+                'changed' => $changed,
+                'assignments' => $assignments,
+            ];
         });
+
+        if ($result['changed']) {
+            $this->notifications->userRoleAssigned($result['user'], $result['assignments']);
+        }
+
+        return $result['user'];
     }
 
     public function delete(User $user): void

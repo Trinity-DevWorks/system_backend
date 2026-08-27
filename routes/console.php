@@ -4,9 +4,11 @@ use App\Jobs\BootstrapTenantDefaultBranch;
 use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
+use App\Jobs\BootstrapTenantWalkInCustomer;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchService;
+use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -40,6 +42,18 @@ Artisan::command('tenants:sync-unit-catalog', function () {
 
     $this->info("Done. {$count} tenant(s) processed.");
 })->purpose('Seed default unit groups and UOMs for all existing tenants');
+
+Artisan::command('tenants:sync-walk-in-customer', function () {
+    $count = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use (&$count): void {
+        BootstrapTenantWalkInCustomer::dispatchSync($tenant);
+        $this->info("Ensured walk-in customer for tenant [{$tenant->id}]");
+        $count++;
+    });
+
+    $this->info("Done. {$count} tenant(s) processed.");
+})->purpose('Seed the walk-in / cash customer for all existing tenants');
 
 Artisan::command('tenants:sync-default-branch', function () {
     $count = 0;
@@ -161,3 +175,128 @@ Artisan::command('audits:prune {--days= : Override retention days from config}',
 
     $this->info("Done. Retention={$days} day(s). Total deleted={$total}.");
 })->purpose('Delete audit rows older than the configured retention period (per tenant DB)');
+
+/*
+|--------------------------------------------------------------------------
+| notifications:low-stock-digest
+|--------------------------------------------------------------------------
+|
+| What: Walks each tenant and sends a cooldown-aware low-stock digest via DomainNotificationPublisher.
+| Where: Manual run or daily schedule (07:00) in bootstrap/app.php.
+| Why: Converts purchasing-alert query data into proactive in-app + email notifications without spamming.
+|
+*/
+Artisan::command('notifications:low-stock-digest', function (): void {
+    $command = $this;
+    $sentTenants = 0;
+    $skipped = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use ($command, &$sentTenants, &$skipped): void {
+        $tenant->run(function () use ($tenant, $command, &$sentTenants, &$skipped): void {
+            if (! Schema::hasTable('notifications')) {
+                $command->warn("Skipped tenant [{$tenant->id}] — notifications table missing. Run tenant migrations.");
+                $skipped++;
+
+                return;
+            }
+
+            /** @var DomainNotificationPublisher $publisher */
+            $publisher = app(DomainNotificationPublisher::class);
+            $result = $publisher->lowStockDigest();
+
+            if ($result['sent']) {
+                $sentTenants++;
+                $command->info("Tenant [{$tenant->id}]: digest sent ({$result['alert_count']} alert(s)).");
+            } else {
+                $skipped++;
+                $reason = $result['reason'] ?? 'skipped';
+                $command->info("Tenant [{$tenant->id}]: skipped ({$reason}, alerts={$result['alert_count']}).");
+            }
+        });
+    });
+
+    $this->info("Done. Sent={$sentTenants}. Skipped={$skipped}.");
+})->purpose('Send low-stock digest notifications for each tenant (cooldown-aware)');
+
+/*
+|--------------------------------------------------------------------------
+| notifications:lot-expiry-digest
+|--------------------------------------------------------------------------
+|
+| What: Walks each tenant and sends a cooldown-aware digest of on-hand lots
+| that are expired or expire within the configured window.
+| Where: Manual run or daily schedule (07:15) in bootstrap/app.php.
+|
+*/
+Artisan::command('notifications:lot-expiry-digest', function (): void {
+    $command = $this;
+    $sentTenants = 0;
+    $skipped = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use ($command, &$sentTenants, &$skipped): void {
+        $tenant->run(function () use ($tenant, $command, &$sentTenants, &$skipped): void {
+            if (! Schema::hasTable('notifications') || ! Schema::hasTable('inventory_lots')) {
+                $command->warn("Skipped tenant [{$tenant->id}] — required tables missing. Run tenant migrations.");
+                $skipped++;
+
+                return;
+            }
+
+            /** @var DomainNotificationPublisher $publisher */
+            $publisher = app(DomainNotificationPublisher::class);
+            $result = $publisher->lotExpiryDigest();
+
+            if ($result['sent']) {
+                $sentTenants++;
+                $command->info(
+                    "Tenant [{$tenant->id}]: digest sent ({$result['lot_count']} lot(s), {$result['expired_count']} expired)."
+                );
+            } else {
+                $skipped++;
+                $reason = $result['reason'] ?? 'skipped';
+                $command->info(
+                    "Tenant [{$tenant->id}]: skipped ({$reason}, lots={$result['lot_count']})."
+                );
+            }
+        });
+    });
+
+    $this->info("Done. Sent={$sentTenants}. Skipped={$skipped}.");
+})->purpose('Send lot-expiry digest notifications for each tenant (cooldown-aware)');
+
+/*
+|--------------------------------------------------------------------------
+| notifications:prune
+|--------------------------------------------------------------------------
+|
+| Deletes read inbox rows older than the configured retention period in each
+| tenant database. Unread notifications are deliberately preserved.
+|
+*/
+Artisan::command('notifications:prune {--days= : Override configured retention days}', function (): void {
+    $configuredDays = (int) config('notifications.retention_days', 90);
+    $days = max(1, (int) ($this->option('days') ?: $configuredDays));
+    $cutoff = now()->subDays($days);
+    $total = 0;
+    $command = $this;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use ($cutoff, $command, &$total): void {
+        $tenant->run(function () use ($cutoff, $tenant, $command, &$total): void {
+            if (! Schema::hasTable('notifications')) {
+                $command->warn("Skipped tenant [{$tenant->id}] — notifications table missing.");
+
+                return;
+            }
+
+            $deleted = DB::table('notifications')
+                ->whereNotNull('read_at')
+                ->where('created_at', '<', $cutoff)
+                ->delete();
+
+            $total += $deleted;
+            $command->info("Tenant [{$tenant->id}]: deleted {$deleted} expired read notification(s).");
+        });
+    });
+
+    $this->info("Done. Retention={$days} day(s). Total deleted={$total}.");
+})->purpose('Delete expired read notifications from tenant inboxes');

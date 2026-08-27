@@ -11,6 +11,7 @@ use App\Modules\Inventory\Stock\Http\Requests\SyncStockTransferLinesRequest;
 use App\Modules\Inventory\Stock\Http\Requests\UpdateStockTransferRequest;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Services\StockTransferService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,14 +27,14 @@ class StockTransferController extends Controller
             'status' => $request->string('status')->toString() ?: null,
             'from_warehouse_id' => $request->integer('from_warehouse_id') ?: null,
             'to_warehouse_id' => $request->integer('to_warehouse_id') ?: null,
-            'search' => $request->string('search')->toString() ?: null,
+            'search' => ListPagination::search($request),
             'from' => $request->string('from')->toString() ?: null,
             'to' => $request->string('to')->toString() ?: null,
-            'limit' => $request->integer('limit') ?: 100,
         ];
 
-        return ApiResponse::success(
-            StockTransferResponseData::collectionToArray($this->stockTransferService->list($filters)),
+        return ListPagination::json(
+            $this->stockTransferService->list($filters, ListPagination::perPage($request, 50)),
+            fn (StockTransfer $transfer): array => StockTransferResponseData::fromModel($transfer, false),
             'Stock transfers fetched successfully.'
         );
     }
@@ -93,23 +94,41 @@ class StockTransferController extends Controller
         );
     }
 
-    public function post(Request $request, StockTransfer $stockTransfer): JsonResponse
+    public function dispatch(Request $request, StockTransfer $stockTransfer): JsonResponse
     {
         $userId = $request->user()?->id;
-        $transfer = $this->stockTransferService->post(
+        $transfer = $this->stockTransferService->dispatch(
             $stockTransfer,
             $userId !== null ? (string) $userId : null
         );
 
         return ApiResponse::success(
             StockTransferResponseData::fromModel($transfer),
-            'Stock transfer posted successfully.'
+            'Stock transfer dispatched successfully.'
         );
     }
 
-    public function cancel(StockTransfer $stockTransfer): JsonResponse
+    public function receive(Request $request, StockTransfer $stockTransfer): JsonResponse
     {
-        $transfer = $this->stockTransferService->cancel($stockTransfer);
+        $userId = $request->user()?->id;
+        $transfer = $this->stockTransferService->receive(
+            $stockTransfer,
+            $userId !== null ? (string) $userId : null
+        );
+
+        return ApiResponse::success(
+            StockTransferResponseData::fromModel($transfer),
+            'Stock transfer received successfully.'
+        );
+    }
+
+    public function cancel(Request $request, StockTransfer $stockTransfer): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $transfer = $this->stockTransferService->cancel(
+            $stockTransfer,
+            $userId !== null ? (string) $userId : null
+        );
 
         return ApiResponse::success(
             StockTransferResponseData::fromModel($transfer),

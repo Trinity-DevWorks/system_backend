@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Models\StockMovement;
+use App\Modules\Notification\Services\InstantLotExpiryNotifier;
+use App\Modules\Notification\Services\InstantLowStockNotifier;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Services\WarehouseService;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +20,9 @@ class StockMovementService
 {
     public function __construct(
         private readonly WarehouseService $warehouseService,
+        private readonly InstantLowStockNotifier $instantLowStockNotifier,
+        private readonly InstantLotExpiryNotifier $instantLotExpiryNotifier,
+        private readonly InventoryCostingService $inventoryCostingService,
     ) {}
 
     /**
@@ -47,33 +53,53 @@ class StockMovementService
                 }
             }
 
-            $balance = StockBalance::query()
-                ->where('item_id', $item->id)
-                ->where('warehouse_id', $warehouse->id)
-                ->lockForUpdate()
-                ->first();
-
-            if (! $balance) {
-                $balance = StockBalance::query()->create([
-                    'item_id' => $item->id,
-                    'warehouse_id' => $warehouse->id,
-                    'quantity' => 0,
-                ]);
-                $balance = StockBalance::query()->whereKey($balance->id)->lockForUpdate()->firstOrFail();
-            }
+            $warehouseOnHand = StockBalance::onHandForWarehouse($item->id, $warehouse->id);
+            $balance = StockBalance::lockRow($item->id, $warehouse->id, $data->lotId);
 
             $current = (string) $balance->quantity;
             $newQuantity = bcadd($current, $data->quantityDelta, 6);
 
-            if (bccomp($newQuantity, '0', 6) < 0) {
+            if (
+                bccomp($newQuantity, '0', 6) < 0
+                && ! CompanySetting::current()->allowsNegativeStock()
+            ) {
                 abort(422, 'Insufficient stock for this movement.', ['X-Error-Code' => 'STOCK_INSUFFICIENT']);
             }
 
             $movement = StockMovement::query()->create($data->toArray());
 
+            $costing = $this->inventoryCostingService->apply(
+                $item,
+                $balance,
+                $data->quantityDelta,
+                $data->unitCost,
+                (int) $movement->id,
+            );
+
+            $movement->update([
+                'unit_cost' => $costing['unit_cost'],
+                'value_delta' => $costing['value_delta'],
+            ]);
+
             $balance->update(['quantity' => $newQuantity]);
 
-            return $movement->load(['item.baseUom', 'warehouse', 'itemUom.uom', 'user']);
+            $this->instantLowStockNotifier->afterBalanceChanged(
+                $item,
+                $warehouse,
+                $warehouseOnHand,
+                bcadd($warehouseOnHand, $data->quantityDelta, 6),
+            );
+
+            if ($data->lotId !== null && bccomp($data->quantityDelta, '0', 6) > 0) {
+                $this->instantLotExpiryNotifier->afterInboundLot(
+                    $item,
+                    $warehouse,
+                    $data->lotId,
+                    $newQuantity,
+                );
+            }
+
+            return $movement->load(['item.baseUom', 'warehouse', 'itemUom.uom', 'user', 'lot']);
         });
     }
 

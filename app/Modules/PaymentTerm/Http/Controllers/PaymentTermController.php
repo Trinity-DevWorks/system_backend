@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\PaymentTerm\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\PaymentTerm\DTOs\PaymentTermData;
@@ -12,18 +13,35 @@ use App\Modules\PaymentTerm\Http\Requests\StorePaymentTermRequest;
 use App\Modules\PaymentTerm\Http\Requests\UpdatePaymentTermRequest;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\PaymentTerm\Services\PaymentTermService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PaymentTermController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly PaymentTermService $paymentTermService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            PaymentTermResponseData::collectionToArray($this->paymentTermService->list()),
+        $names = $this->namesResponse(
+            $request,
+            fn () => PaymentTermResponseData::collectionToArray($this->paymentTermService->list()),
+            'Payment term names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->paymentTermService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (PaymentTerm $paymentTerm): array => PaymentTermResponseData::fromModel($paymentTerm)->toArray(),
             'Payment terms fetched successfully.'
         );
     }

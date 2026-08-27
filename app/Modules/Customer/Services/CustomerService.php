@@ -9,9 +9,11 @@ use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
 use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerContact;
+use App\Support\ListPagination;
 use App\Support\SequentialCodeGenerator;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class CustomerService
@@ -32,6 +34,7 @@ class CustomerService
                 'phone',
                 'email',
                 'status',
+                'is_system',
                 'created_at',
                 'updated_at',
             ])
@@ -43,10 +46,45 @@ class CustomerService
             ->get();
     }
 
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Customer::query()
+            ->select([
+                'id',
+                'customer_code',
+                'name',
+                'customer_group_id',
+                'salesman_id',
+                'phone',
+                'email',
+                'status',
+                'is_system',
+                'created_at',
+                'updated_at',
+            ])
+            ->with([
+                'customerGroup:id,name',
+                'salesman:id,full_name,salesman_code',
+            ])
+            ->orderBy('name');
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['customer_code', 'name', 'phone', 'email'],
+            [
+                'customerGroup' => ['name'],
+                'salesman' => ['full_name', 'salesman_code'],
+            ],
+        );
+
+        return $query->paginate($perPage);
+    }
+
     public function names(): Collection
     {
         return Customer::query()
-            ->select(['id', 'customer_code', 'name', 'status', 'created_at', 'updated_at'])
+            ->select(['id', 'customer_code', 'name', 'status', 'is_system', 'created_at', 'updated_at'])
             ->orderBy('name')
             ->get();
     }
@@ -151,7 +189,18 @@ class CustomerService
             $customer = $this->lockCustomerForBalanceWrites($customer);
 
             $currencyBalances = $patch['currency_balances'] ?? null;
-            $scalar = collect($patch)->except(['currency_balances'])->all();
+            $scalar = collect($patch)->except(['currency_balances', 'is_system'])->all();
+
+            if ($customer->is_system && array_key_exists('status', $scalar)) {
+                $next = $scalar['status'] instanceof CustomerStatus
+                    ? $scalar['status']
+                    : CustomerStatus::tryFrom((string) $scalar['status']);
+                if ($next !== null && $next !== CustomerStatus::Active) {
+                    abort(422, 'Cannot suspend or blacklist the walk-in customer.', [
+                        'X-Error-Code' => 'CUSTOMER_SYSTEM_STATUS_FORBIDDEN',
+                    ]);
+                }
+            }
 
             $customer->fill($scalar);
             if (! $customer->is_vat_registered) {
@@ -264,6 +313,12 @@ class CustomerService
 
     public function delete(Customer $customer): void
     {
+        if ($customer->is_system) {
+            abort(422, 'Cannot delete the walk-in customer.', [
+                'X-Error-Code' => 'CUSTOMER_SYSTEM_DELETE_FORBIDDEN',
+            ]);
+        }
+
         $customer->delete();
     }
 

@@ -4,8 +4,10 @@ namespace App\Modules\Inventory\UnitGroup\Services;
 
 use App\Modules\Inventory\UnitGroup\DTOs\UnitGroupData;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class UnitGroupService
 {
@@ -18,6 +20,14 @@ class UnitGroupService
             UnitGroup::class,
             fn (): Collection => UnitGroup::query()->orderBy('name')->get()
         );
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = UnitGroup::query()->orderBy('name');
+        ListPagination::applySearch($query, $search, ['code', 'name']);
+
+        return $query->paginate($perPage);
     }
 
     public function create(UnitGroupData $data): UnitGroup

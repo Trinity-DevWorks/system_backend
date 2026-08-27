@@ -6,8 +6,10 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\UnitOfMeasurement\DTOs\UnitOfMeasurementData;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class UnitOfMeasurementService
 {
@@ -20,6 +22,26 @@ class UnitOfMeasurementService
             UnitOfMeasurement::class,
             fn (): Collection => UnitOfMeasurement::query()->orderBy('name')->get()
         )->load('unitGroup:id,code,name,dimension_type');
+    }
+
+    public function paginateForTable(?string $search, int $perPage, ?int $unitGroupId = null): LengthAwarePaginator
+    {
+        $query = UnitOfMeasurement::query()
+            ->with('unitGroup:id,code,name,dimension_type')
+            ->orderBy('name');
+
+        if ($unitGroupId) {
+            $query->where('unit_group_id', $unitGroupId);
+        }
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['code', 'name'],
+            ['unitGroup' => ['code', 'name']],
+        );
+
+        return $query->paginate($perPage);
     }
 
     public function create(UnitOfMeasurementData $data): UnitOfMeasurement

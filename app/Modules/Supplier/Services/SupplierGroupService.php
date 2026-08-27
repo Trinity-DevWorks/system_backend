@@ -6,8 +6,10 @@ namespace App\Modules\Supplier\Services;
 
 use App\Modules\Supplier\DTOs\SupplierGroupData;
 use App\Modules\Supplier\Models\SupplierGroup;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class SupplierGroupService
@@ -21,6 +23,14 @@ class SupplierGroupService
             SupplierGroup::class,
             fn (): Collection => SupplierGroup::query()->orderBy('name')->get()
         );
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = SupplierGroup::query()->orderBy('name');
+        ListPagination::applySearch($query, $search, ['name']);
+
+        return $query->paginate($perPage);
     }
 
     public function create(SupplierGroupData $data): SupplierGroup

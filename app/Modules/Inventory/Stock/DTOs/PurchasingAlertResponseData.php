@@ -23,9 +23,11 @@ readonly class PurchasingAlertResponseData
         float $onHand,
         ReplenishmentAlertStatus $status,
         array $preferredSuppliersByItemId,
+        float $onOrder = 0.0,
+        float $inTransitIn = 0.0,
     ): array {
         $rule->loadMissing([
-            'item:id,sku,name,base_uom_id,track_inventory,allow_purchase,is_active',
+            'item:id,item_code,name,base_uom_id,track_inventory,allow_purchase,is_active',
             'item.baseUom:id,code,name',
             'warehouse:id,name,shortcut_name,is_active',
         ]);
@@ -34,6 +36,7 @@ readonly class PurchasingAlertResponseData
         $safetyStock = (float) $rule->safety_stock_qty;
         $reorderQty = $rule->reorder_qty !== null ? (float) $rule->reorder_qty : null;
         $maxQty = $rule->max_qty !== null ? (float) $rule->max_qty : null;
+        $projected = $onHand + $onOrder + $inTransitIn;
 
         $preferred = $preferredSuppliersByItemId[(string) $rule->item_id] ?? null;
 
@@ -42,13 +45,16 @@ readonly class PurchasingAlertResponseData
             'item_id' => $rule->item_id,
             'warehouse_id' => $rule->warehouse_id,
             'on_hand_qty' => ReplenishmentAlertRules::formatQty($onHand),
+            'on_order_qty' => ReplenishmentAlertRules::formatQty($onOrder),
+            'in_transit_in_qty' => ReplenishmentAlertRules::formatQty($inTransitIn),
+            'projected_qty' => ReplenishmentAlertRules::formatQty($projected),
             'safety_stock_qty' => (string) $rule->safety_stock_qty,
             'reorder_point_qty' => (string) $rule->reorder_point_qty,
             'reorder_qty' => $rule->reorder_qty !== null ? (string) $rule->reorder_qty : null,
             'max_qty' => $rule->max_qty !== null ? (string) $rule->max_qty : null,
             'replenishment_method' => ReplenishmentMethod::forRule($maxQty)->value,
             'suggested_order_qty' => ReplenishmentAlertRules::suggestedOrderQty(
-                $onHand,
+                $projected,
                 $reorderPoint,
                 $reorderQty,
                 $maxQty,
@@ -74,7 +80,8 @@ readonly class PurchasingAlertResponseData
 
         return [
             'id' => $item->id,
-            'sku' => $item->sku,
+
+            'item_code' => $item->item_code,
             'name' => $item->name,
             'base_uom' => $item->baseUom ? [
                 'id' => $item->baseUom->id,
@@ -121,7 +128,7 @@ readonly class PurchasingAlertResponseData
             'name' => $supplier->name,
             'supplier_code' => $supplier->supplier_code,
             'supplier_item_id' => $supplierItem->id,
-            'supplier_sku' => $supplierItem->supplier_sku,
+            'supplier_item_code' => $supplierItem->supplier_item_code,
             'last_purchase_price' => $supplierItem->last_purchase_price !== null
                 ? (string) $supplierItem->last_purchase_price
                 : null,

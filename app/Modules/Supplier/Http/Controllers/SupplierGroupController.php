@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Supplier\DTOs\SupplierGroupData;
@@ -12,18 +13,35 @@ use App\Modules\Supplier\Http\Requests\StoreSupplierGroupRequest;
 use App\Modules\Supplier\Http\Requests\UpdateSupplierGroupRequest;
 use App\Modules\Supplier\Models\SupplierGroup;
 use App\Modules\Supplier\Services\SupplierGroupService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SupplierGroupController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly SupplierGroupService $supplierGroupService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            SupplierGroupResponseData::collectionToArray($this->supplierGroupService->list()),
+        $names = $this->namesResponse(
+            $request,
+            fn () => SupplierGroupResponseData::collectionToArray($this->supplierGroupService->list()),
+            'Supplier group names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->supplierGroupService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (SupplierGroup $group): array => SupplierGroupResponseData::fromModel($group)->toArray(),
             'Supplier groups fetched successfully.'
         );
     }

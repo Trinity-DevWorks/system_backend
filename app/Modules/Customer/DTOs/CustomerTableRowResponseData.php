@@ -24,6 +24,7 @@ readonly class CustomerTableRowResponseData
         public ?string $phone,
         public ?string $email,
         public string $status,
+        public bool $isSystem,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -54,6 +55,7 @@ readonly class CustomerTableRowResponseData
             phone: $customer->phone,
             email: $customer->email,
             status: $status,
+            isSystem: (bool) $customer->is_system,
             createdAt: (string) $customer->created_at,
             updatedAt: (string) $customer->updated_at,
         );
@@ -75,6 +77,7 @@ readonly class CustomerTableRowResponseData
             'phone' => $this->phone,
             'email' => $this->email,
             'status' => $this->status,
+            'is_system' => $this->isSystem,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];

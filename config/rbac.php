@@ -25,6 +25,10 @@ return [
     'actions' => ['view', 'add', 'edit', 'delete', 'import', 'export'],
 
     'resources' => [
+        'notifications' => [
+            'label' => 'Notifications',
+            'actions' => $crud,
+        ],
         'users' => [
             'label' => 'User Management',
             'actions' => $crud,
@@ -45,8 +49,8 @@ return [
             'label' => 'Company Profile Management',
             'actions' => $viewEdit,
         ],
-        'tenant_settings' => [
-            'label' => 'Tenant Settings Management',
+        'company_settings' => [
+            'label' => 'Company Settings Management',
             'actions' => $viewEdit,
         ],
         'branches' => [
@@ -84,7 +88,7 @@ return [
         ],
         'stock' => [
             'label' => 'Stock Management',
-            'actions' => $viewEdit,
+            'actions' => $crud,
         ],
         'salesmen' => [
             'label' => 'Salesman Management',

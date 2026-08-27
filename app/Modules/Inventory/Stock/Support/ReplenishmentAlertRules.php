@@ -8,17 +8,18 @@ use App\Modules\Inventory\Stock\Enums\ReplenishmentAlertStatus;
 
 final class ReplenishmentAlertRules
 {
-    public static function status(float $onHand, float $reorderPoint, float $safetyStock): ReplenishmentAlertStatus
+    /** $available is on hand + open PO + inbound in-transit. */
+    public static function status(float $available, float $reorderPoint, float $safetyStock): ReplenishmentAlertStatus
     {
-        if ($onHand <= 0) {
+        if ($available <= 0) {
             return ReplenishmentAlertStatus::OutOfStock;
         }
 
-        if ($safetyStock > 0 && $onHand <= $safetyStock) {
+        if ($safetyStock > 0 && $available <= $safetyStock) {
             return ReplenishmentAlertStatus::BelowSafety;
         }
 
-        if ($onHand <= $reorderPoint) {
+        if ($available <= $reorderPoint) {
             return ReplenishmentAlertStatus::BelowReorder;
         }
 
@@ -26,20 +27,20 @@ final class ReplenishmentAlertRules
     }
 
     public static function suggestedOrderQty(
-        float $onHand,
+        float $available,
         float $reorderPoint,
         ?float $reorderQty,
         ?float $maxQty,
     ): string {
         if ($maxQty !== null && $maxQty > 0) {
-            return self::formatQty(max(0, $maxQty - $onHand));
+            return self::formatQty(max(0, $maxQty - $available));
         }
 
         if ($reorderQty !== null && $reorderQty > 0) {
             return self::formatQty($reorderQty);
         }
 
-        return self::formatQty(max(0, $reorderPoint - $onHand));
+        return self::formatQty(max(0, $reorderPoint - $available));
     }
 
     public static function formatQty(float $qty): string

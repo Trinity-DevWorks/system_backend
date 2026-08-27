@@ -8,10 +8,12 @@ use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Warehouse\DTOs\WarehouseData;
 use App\Modules\Warehouse\Enums\WarehouseDefaultKind;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class WarehouseService
@@ -45,6 +47,23 @@ class WarehouseService
         $warehouses->load(['branch:id,name', 'manager:id,name']);
 
         return $this->filterForActiveBranch($warehouses);
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Warehouse::query()
+            ->with(['branch:id,name', 'manager:id,name'])
+            ->orderByDesc('is_default')
+            ->orderByDesc('is_default_sales')
+            ->orderByDesc('is_default_production')
+            ->orderByDesc('is_default_purchase')
+            ->orderByDesc('is_default_storage')
+            ->orderBy('name');
+
+        $this->applyVisibleWarehouseConstraint($query, 'id');
+        ListPagination::applySearch($query, $search, ['name', 'shortcut_name']);
+
+        return $query->paginate($perPage);
     }
 
     /**

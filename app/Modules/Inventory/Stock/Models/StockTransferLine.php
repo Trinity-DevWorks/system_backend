@@ -13,6 +13,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 #[Fillable([
     'stock_transfer_id',
     'item_id',
+    'lot_id',
     'quantity',
     'base_quantity',
     'item_uom_id',
@@ -47,6 +48,14 @@ class StockTransferLine extends Model implements AuditableContract
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);
+    }
+
+    /**
+     * @return BelongsTo<InventoryLot, $this>
+     */
+    public function lot(): BelongsTo
+    {
+        return $this->belongsTo(InventoryLot::class, 'lot_id');
     }
 
     /**

@@ -13,7 +13,7 @@ readonly class SupplierItemData
 {
     public function __construct(
         public string $itemId,
-        public ?string $supplierSku,
+        public ?string $supplierItemCode,
         public ?string $lastPurchasePrice,
         public int $currencyId,
         public int $leadTimeDays,
@@ -26,7 +26,7 @@ readonly class SupplierItemData
 
         return new self(
             itemId: $data['item_id'],
-            supplierSku: self::normalizeSku($data['supplier_sku'] ?? null),
+            supplierItemCode: self::normalizeItemCode($data['supplier_item_code'] ?? null),
             lastPurchasePrice: self::normalizePrice($data['last_purchase_price'] ?? null),
             currencyId: self::resolveCurrencyId($data['currency_id'] ?? null),
             leadTimeDays: max(0, (int) ($data['lead_time_days'] ?? 0)),
@@ -40,9 +40,9 @@ readonly class SupplierItemData
 
         return new self(
             itemId: (string) $row->item_id,
-            supplierSku: array_key_exists('supplier_sku', $data)
-                ? self::normalizeSku($data['supplier_sku'])
-                : $row->supplier_sku,
+            supplierItemCode: array_key_exists('supplier_item_code', $data)
+                ? self::normalizeItemCode($data['supplier_item_code'])
+                : $row->supplier_item_code,
             lastPurchasePrice: array_key_exists('last_purchase_price', $data)
                 ? self::normalizePrice($data['last_purchase_price'])
                 : ($row->last_purchase_price !== null ? (string) $row->last_purchase_price : null),
@@ -65,7 +65,7 @@ readonly class SupplierItemData
     {
         return [
             'item_id' => $this->itemId,
-            'supplier_sku' => $this->supplierSku,
+            'supplier_item_code' => $this->supplierItemCode,
             'last_purchase_price' => $this->lastPurchasePrice,
             'currency_id' => $this->currencyId,
             'lead_time_days' => $this->leadTimeDays,
@@ -73,7 +73,7 @@ readonly class SupplierItemData
         ];
     }
 
-    private static function normalizeSku(mixed $value): ?string
+    private static function normalizeItemCode(mixed $value): ?string
     {
         if ($value === null || $value === '') {
             return null;

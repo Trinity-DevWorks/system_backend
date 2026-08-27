@@ -11,15 +11,25 @@ readonly class StockTransferLineResponseData
     public static function fromModel(StockTransferLine $line): array
     {
         $line->loadMissing([
-            'item:id,sku,name,is_active',
+            'item:id,item_code,name,is_active,track_lots',
             'itemUom:id,uom_id,conversion_factor',
             'itemUom.uom:id,code,name',
+            'lot:id,lot_number,expiry_date',
         ]);
+
+        $lot = $line->lot;
 
         return [
             'id' => $line->id,
             'stock_transfer_id' => $line->stock_transfer_id,
             'item_id' => $line->item_id,
+            'lot_id' => $line->lot_id,
+            'lot' => $lot ? [
+                'id' => $lot->id,
+                'lot_number' => $lot->lot_number,
+                'expiry_date' => $lot->expiry_date?->toDateString(),
+                'is_expired' => $lot->isExpired(),
+            ] : null,
             'quantity' => (string) $line->quantity,
             'base_quantity' => (string) $line->base_quantity,
             'item_uom_id' => $line->item_uom_id,
@@ -52,7 +62,7 @@ readonly class StockTransferLineResponseData
     }
 
     /**
-     * @return array{id:string,sku:string,name:string,is_active:bool}|null
+     * @return array{id:string,item_code:?string,name:string,is_active:bool}|null
      */
     private static function itemBrief(?Item $item): ?array
     {
@@ -62,9 +72,10 @@ readonly class StockTransferLineResponseData
 
         return [
             'id' => $item->id,
-            'sku' => $item->sku,
+            'item_code' => $item->item_code,
             'name' => $item->name,
             'is_active' => (bool) $item->is_active,
+            'track_lots' => (bool) $item->track_lots,
         ];
     }
 }

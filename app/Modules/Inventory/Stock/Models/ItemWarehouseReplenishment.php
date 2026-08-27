@@ -10,6 +10,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * Query aliases from purchasing-alert aggregations.
+ *
+ * @property string|float|int|null $on_hand_quantity
+ * @property string|float|int|null $on_order_quantity
+ * @property string|float|int|null $in_transit_in_quantity
+ */
 #[Fillable([
     'item_id',
     'warehouse_id',

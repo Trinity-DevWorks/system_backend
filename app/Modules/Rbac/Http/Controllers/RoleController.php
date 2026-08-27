@@ -2,6 +2,7 @@
 
 namespace App\Modules\Rbac\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Rbac\DTOs\RoleResponseData;
@@ -9,18 +10,35 @@ use App\Modules\Rbac\Http\Requests\StoreRoleRequest;
 use App\Modules\Rbac\Http\Requests\UpdateRoleRequest;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Services\RoleService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class RoleController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly RoleService $roleService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            RoleResponseData::collectionToArray($this->roleService->list()),
+        $names = $this->namesResponse(
+            $request,
+            fn () => RoleResponseData::collectionToArray($this->roleService->list()),
+            'Role names fetched successfully.'
+        );
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->roleService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (Role $role): array => RoleResponseData::fromModel($role)->toArray(),
             'Roles fetched successfully.'
         );
     }

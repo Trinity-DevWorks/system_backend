@@ -31,7 +31,9 @@ class IndexAuditRequest extends FormRequest
             'tags' => ['sometimes', 'string', 'max:255'],
             'from' => ['sometimes', 'date'],
             'to' => ['sometimes', 'date', 'after_or_equal:from'],
+            'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'search' => ['sometimes', 'string', 'max:255'],
             'format' => ['sometimes', 'string', 'in:json,csv'],
         ];
     }

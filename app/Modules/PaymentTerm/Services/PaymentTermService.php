@@ -6,8 +6,10 @@ namespace App\Modules\PaymentTerm\Services;
 
 use App\Modules\PaymentTerm\DTOs\PaymentTermData;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class PaymentTermService
@@ -27,6 +29,14 @@ class PaymentTermService
                 ->orderBy('name')
                 ->get()
         );
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = PaymentTerm::query()->orderByDesc('is_default')->orderBy('name');
+        ListPagination::applySearch($query, $search, ['name']);
+
+        return $query->paginate($perPage);
     }
 
     public function create(PaymentTermData $data): PaymentTerm

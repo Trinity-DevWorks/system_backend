@@ -6,8 +6,10 @@ namespace App\Modules\PaymentMethod\Services;
 
 use App\Modules\PaymentMethod\DTOs\PaymentMethodData;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class PaymentMethodService
@@ -30,6 +32,23 @@ class PaymentMethodService
         $collection->load(['currency:id,code,name']);
 
         return $collection;
+    }
+
+    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = PaymentMethod::query()
+            ->with(['currency:id,code,name'])
+            ->orderByDesc('is_default')
+            ->orderBy('name');
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['name'],
+            ['currency' => ['code', 'name']],
+        );
+
+        return $query->paginate($perPage);
     }
 
     public function create(PaymentMethodData $data): PaymentMethod

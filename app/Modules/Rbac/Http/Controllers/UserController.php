@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Rbac\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Models\User;
@@ -11,18 +12,37 @@ use App\Modules\Rbac\DTOs\UserResponseData;
 use App\Modules\Rbac\Http\Requests\StoreUserRequest;
 use App\Modules\Rbac\Http\Requests\UpdateUserRequest;
 use App\Modules\Rbac\Services\UserService;
+use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class UserController extends Controller
 {
+    use ResolvesListSection;
+
     public function __construct(
         private readonly UserService $userService
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return ApiResponse::success(
-            UserResponseData::collectionToArray($this->userService->list()),
+        $names = $this->namesResponse($request, function () {
+            return $this->userService->names()->map(fn (User $user): array => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ])->values()->all();
+        }, 'User names fetched successfully.');
+        if ($names) {
+            return $names;
+        }
+
+        return ListPagination::json(
+            $this->userService->paginateForTable(
+                ListPagination::search($request),
+                ListPagination::perPage($request)
+            ),
+            fn (User $user): array => UserResponseData::fromModel($user)->toArray(),
             'Users fetched successfully.'
         );
     }
