@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\CompanySetting\Models;
 
-use App\Modules\Currency\Models\Currency;
 use App\Modules\CompanySetting\Enums\DateFormat;
 use App\Modules\CompanySetting\Enums\NumberFormat;
 use App\Modules\CompanySetting\Enums\PreferredLanguage;
 use App\Modules\CompanySetting\Enums\PriceRoundingMode;
 use App\Modules\CompanySetting\Services\CompanySettingService;
+use App\Modules\Currency\Models\Currency;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

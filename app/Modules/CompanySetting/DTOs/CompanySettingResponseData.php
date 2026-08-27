@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\CompanySetting\DTOs;
 
-use App\Modules\Currency\Models\Currency;
 use App\Modules\CompanySetting\Models\CompanySetting;
+use App\Modules\Currency\Models\Currency;
 
 readonly class CompanySettingResponseData
 {

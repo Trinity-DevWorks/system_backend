@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Currency\Models;
 
-use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\CompanySetting\Models\CompanySetting;
+use App\Modules\PaymentMethod\Models\PaymentMethod;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
