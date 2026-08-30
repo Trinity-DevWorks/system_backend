@@ -11,6 +11,7 @@ use App\Modules\Category\Http\Controllers\CategoryController;
 use App\Modules\CompanyProfile\Http\Controllers\CompanyProfileAttachmentController;
 use App\Modules\CompanyProfile\Http\Controllers\CompanyProfileController;
 use App\Modules\CompanySetting\Http\Controllers\CompanySettingController;
+use App\Modules\CompanySetting\Http\Controllers\CountryController;
 use App\Modules\Currency\Http\Controllers\CurrencyController;
 use App\Modules\Customer\Http\Controllers\CustomerAddressController;
 use App\Modules\Customer\Http\Controllers\CustomerAttachmentController;
@@ -170,6 +171,7 @@ Route::middleware([
             Route::get('company-settings', [CompanySettingController::class, 'show']);
             Route::put('company-settings', [CompanySettingController::class, 'update'])
                 ->middleware('check.permission:company_settings,edit');
+            Route::get('countries', [CountryController::class, 'index']);
 
             /*
             | In-app notification inbox + preferences (Phase 1).

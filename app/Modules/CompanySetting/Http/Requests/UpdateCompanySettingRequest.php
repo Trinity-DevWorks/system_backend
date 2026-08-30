@@ -9,6 +9,7 @@ use App\Modules\CompanySetting\Enums\NumberFormat;
 use App\Modules\CompanySetting\Enums\PreferredLanguage;
 use App\Modules\CompanySetting\Enums\PriceRoundingMode;
 use App\Modules\CompanySetting\Enums\TaxPriceMode;
+use App\Modules\CompanySetting\Support\CountryCatalog;
 use App\Modules\Inventory\Stock\Enums\InventoryCostingMethod;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,13 +22,24 @@ class UpdateCompanySettingRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (! $this->has('country') || ! is_string($this->input('country'))) {
+            return;
+        }
+
+        $this->merge([
+            'country' => CountryCatalog::normalize((string) $this->input('country')),
+        ]);
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function rules(): array
     {
         return [
-            'country' => ['sometimes', 'nullable', 'string', 'size:2', 'regex:/^[A-Za-z]{2}$/'],
+            'country' => ['sometimes', 'nullable', 'string', 'size:2', Rule::in(CountryCatalog::codes())],
             'preferred_language' => ['sometimes', 'required', Rule::enum(PreferredLanguage::class)],
             'timezone' => ['sometimes', 'required', 'string', 'max:64'],
             'date_format' => ['sometimes', 'required', Rule::enum(DateFormat::class)],
