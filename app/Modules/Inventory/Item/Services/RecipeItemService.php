@@ -36,7 +36,7 @@ class RecipeItemService
     }
 
     /**
-     * @param  array{item_id:int,quantity:numeric,uom_id:int}  $data
+     * @param  array{item_id:string,quantity:numeric,uom_id:int}  $data
      */
     public function addIngredient(Item $item, array $data): RecipeItem
     {
@@ -88,7 +88,7 @@ class RecipeItemService
     }
 
     /**
-     * @param  list<array{item_id:int,quantity:numeric,uom_id:int}>  $ingredients
+     * @param  list<array{item_id:string,quantity:numeric,uom_id:int}>  $ingredients
      */
     public function sync(Item $item, array $ingredients): Collection
     {

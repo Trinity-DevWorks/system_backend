@@ -29,9 +29,15 @@ class StockMovementController extends Controller
             'to' => $request->string('to')->toString() ?: null,
         ];
 
-        return ListPagination::json(
+        return ListPagination::jsonMapped(
             $this->stockMovementQueryService->paginate($filters, ListPagination::perPage($request, 50)),
-            fn ($movement): array => StockMovementResponseData::fromModel($movement),
+            function ($movements): array {
+                $rows = $movements instanceof Collection
+                    ? $movements
+                    : new Collection($movements->all());
+
+                return StockMovementResponseData::collectionToArray($rows);
+            },
             'Stock movements fetched successfully.'
         );
     }
