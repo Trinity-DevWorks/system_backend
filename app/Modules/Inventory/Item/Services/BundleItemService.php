@@ -22,7 +22,7 @@ class BundleItemService
     }
 
     /**
-     * @param  array{child_item_id:int,quantity:numeric}  $data
+     * @param  array{child_item_id:string,quantity:numeric}  $data
      */
     public function addComponent(Item $bundle, array $data): BundleItem
     {
@@ -60,7 +60,7 @@ class BundleItemService
     /**
      * Replace all bundle components in one request.
      *
-     * @param  list<array{child_item_id:int,quantity:numeric}>  $components
+     * @param  list<array{child_item_id:string,quantity:numeric}>  $components
      */
     public function sync(Item $bundle, array $components): Collection
     {

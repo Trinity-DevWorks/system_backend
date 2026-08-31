@@ -39,7 +39,7 @@ final class BundleItemRules
             abort(422, 'Nested bundles are not supported.', ['X-Error-Code' => 'BUNDLE_NESTED_NOT_ALLOWED']);
         }
 
-        if (self::bundleContainsItem($child->id, $bundle->id)) {
+        if (self::bundleContainsItem((string) $child->id, (string) $bundle->id)) {
             abort(422, 'This would create a circular bundle reference.', ['X-Error-Code' => 'BUNDLE_CIRCULAR_REFERENCE']);
         }
     }
@@ -47,13 +47,16 @@ final class BundleItemRules
     /**
      * True if $rootItemId is a bundle that already includes $targetItemId as a component (any depth).
      */
-    private static function bundleContainsItem(int $rootItemId, int $targetItemId): bool
+    private static function bundleContainsItem(string $rootItemId, string $targetItemId): bool
     {
         $visited = [];
         $stack = [$rootItemId];
 
         while ($stack !== []) {
             $currentId = array_pop($stack);
+            if ($currentId === null || $currentId === '') {
+                continue;
+            }
             if (isset($visited[$currentId])) {
                 continue;
             }
@@ -65,7 +68,7 @@ final class BundleItemRules
                 ->all();
 
             foreach ($componentIds as $componentId) {
-                $componentId = (int) $componentId;
+                $componentId = (string) $componentId;
                 if ($componentId === $targetItemId) {
                     return true;
                 }

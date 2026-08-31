@@ -66,8 +66,8 @@ class ItemService
     public function names(): Collection
     {
         return Item::query()
-            ->select(['id', 'item_code', 'name', 'item_type_id', 'track_inventory', 'track_lots', 'allow_purchase', 'is_active'])
-            ->with(['itemType:id,code,name'])
+            ->select(['id', 'item_code', 'name', 'item_type_id', 'base_uom_id', 'track_inventory', 'track_lots', 'allow_purchase', 'is_active'])
+            ->with(['itemType:id,code,name', 'baseUom:id,code,name'])
             ->orderBy('name')
             ->get();
     }

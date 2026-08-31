@@ -9,6 +9,7 @@ use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderLineQuantity;
+use App\Modules\Inventory\Purchasing\Support\PurchaseOrderMaxStockGuard;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Warehouse\Services\WarehouseService;
@@ -22,6 +23,7 @@ class PurchaseOrderService
         private readonly PurchaseOrderQueryService $purchaseOrderQueryService,
         private readonly WarehouseService $warehouseService,
         private readonly DomainNotificationPublisher $notifications,
+        private readonly PurchaseOrderMaxStockGuard $maxStockGuard,
     ) {}
 
     /**
@@ -128,13 +130,16 @@ class PurchaseOrderService
                 PurchaseOrderRules::assertWarehouse((int) $data['warehouse_id']);
             }
 
+            $nextWarehouseId = array_key_exists('warehouse_id', $data)
+                ? (int) $data['warehouse_id']
+                : (int) $order->warehouse_id;
+            $warehouseChanged = $nextWarehouseId !== (int) $order->warehouse_id;
+
             $order->update([
                 'supplier_id' => array_key_exists('supplier_id', $data)
                     ? (string) $data['supplier_id']
                     : $order->supplier_id,
-                'warehouse_id' => array_key_exists('warehouse_id', $data)
-                    ? (int) $data['warehouse_id']
-                    : $order->warehouse_id,
+                'warehouse_id' => $nextWarehouseId,
                 'order_date' => array_key_exists('order_date', $data)
                     ? (string) $data['order_date']
                     : $order->order_date,
@@ -145,6 +150,10 @@ class PurchaseOrderService
                     ? $this->normalizeNotes($data['notes'])
                     : $order->notes,
             ]);
+
+            if ($warehouseChanged) {
+                $this->maxStockGuard->assertOrder($order);
+            }
 
             return $this->find($order->id);
         });
@@ -210,6 +219,8 @@ class PurchaseOrderService
             if ($lineCount === 0) {
                 abort(422, 'Cannot confirm a purchase order without lines.', ['X-Error-Code' => 'PURCHASE_ORDER_NO_LINES']);
             }
+
+            $this->maxStockGuard->assertOrder($order);
 
             $order->update([
                 'status' => PurchaseOrderStatus::Confirmed,
@@ -280,6 +291,12 @@ class PurchaseOrderService
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }
+
+        $baseQtyByItem = [];
+        foreach ($normalized as $itemId => $line) {
+            $baseQtyByItem[(string) $itemId] = (string) $line['base_quantity'];
+        }
+        $this->maxStockGuard->assertWarehouseLines((int) $order->warehouse_id, $baseQtyByItem);
 
         PurchaseOrderLine::query()->where('purchase_order_id', $order->id)->delete();
 
