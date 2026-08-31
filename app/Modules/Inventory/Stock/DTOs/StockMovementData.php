@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\DTOs;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\BundleExplosion;
 use App\Modules\Inventory\Stock\Models\OpeningStock;
@@ -250,8 +251,8 @@ readonly class StockMovementData
             return null;
         }
 
-        $cost = number_format((float) $value, 4, '.', '');
-        if (bccomp($cost, '0', 4) < 0) {
+        $cost = PriceMath::normalize($value);
+        if (bccomp($cost, '0', PriceMath::scale()) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 

@@ -6,6 +6,7 @@ namespace App\Modules\Supplier\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Supplier\DTOs\SupplierLedgerEntryResponseData;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierLedgerService;
@@ -52,8 +53,8 @@ class SupplierLedgerController extends Controller
                 'opening_date' => $sb->opening_date?->toDateString(),
                 'credit_limit' => (string) $sb->credit_limit,
                 'balance' => $balStr,
-                'outstanding' => number_format($outstanding, 4, '.', ''),
-                'remaining_credit' => number_format($remainingCredit, 4, '.', ''),
+                'outstanding' => PriceMath::normalize($outstanding),
+                'remaining_credit' => PriceMath::normalize($remainingCredit),
             ];
         }
 

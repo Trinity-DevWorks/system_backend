@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Notification\Notifications;
 
+use App\Modules\CompanySetting\Support\TenantDisplayFormat;
 use App\Modules\Notification\Support\NotificationChannels;
 use App\Modules\Notification\Support\NotificationTypeConfig;
 use Illuminate\Bus\Queueable;
@@ -101,6 +102,7 @@ class BusinessNotification extends Notification implements ShouldQueue
      */
     private function interpolate(string $template, array $params): string
     {
+        $params = TenantDisplayFormat::notificationParams($params);
         $replacements = [];
         foreach ($params as $key => $value) {
             if (is_scalar($value) || $value === null) {
