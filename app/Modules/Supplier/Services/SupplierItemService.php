@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Services;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Supplier\DTOs\SupplierItemData;
@@ -81,8 +82,8 @@ class SupplierItemService
      */
     public function rememberLastPurchasePrice(string $supplierId, string $itemId, string $price): void
     {
-        $normalized = number_format((float) $price, 4, '.', '');
-        if (bccomp($normalized, '0', 4) < 0) {
+        $normalized = PriceMath::normalize($price);
+        if (bccomp($normalized, '0', PriceMath::scale()) < 0) {
             return;
         }
 

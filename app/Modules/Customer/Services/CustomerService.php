@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Customer\Services;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Customer\Enums\CustomerStatus;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
@@ -308,7 +309,7 @@ class CustomerService
 
     private function normalizeMoneyString(string $value): string
     {
-        return number_format((float) $value, 4, '.', '');
+        return PriceMath::normalize($value);
     }
 
     public function delete(Customer $customer): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\Services;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
@@ -362,9 +363,9 @@ class PurchaseOrderService
             return null;
         }
 
-        $price = number_format((float) $value, 4, '.', '');
+        $price = PriceMath::normalize($value);
 
-        if (bccomp($price, '0', 4) < 0) {
+        if (bccomp($price, '0', PriceMath::scale()) < 0) {
             abort(422, 'Unit price cannot be negative.', ['X-Error-Code' => 'PURCHASE_ORDER_LINE_INVALID_UNIT_PRICE']);
         }
 
