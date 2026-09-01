@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\DTOs;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Supplier\Http\Requests\StoreSupplierItemRequest;
 use App\Modules\Supplier\Http\Requests\UpdateSupplierItemRequest;
@@ -90,7 +91,7 @@ readonly class SupplierItemData
             return null;
         }
 
-        return number_format((float) $value, 4, '.', '');
+        return PriceMath::normalize($value);
     }
 
     private static function resolveCurrencyId(mixed $currencyId): int

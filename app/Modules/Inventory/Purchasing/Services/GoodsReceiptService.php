@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\Services;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
@@ -645,8 +646,8 @@ class GoodsReceiptService
             return null;
         }
 
-        $cost = number_format((float) $value, 4, '.', '');
-        if (bccomp($cost, '0', 4) < 0) {
+        $cost = PriceMath::normalize($value);
+        if (bccomp($cost, '0', PriceMath::scale()) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 

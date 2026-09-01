@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Customer\Services;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Customer\Enums\LedgerReferenceType;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerLedgerEntry;
@@ -162,6 +163,6 @@ class CustomerLedgerService
 
     private function formatMoney(mixed $value): string
     {
-        return number_format((float) $value, 4, '.', '');
+        return PriceMath::normalize($value);
     }
 }

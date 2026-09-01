@@ -18,4 +18,17 @@ enum NumberFormat: string
     case SpaceDot = 'space_dot';
     /** 1 234,56 */
     case SpaceComma = 'space_comma';
+
+    /**
+     * @return array{0: string, 1: string} [thousands, decimal]
+     */
+    public function separators(): array
+    {
+        return match ($this) {
+            self::CommaDot => [',', '.'],
+            self::DotComma => ['.', ','],
+            self::SpaceDot => [' ', '.'],
+            self::SpaceComma => [' ', ','],
+        };
+    }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Salesman\DTOs;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Salesman\Enums\CommissionType;
 use App\Modules\Salesman\Http\Requests\StoreSalesmanRequest;
 use App\Modules\Salesman\Http\Requests\UpdateSalesmanRequest;
@@ -51,6 +52,15 @@ readonly class SalesmanData
         $hire = $data['hire_date'] ?? null;
 
         $salesmanCode = $data['salesman_code'] ?? null;
+        $commissionType = CommissionType::from((string) $data['commission_type']);
+        $commissionValue = isset($data['commission_value']) ? (string) $data['commission_value'] : null;
+        if ($commissionType === CommissionType::None) {
+            $commissionValue = null;
+        } elseif ($commissionType === CommissionType::Percent && $commissionValue !== null && $commissionValue !== '') {
+            $commissionValue = number_format((float) $commissionValue, 2, '.', '');
+        } elseif ($commissionType === CommissionType::Fixed && $commissionValue !== null && $commissionValue !== '') {
+            $commissionValue = PriceMath::normalize($commissionValue);
+        }
 
         return new self(
             salesmanCode: $salesmanCode !== null && $salesmanCode !== '' ? (string) $salesmanCode : null,
@@ -59,9 +69,9 @@ readonly class SalesmanData
             phone: isset($data['phone']) ? (string) $data['phone'] : null,
             email: isset($data['email']) ? (string) $data['email'] : null,
             address: isset($data['address']) ? (string) $data['address'] : null,
-            commissionType: CommissionType::from((string) $data['commission_type']),
-            commissionValue: isset($data['commission_value']) ? (string) $data['commission_value'] : null,
-            targetAmount: isset($data['target_amount']) ? (string) $data['target_amount'] : null,
+            commissionType: $commissionType,
+            commissionValue: $commissionValue,
+            targetAmount: PriceMath::normalizeNullable($data['target_amount'] ?? null),
             hireDate: $hire !== null && $hire !== '' ? Carbon::parse((string) $hire) : null,
             branchId: isset($data['branch_id']) ? (int) $data['branch_id'] : null,
             warehouseId: isset($data['warehouse_id']) ? (int) $data['warehouse_id'] : null,

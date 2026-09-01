@@ -185,6 +185,7 @@ Goods receipt:
 - `PURCHASE_INVOICE_LINE_INVALID_UNIT_PRICE` (HTTP 422)
 - `PURCHASE_INVOICE_ZERO_TOTAL` (HTTP 422)
 - `PURCHASE_ORDER_CLOSED` (HTTP 422)
+- `PURCHASE_ORDER_QTY_EXCEEDS_MAX` (HTTP 422) — PO qty would put on-hand + open PO + inbound above the item's warehouse max_qty
 
 Opening stock:
 

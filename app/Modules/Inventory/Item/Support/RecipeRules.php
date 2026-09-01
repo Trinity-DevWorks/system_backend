@@ -68,7 +68,7 @@ final class RecipeRules
             abort(422, 'Recipe ingredients must track inventory.', ['X-Error-Code' => 'RECIPE_INGREDIENT_NO_STOCK_TRACKING']);
         }
 
-        if (self::recipeContainsItem($ingredient->id, $producedItem->id)) {
+        if (self::recipeContainsItem((string) $ingredient->id, (string) $producedItem->id)) {
             abort(422, 'This would create a circular recipe reference.', ['X-Error-Code' => 'RECIPE_CIRCULAR_REFERENCE']);
         }
     }
@@ -76,13 +76,16 @@ final class RecipeRules
     /**
      * True if $rootItemId has a recipe that eventually consumes $targetItemId as an ingredient.
      */
-    private static function recipeContainsItem(int $rootItemId, int $targetItemId): bool
+    private static function recipeContainsItem(string $rootItemId, string $targetItemId): bool
     {
         $visited = [];
         $stack = [$rootItemId];
 
         while ($stack !== []) {
             $currentId = array_pop($stack);
+            if ($currentId === null || $currentId === '') {
+                continue;
+            }
             if (isset($visited[$currentId])) {
                 continue;
             }
@@ -99,7 +102,7 @@ final class RecipeRules
                 ->all();
 
             foreach ($ingredientIds as $ingredientId) {
-                $ingredientId = (int) $ingredientId;
+                $ingredientId = (string) $ingredientId;
                 if ($ingredientId === $targetItemId) {
                     return true;
                 }
