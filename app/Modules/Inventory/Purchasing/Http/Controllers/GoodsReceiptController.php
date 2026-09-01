@@ -34,9 +34,9 @@ class GoodsReceiptController extends Controller
             'to' => $request->string('to')->toString() ?: null,
         ];
 
-        return ListPagination::json(
+        return ListPagination::jsonMapped(
             $this->goodsReceiptService->list($filters, ListPagination::perPage($request, 50)),
-            fn (GoodsReceipt $receipt): array => GoodsReceiptResponseData::fromModel($receipt, false),
+            fn ($receipts) => GoodsReceiptResponseData::collectionToArray($receipts, false),
             'Goods receipts fetched successfully.'
         );
     }

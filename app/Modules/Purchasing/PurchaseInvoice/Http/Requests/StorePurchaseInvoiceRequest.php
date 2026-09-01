@@ -19,8 +19,8 @@ class StorePurchaseInvoiceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'supplier_id' => ['required', 'uuid', 'exists:suppliers,id'],
-            'currency_id' => ['required', 'integer', 'exists:currencies,id'],
+            'supplier_id' => ['required_without:goods_receipt_id', 'nullable', 'uuid', 'exists:suppliers,id'],
+            'currency_id' => ['required_without:goods_receipt_id', 'nullable', 'integer', 'exists:currencies,id'],
             'payment_terms_id' => ['nullable', 'integer', 'exists:payment_terms,id'],
             'payment_method_id' => ['nullable', 'integer', 'exists:payment_methods,id'],
             'purchase_order_id' => ['nullable', 'uuid', 'exists:purchase_orders,id'],

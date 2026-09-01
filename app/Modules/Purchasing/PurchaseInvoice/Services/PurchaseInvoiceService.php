@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Purchasing\PurchaseInvoice\Services;
 
+use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\Item;
+use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
+use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Purchasing\PurchaseInvoice\Enums\PurchaseInvoiceStatus;
 use App\Modules\Purchasing\PurchaseInvoice\Models\PurchaseInvoice;
@@ -80,37 +83,16 @@ class PurchaseInvoiceService
      */
     public function create(array $data, ?string $userId): PurchaseInvoice
     {
+        $goodsReceiptId = $this->nullableUuid($data['goods_receipt_id'] ?? null);
+        if ($goodsReceiptId !== null) {
+            return $this->createAgainstGoodsReceipt($data, $goodsReceiptId, $userId);
+        }
+
         $supplier = PurchaseInvoiceRules::assertSupplier((string) $data['supplier_id']);
         PurchaseInvoiceRules::assertCurrency((int) $data['currency_id']);
 
         return DB::transaction(function () use ($data, $userId, $supplier): PurchaseInvoice {
-            $invoiceDate = (string) ($data['invoice_date'] ?? now()->toDateString());
-            $paymentTermsId = $this->resolvePaymentTermsId($data, $supplier);
-            $dueDate = $this->resolveDueDate($data['due_date'] ?? null, $invoiceDate, $paymentTermsId);
-
-            $invoice = PurchaseInvoice::query()->create([
-                'supplier_id' => $supplier->id,
-                'currency_id' => (int) $data['currency_id'],
-                'payment_terms_id' => $paymentTermsId,
-                'payment_method_id' => $this->nullableInt($data['payment_method_id'] ?? $supplier->payment_method_id),
-                'purchase_order_id' => $this->nullableUuid($data['purchase_order_id'] ?? null),
-                'goods_receipt_id' => $this->nullableUuid($data['goods_receipt_id'] ?? null),
-                'status' => PurchaseInvoiceStatus::Draft,
-                'invoice_date' => $invoiceDate,
-                'due_date' => $dueDate,
-                'supplier_reference' => $this->normalizeOptionalString($data['supplier_reference'] ?? null, 128),
-                'notes' => $this->normalizeNotes($data['notes'] ?? null),
-                'subtotal' => '0.0000',
-                'tax_total' => '0.0000',
-                'grand_total' => '0.0000',
-                'created_by' => $userId,
-            ]);
-
-            $invoice->update(['invoice_number' => $this->formatInvoiceNumber()]);
-
-            if (! empty($data['lines'])) {
-                $this->replaceLines($invoice, $data['lines']);
-            }
+            $invoice = $this->persistNewInvoice($data, $supplier, $userId, null);
 
             return $this->find($invoice->id);
         });
@@ -134,6 +116,20 @@ class PurchaseInvoiceService
     {
         return DB::transaction(function () use ($invoice, $data): PurchaseInvoice {
             $invoice = $this->lockDraft($invoice);
+
+            $linkedToGr = $invoice->goods_receipt_id !== null;
+            if ($linkedToGr && array_key_exists('supplier_id', $data)
+                && (string) $data['supplier_id'] !== (string) $invoice->supplier_id) {
+                abort(422, 'Supplier cannot be changed on a goods-receipt invoice.', [
+                    'X-Error-Code' => 'PURCHASE_INVOICE_GR_SUPPLIER_LOCKED',
+                ]);
+            }
+            if ($linkedToGr && array_key_exists('goods_receipt_id', $data)
+                && $this->nullableUuid($data['goods_receipt_id']) !== $invoice->goods_receipt_id) {
+                abort(422, 'Goods receipt cannot be changed on this invoice.', [
+                    'X-Error-Code' => 'PURCHASE_INVOICE_GR_LOCKED',
+                ]);
+            }
 
             $supplierId = array_key_exists('supplier_id', $data)
                 ? (string) $data['supplier_id']
@@ -201,6 +197,7 @@ class PurchaseInvoiceService
     {
         return DB::transaction(function () use ($invoice, $lines): Collection {
             $invoice = $this->lockDraft($invoice);
+            $this->lockLinkedGoodsReceipt($invoice);
             $this->replaceLines($invoice, $lines);
 
             return PurchaseInvoiceLine::query()
@@ -260,6 +257,119 @@ class PurchaseInvoiceService
     /**
      * @param  list<array<string, mixed>>  $lines
      */
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function createAgainstGoodsReceipt(array $data, string $goodsReceiptId, ?string $userId): PurchaseInvoice
+    {
+        return DB::transaction(function () use ($data, $goodsReceiptId, $userId): PurchaseInvoice {
+            $receipt = GoodsReceipt::query()
+                ->with(['purchaseOrder:id,supplier_id,status', 'lines.item'])
+                ->whereKey($goodsReceiptId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            PurchaseInvoiceRules::assertInvoiceableGoodsReceipt($receipt);
+            $supplierId = (string) ($receipt->supplier_id ?? $receipt->purchaseOrder?->supplier_id);
+            $supplier = PurchaseInvoiceRules::assertSupplier($supplierId);
+
+            $currencyId = isset($data['currency_id']) && $data['currency_id'] !== null && $data['currency_id'] !== ''
+                ? (int) $data['currency_id']
+                : Currency::getPrimary()?->id;
+            if ($currencyId === null) {
+                abort(422, 'Select a currency.', [
+                    'X-Error-Code' => 'PURCHASE_INVOICE_CURRENCY_REQUIRED',
+                ]);
+            }
+            PurchaseInvoiceRules::assertCurrency($currencyId);
+
+            $seededData = [
+                ...$data,
+                'supplier_id' => $supplier->id,
+                'currency_id' => $currencyId,
+                'purchase_order_id' => $receipt->purchase_order_id,
+                'goods_receipt_id' => $receipt->id,
+            ];
+
+            $invoice = $this->persistNewInvoice($seededData, $supplier, $userId, $receipt);
+
+            return $this->find($invoice->id);
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function persistNewInvoice(
+        array $data,
+        Supplier $supplier,
+        ?string $userId,
+        ?GoodsReceipt $receipt,
+    ): PurchaseInvoice {
+        $invoiceDate = (string) ($data['invoice_date'] ?? now()->toDateString());
+        $paymentTermsId = $this->resolvePaymentTermsId($data, $supplier);
+        $dueDate = $this->resolveDueDate($data['due_date'] ?? null, $invoiceDate, $paymentTermsId);
+
+        $invoice = PurchaseInvoice::query()->create([
+            'supplier_id' => $supplier->id,
+            'currency_id' => (int) $data['currency_id'],
+            'payment_terms_id' => $paymentTermsId,
+            'payment_method_id' => $this->nullableInt($data['payment_method_id'] ?? $supplier->payment_method_id),
+            'purchase_order_id' => $this->nullableUuid($data['purchase_order_id'] ?? $receipt?->purchase_order_id),
+            'goods_receipt_id' => $this->nullableUuid($data['goods_receipt_id'] ?? $receipt?->id),
+            'status' => PurchaseInvoiceStatus::Draft,
+            'invoice_date' => $invoiceDate,
+            'due_date' => $dueDate,
+            'supplier_reference' => $this->normalizeOptionalString($data['supplier_reference'] ?? null, 128),
+            'notes' => $this->normalizeNotes($data['notes'] ?? null),
+            'subtotal' => '0.0000',
+            'tax_total' => '0.0000',
+            'grand_total' => '0.0000',
+            'created_by' => $userId,
+        ]);
+
+        $invoice->update(['invoice_number' => $this->formatInvoiceNumber()]);
+
+        if (! empty($data['lines'])) {
+            $this->replaceLines($invoice, $data['lines']);
+        } elseif ($receipt !== null) {
+            $this->seedLinesFromGoodsReceipt($invoice, $receipt);
+        }
+
+        return $invoice;
+    }
+
+    private function seedLinesFromGoodsReceipt(PurchaseInvoice $invoice, GoodsReceipt $receipt): void
+    {
+        $seeded = [];
+
+        foreach ($receipt->lines as $grLine) {
+            $open = PurchaseInvoiceRules::openQuantity($grLine, (string) $invoice->id);
+            if (bccomp($open, '0', 6) <= 0) {
+                continue;
+            }
+
+            $seeded[] = [
+                'item_id' => (string) $grLine->item_id,
+                'goods_receipt_line_id' => (int) $grLine->id,
+                'purchase_order_line_id' => $grLine->purchase_order_line_id
+                    ? (int) $grLine->purchase_order_line_id
+                    : null,
+                'quantity' => (float) $open,
+                'item_uom_id' => $grLine->item_uom_id ? (int) $grLine->item_uom_id : null,
+                'unit_price' => $grLine->unit_cost,
+            ];
+        }
+
+        if ($seeded === []) {
+            abort(422, 'This goods receipt has no remaining quantity to invoice.', [
+                'X-Error-Code' => 'PURCHASE_INVOICE_GR_FULLY_INVOICED',
+            ]);
+        }
+
+        $this->replaceLines($invoice, $seeded);
+    }
+
     private function replaceLines(PurchaseInvoice $invoice, array $lines): void
     {
         $supplier = Supplier::query()->findOrFail($invoice->supplier_id);
@@ -267,36 +377,86 @@ class PurchaseInvoiceService
         $invoiceDate = $invoice->invoice_date?->toDateString() ?? now()->toDateString();
         $pricesIncludeTax = $taxContext->pricesIncludeTax();
 
+        $grLines = $this->goodsReceiptLinesForInvoice($invoice);
         $seenItems = [];
+        $seenGrLines = [];
+        $qtyByGrLine = [];
         $normalized = [];
 
         foreach ($lines as $row) {
             $itemId = (string) ($row['item_id'] ?? '');
+            $grLineId = $this->nullableInt($row['goods_receipt_line_id'] ?? null);
+
+            if ($invoice->goods_receipt_id !== null) {
+                if ($grLineId === null) {
+                    abort(422, 'Goods receipt line does not belong to this receipt.', [
+                        'X-Error-Code' => 'PURCHASE_INVOICE_GR_LINE_MISMATCH',
+                    ]);
+                }
+                if (isset($seenGrLines[$grLineId])) {
+                    abort(422, 'Duplicate goods receipt lines are not allowed on a purchase invoice.', [
+                        'X-Error-Code' => 'PURCHASE_INVOICE_DUPLICATE_GR_LINE',
+                    ]);
+                }
+                $seenGrLines[$grLineId] = true;
+
+                $grLine = $grLines->get($grLineId);
+                if ($grLine === null) {
+                    abort(422, 'Goods receipt line does not belong to this receipt.', [
+                        'X-Error-Code' => 'PURCHASE_INVOICE_GR_LINE_MISMATCH',
+                    ]);
+                }
+                $itemId = (string) $grLine->item_id;
+            } else {
+                if ($grLineId !== null) {
+                    abort(422, 'Goods receipt line does not belong to this receipt.', [
+                        'X-Error-Code' => 'PURCHASE_INVOICE_GR_LINE_MISMATCH',
+                    ]);
+                }
+                if ($itemId === '') {
+                    abort(422, 'Select an item for each purchase invoice line.', [
+                        'X-Error-Code' => 'PURCHASE_INVOICE_ITEM_REQUIRED',
+                    ]);
+                }
+                if (isset($seenItems[$itemId])) {
+                    abort(422, 'Duplicate items are not allowed on a purchase invoice.', [
+                        'X-Error-Code' => 'PURCHASE_INVOICE_DUPLICATE_ITEM',
+                    ]);
+                }
+                $seenItems[$itemId] = true;
+            }
+
             if ($itemId === '') {
                 abort(422, 'Select an item for each purchase invoice line.', [
                     'X-Error-Code' => 'PURCHASE_INVOICE_ITEM_REQUIRED',
                 ]);
             }
 
-            if (isset($seenItems[$itemId])) {
-                abort(422, 'Duplicate items are not allowed on a purchase invoice.', [
-                    'X-Error-Code' => 'PURCHASE_INVOICE_DUPLICATE_ITEM',
-                ]);
-            }
-            $seenItems[$itemId] = true;
-
             $item = Item::query()->with('vatGroup')->findOrFail($itemId);
             PurchaseInvoiceRules::assertPurchasableItem($item);
+
+            $itemUomId = isset($row['item_uom_id']) && $row['item_uom_id'] !== '' && $row['item_uom_id'] !== null
+                ? (int) $row['item_uom_id']
+                : ($grLineId !== null ? ($grLines->get($grLineId)?->item_uom_id ? (int) $grLines->get($grLineId)->item_uom_id : null) : null);
 
             $qty = PurchaseInvoiceLineQuantity::resolve(
                 $item,
                 (float) ($row['quantity'] ?? 0),
-                isset($row['item_uom_id']) && $row['item_uom_id'] !== '' && $row['item_uom_id'] !== null
-                    ? (int) $row['item_uom_id']
-                    : null,
+                $itemUomId,
             );
 
-            $unitPrice = $this->normalizeUnitPrice($row['unit_price'] ?? null);
+            if ($grLineId !== null) {
+                $grLine = $grLines->get($grLineId);
+                $qtyByGrLine[$grLineId] = bcadd($qtyByGrLine[$grLineId] ?? '0', $qty['base_quantity'], 6);
+                $openBase = PurchaseInvoiceRules::openBaseQuantity($grLine, (string) $invoice->id);
+                if (bccomp($qtyByGrLine[$grLineId], $openBase, 6) > 0) {
+                    abort(422, 'Invoiced quantity exceeds the open goods receipt quantity.', [
+                        'X-Error-Code' => 'PURCHASE_INVOICE_QTY_EXCEEDS_OPEN',
+                    ]);
+                }
+            }
+
+            $unitPrice = $this->normalizeUnitPrice($row['unit_price'] ?? ($grLineId !== null ? $grLines->get($grLineId)?->unit_cost : null));
             $taxRate = $taxContext->purchaseLineTaxRatePercent($supplier, $item, $invoiceDate);
             $tax = DocumentTaxMath::calculateLine(
                 $qty['quantity'],
@@ -308,8 +468,10 @@ class PurchaseInvoiceService
             $normalized[] = [
                 'purchase_invoice_id' => $invoice->id,
                 'item_id' => $item->id,
-                'purchase_order_line_id' => $this->nullableInt($row['purchase_order_line_id'] ?? null),
-                'goods_receipt_line_id' => $this->nullableInt($row['goods_receipt_line_id'] ?? null),
+                'purchase_order_line_id' => $this->nullableInt(
+                    $row['purchase_order_line_id'] ?? ($grLineId !== null ? $grLines->get($grLineId)?->purchase_order_line_id : null)
+                ),
+                'goods_receipt_line_id' => $grLineId,
                 'quantity' => $qty['quantity'],
                 'base_quantity' => $qty['base_quantity'],
                 'item_uom_id' => $qty['item_uom_id'],
@@ -371,6 +533,30 @@ class PurchaseInvoiceService
         PurchaseInvoiceRules::assertDraft($locked);
 
         return $locked;
+    }
+
+    private function lockLinkedGoodsReceipt(PurchaseInvoice $invoice): void
+    {
+        if ($invoice->goods_receipt_id === null) {
+            return;
+        }
+
+        GoodsReceipt::query()->whereKey($invoice->goods_receipt_id)->lockForUpdate()->firstOrFail();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, GoodsReceiptLine>
+     */
+    private function goodsReceiptLinesForInvoice(PurchaseInvoice $invoice)
+    {
+        if ($invoice->goods_receipt_id === null) {
+            return collect();
+        }
+
+        return GoodsReceiptLine::query()
+            ->where('goods_receipt_id', $invoice->goods_receipt_id)
+            ->get()
+            ->keyBy('id');
     }
 
     private function formatInvoiceNumber(): string

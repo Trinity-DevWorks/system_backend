@@ -7,13 +7,17 @@ namespace App\Modules\Inventory\Purchasing\DTOs;
 use App\Models\User;
 use App\Modules\Inventory\Purchasing\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
+use App\Modules\Purchasing\PurchaseInvoice\Support\PurchaseInvoiceRules;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Support\Collection;
 
 readonly class GoodsReceiptResponseData
 {
-    public static function fromModel(GoodsReceipt $receipt, bool $includeLines = true): array
+    /**
+     * @param  array<int, string>|null  $invoicedBaseByLineId
+     */
+    public static function fromModel(GoodsReceipt $receipt, bool $includeLines = true, ?array $invoicedBaseByLineId = null): array
     {
         $receipt->loadMissing([
             'purchaseOrder:id,po_number,supplier_id,status,warehouse_id',
@@ -49,6 +53,7 @@ readonly class GoodsReceiptResponseData
             'posted_by' => self::userBrief($receipt->postedByUser),
             'posted_at' => $receipt->posted_at?->toIso8601String(),
             'is_posted' => $receipt->status === GoodsReceiptStatus::Posted,
+            'can_invoice' => false,
             'lines_count' => $receipt->lines_count ?? null,
             'created_at' => (string) $receipt->created_at,
             'updated_at' => (string) $receipt->updated_at,
@@ -62,6 +67,10 @@ readonly class GoodsReceiptResponseData
                 'lines.purchaseOrderLine',
             ]);
             $payload['lines'] = GoodsReceiptLineResponseData::collectionToArray($receipt->lines);
+            $payload['can_invoice'] = $receipt->status === GoodsReceiptStatus::Posted
+                && self::linesHaveOpenToInvoice($payload['lines']);
+        } else {
+            $payload['can_invoice'] = PurchaseInvoiceRules::hasOpenToInvoice($receipt, $invoicedBaseByLineId);
         }
 
         return $payload;
@@ -73,10 +82,42 @@ readonly class GoodsReceiptResponseData
      */
     public static function collectionToArray(Collection $receipts, bool $includeLines = false): array
     {
+        if (! $includeLines) {
+            $receipts->loadMissing(['lines:id,goods_receipt_id,quantity,base_quantity']);
+        }
+
+        $lineIds = [];
+        foreach ($receipts as $receipt) {
+            if (! $receipt->relationLoaded('lines')) {
+                continue;
+            }
+            foreach ($receipt->lines as $line) {
+                $lineIds[] = (int) $line->id;
+            }
+        }
+        $invoiced = PurchaseInvoiceRules::invoicedBaseByGoodsReceiptLineIds($lineIds);
+
         return $receipts
-            ->map(fn (GoodsReceipt $receipt): array => self::fromModel($receipt, $includeLines))
+            ->map(fn (GoodsReceipt $receipt): array => self::fromModel($receipt, $includeLines, $invoiced))
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    private static function linesHaveOpenToInvoice(array $lines): bool
+    {
+        foreach ($lines as $line) {
+            if (! isset($line['open_to_invoice_quantity'])) {
+                continue;
+            }
+            if (bccomp((string) $line['open_to_invoice_quantity'], '0', 6) > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

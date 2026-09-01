@@ -7,11 +7,15 @@ namespace App\Modules\Inventory\Purchasing\DTOs;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\Inventory\Purchasing\Support\GoodsReceiptRules;
+use App\Modules\Purchasing\PurchaseInvoice\Support\PurchaseInvoiceRules;
 use Illuminate\Support\Collection;
 
 readonly class GoodsReceiptLineResponseData
 {
-    public static function fromModel(GoodsReceiptLine $line): array
+    /**
+     * @param  array<int, string>|null  $invoicedBaseByLineId
+     */
+    public static function fromModel(GoodsReceiptLine $line, ?array $invoicedBaseByLineId = null): array
     {
         $line->loadMissing([
             'item:id,item_code,name,is_active,allow_purchase,track_inventory,track_lots',
@@ -23,6 +27,9 @@ readonly class GoodsReceiptLineResponseData
 
         $lot = $line->lot;
         $poLine = $line->purchaseOrderLine;
+        $openToInvoice = $invoicedBaseByLineId === null
+            ? PurchaseInvoiceRules::openQuantity($line)
+            : PurchaseInvoiceRules::openQuantityUsingMap($line, $invoicedBaseByLineId);
 
         return [
             'id' => $line->id,
@@ -42,6 +49,7 @@ readonly class GoodsReceiptLineResponseData
             ] : null,
             'notes' => $line->notes,
             'open_quantity' => $poLine ? GoodsReceiptRules::openQuantity($poLine) : null,
+            'open_to_invoice_quantity' => $openToInvoice,
             'item' => self::itemBrief($line->item),
             'item_uom' => $line->itemUom ? [
                 'id' => $line->itemUom->id,
@@ -61,8 +69,15 @@ readonly class GoodsReceiptLineResponseData
      */
     public static function collectionToArray(Collection $lines): array
     {
+        $ids = $lines
+            ->pluck('id')
+            ->filter()
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+        $invoiced = PurchaseInvoiceRules::invoicedBaseByGoodsReceiptLineIds($ids);
+
         return $lines
-            ->map(fn (GoodsReceiptLine $line): array => self::fromModel($line))
+            ->map(fn (GoodsReceiptLine $line): array => self::fromModel($line, $invoiced))
             ->values()
             ->all();
     }
