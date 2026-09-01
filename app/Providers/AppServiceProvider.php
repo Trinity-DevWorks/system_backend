@@ -46,6 +46,8 @@ use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
+use App\Modules\Purchasing\PurchaseInvoice\Models\PurchaseInvoice;
+use App\Modules\Purchasing\PurchaseInvoice\Models\PurchaseInvoiceLine;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Salesman\Models\Salesman;
@@ -124,6 +126,8 @@ class AppServiceProvider extends ServiceProvider
             'purchase_order_line' => PurchaseOrderLine::class,
             'goods_receipt' => GoodsReceipt::class,
             'goods_receipt_line' => GoodsReceiptLine::class,
+            'purchase_invoice' => PurchaseInvoice::class,
+            'purchase_invoice_line' => PurchaseInvoiceLine::class,
             'opening_stock' => OpeningStock::class,
             'opening_stock_line' => OpeningStockLine::class,
             'stock_adjustment' => StockAdjustment::class,

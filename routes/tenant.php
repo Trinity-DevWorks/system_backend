@@ -46,6 +46,7 @@ use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementCo
 use App\Modules\Notification\Http\Controllers\NotificationController;
 use App\Modules\PaymentMethod\Http\Controllers\PaymentMethodController;
 use App\Modules\PaymentTerm\Http\Controllers\PaymentTermController;
+use App\Modules\Purchasing\PurchaseInvoice\Http\Controllers\PurchaseInvoiceController;
 use App\Modules\Rbac\Http\Controllers\ForgotPasswordController;
 use App\Modules\Rbac\Http\Controllers\LoginController;
 use App\Modules\Rbac\Http\Controllers\LogoutController;
@@ -623,6 +624,21 @@ Route::middleware([
                 ->middlewareFor(['store'], ['check.permission:suppliers,add'])
                 ->middlewareFor(['update'], ['check.permission:suppliers,edit'])
                 ->middlewareFor(['destroy'], ['check.permission:suppliers,delete']);
+
+            Route::get('purchase-invoices', [PurchaseInvoiceController::class, 'index'])
+                ->middleware('check.permission:purchase_invoices,view');
+            Route::post('purchase-invoices', [PurchaseInvoiceController::class, 'store'])
+                ->middleware('check.permission:purchase_invoices,add');
+            Route::get('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'show'])
+                ->middleware('check.permission:purchase_invoices,view');
+            Route::put('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'update'])
+                ->middleware('check.permission:purchase_invoices,edit');
+            Route::delete('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'destroy'])
+                ->middleware('check.permission:purchase_invoices,delete');
+            Route::put('purchase-invoices/{purchase_invoice}/lines/sync', [PurchaseInvoiceController::class, 'syncLines'])
+                ->middleware('check.permission:purchase_invoices,edit');
+            Route::post('purchase-invoices/{purchase_invoice}/post', [PurchaseInvoiceController::class, 'post'])
+                ->middleware('check.permission:purchase_invoices,edit');
         });
     });
 });

@@ -125,5 +125,9 @@ return [
             'label' => 'Supplier Management',
             'actions' => $crud,
         ],
+        'purchase_invoices' => [
+            'label' => 'Purchase Invoice Management',
+            'actions' => $crud,
+        ],
     ],
 ];

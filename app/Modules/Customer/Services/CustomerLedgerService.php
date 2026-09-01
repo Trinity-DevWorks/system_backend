@@ -106,7 +106,7 @@ class CustomerLedgerService
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
-        ?int $referenceId,
+        ?string $referenceId,
         string $transactionDate
     ): CustomerLedgerEntry {
         $d = (float) $debit;
@@ -146,7 +146,7 @@ class CustomerLedgerService
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
-        ?int $referenceId,
+        ?string $referenceId,
         string $transactionDate
     ): CustomerLedgerEntry {
         return CustomerLedgerEntry::query()->create([

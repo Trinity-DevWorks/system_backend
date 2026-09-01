@@ -7,6 +7,6 @@ namespace App\Modules\Customer\Enums;
 enum LedgerReferenceType: string
 {
     case OpeningBalance = 'opening_balance';
-    case Invoice = 'invoice';
+    case SalesInvoice = 'sales_invoice';
     case Payment = 'payment';
 }

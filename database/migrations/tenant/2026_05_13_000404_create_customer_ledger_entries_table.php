@@ -16,9 +16,9 @@ return new class extends Migration
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             $table->decimal('debit', 20, 4)->default(0);
             $table->decimal('credit', 20, 4)->default(0);
-            /** opening_balance | invoice | payment | … */
+            /** opening_balance | sales_invoice | payment | … */
             $table->string('reference_type', 64)->index();
-            $table->unsignedBigInteger('reference_id')->nullable()->index();
+            $table->uuid('reference_id')->nullable()->index();
             $table->date('transaction_date')->index();
             $table->timestamps();
 
