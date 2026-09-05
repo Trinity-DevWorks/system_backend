@@ -195,7 +195,7 @@ return [
     'PW' => ['en' => 'Palau', 'ar' => 'بالاو'],
     'PY' => ['en' => 'Paraguay', 'ar' => 'باراغواي'],
     'QA' => ['en' => 'Qatar', 'ar' => 'قطر'],
-    'RE' => ['en' => 'Réunion', 'ar' => 'روينيون'], 
+    'RE' => ['en' => 'Réunion', 'ar' => 'روينيون'],
     'RO' => ['en' => 'Romania', 'ar' => 'رومانيا'],
     'RS' => ['en' => 'Serbia', 'ar' => 'صربيا'],
     'RU' => ['en' => 'Russia', 'ar' => 'روسيا'],
