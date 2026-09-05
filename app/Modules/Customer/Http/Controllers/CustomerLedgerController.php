@@ -6,6 +6,7 @@ namespace App\Modules\Customer\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Customer\DTOs\CustomerLedgerEntryResponseData;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Services\CustomerLedgerService;
@@ -52,8 +53,8 @@ class CustomerLedgerController extends Controller
                 'opening_date' => $cb->opening_date?->toDateString(),
                 'credit_limit' => (string) $cb->credit_limit,
                 'balance' => $balStr,
-                'outstanding' => number_format($outstanding, 4, '.', ''),
-                'remaining_credit' => number_format($remainingCredit, 4, '.', ''),
+                'outstanding' => PriceMath::normalize($outstanding),
+                'remaining_credit' => PriceMath::normalize($remainingCredit),
             ];
         }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\Services;
 
+use App\Modules\CompanySetting\Support\TenantDisplayFormat;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -48,10 +49,10 @@ class PurchaseOrderPdfService
             $lines[] = [
                 'name' => $item?->name ?? '—',
                 'item_code' => $item?->item_code ?? '—',
-                'quantity' => rtrim(rtrim((string) $line->quantity, '0'), '.'),
+                'quantity' => TenantDisplayFormat::quantity($line->quantity),
                 'uom' => $uomLabel,
-                'unit_price' => $unitPrice,
-                'line_total' => $lineTotal,
+                'unit_price' => $unitPrice !== null ? TenantDisplayFormat::money($unitPrice) : null,
+                'line_total' => $lineTotal !== null ? TenantDisplayFormat::money($lineTotal) : null,
             ];
         }
 
@@ -60,8 +61,10 @@ class PurchaseOrderPdfService
         return Pdf::loadView('purchasing.purchase-order', [
             'companyName' => $companyName,
             'poNumber' => $order->po_number ?? 'Purchase Order',
-            'orderDate' => $order->order_date?->format('Y-m-d') ?? '—',
-            'expectedDate' => $order->expected_date?->format('Y-m-d'),
+            'orderDate' => TenantDisplayFormat::date($order->order_date) ?: '—',
+            'expectedDate' => $order->expected_date
+                ? (TenantDisplayFormat::date($order->expected_date) ?: null)
+                : null,
             'supplierName' => $order->supplier?->company_name ?: ($order->supplier?->name ?? '—'),
             'supplierCode' => $order->supplier?->supplier_code,
             'supplierEmail' => $order->supplier?->email,
@@ -69,9 +72,9 @@ class PurchaseOrderPdfService
             'warehouseName' => $order->warehouse?->name ?? '—',
             'warehouseShortcut' => $order->warehouse?->shortcut_name,
             'lines' => $lines,
-            'totalAmount' => $total,
+            'totalAmount' => $total !== null ? TenantDisplayFormat::money($total) : null,
             'notes' => $order->notes,
-            'generatedAt' => now()->format('Y-m-d H:i'),
+            'generatedAt' => TenantDisplayFormat::dateTime(now()) ?: now()->format('Y-m-d H:i'),
         ])->setPaper('a4');
     }
 

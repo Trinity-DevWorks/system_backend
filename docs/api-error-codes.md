@@ -171,6 +171,7 @@ Goods receipt:
 - `GOODS_RECEIPT_WAREHOUSE_REQUIRED` (HTTP 422)
 - `GOODS_RECEIPT_ITEM_REQUIRED` (HTTP 422)
 - `PURCHASE_ORDER_CLOSED` (HTTP 422)
+- `PURCHASE_ORDER_QTY_EXCEEDS_MAX` (HTTP 422) — PO qty would put on-hand + open PO + inbound above the item's warehouse max_qty
 
 Opening stock:
 

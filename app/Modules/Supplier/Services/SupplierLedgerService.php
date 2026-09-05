@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Services;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierLedgerEntry;
@@ -223,6 +224,6 @@ class SupplierLedgerService
 
     private function formatMoney(mixed $value): string
     {
-        return number_format((float) $value, 4, '.', '');
+        return PriceMath::normalize($value);
     }
 }

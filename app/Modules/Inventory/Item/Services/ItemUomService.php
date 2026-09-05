@@ -2,6 +2,7 @@
 
 namespace App\Modules\Inventory\Item\Services;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
@@ -287,6 +288,6 @@ class ItemUomService
             return null;
         }
 
-        return number_format((float) $value, 4, '.', '');
+        return PriceMath::normalize($value);
     }
 }

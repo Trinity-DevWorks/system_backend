@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Support;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 
@@ -54,8 +55,8 @@ final class StockAdjustmentQuantity
             return null;
         }
 
-        $entered = number_format((float) $unitCost, 4, '.', '');
-        if (bccomp($entered, '0', 4) < 0) {
+        $entered = PriceMath::normalize($unitCost);
+        if (bccomp($entered, '0', PriceMath::scale()) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 

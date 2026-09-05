@@ -34,6 +34,13 @@ class ItemController extends Controller
                 'track_lots' => (bool) $item->track_lots,
                 'allow_purchase' => (bool) $item->allow_purchase,
                 'is_active' => (bool) $item->is_active,
+                'base_uom' => $item->baseUom
+                    ? [
+                        'id' => $item->baseUom->id,
+                        'code' => $item->baseUom->code,
+                        'name' => $item->baseUom->name,
+                    ]
+                    : null,
                 'item_type' => $item->itemType
                     ? [
                         'id' => $item->itemType->id,
