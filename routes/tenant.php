@@ -57,6 +57,7 @@ use App\Modules\Rbac\Http\Controllers\RolePermissionController;
 use App\Modules\Rbac\Http\Controllers\UserAttachmentController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
+use App\Modules\Sales\SalesInvoice\Http\Controllers\SalesInvoiceController;
 use App\Modules\Salesman\Http\Controllers\SalesmanAttachmentController;
 use App\Modules\Salesman\Http\Controllers\SalesmanController;
 use App\Modules\Supplier\Http\Controllers\SupplierAddressController;
@@ -521,6 +522,23 @@ Route::middleware([
         });
 
         Route::middleware(['ensure.module:sales'])->group(function () {
+            Route::get('sales-invoices/item-availability', [SalesInvoiceController::class, 'itemAvailability'])
+                ->middleware('check.permission:sales_invoices,view');
+            Route::get('sales-invoices', [SalesInvoiceController::class, 'index'])
+                ->middleware('check.permission:sales_invoices,view');
+            Route::post('sales-invoices', [SalesInvoiceController::class, 'store'])
+                ->middleware('check.permission:sales_invoices,add');
+            Route::get('sales-invoices/{sales_invoice}', [SalesInvoiceController::class, 'show'])
+                ->middleware('check.permission:sales_invoices,view');
+            Route::put('sales-invoices/{sales_invoice}', [SalesInvoiceController::class, 'update'])
+                ->middleware('check.permission:sales_invoices,edit');
+            Route::delete('sales-invoices/{sales_invoice}', [SalesInvoiceController::class, 'destroy'])
+                ->middleware('check.permission:sales_invoices,delete');
+            Route::put('sales-invoices/{sales_invoice}/lines/sync', [SalesInvoiceController::class, 'syncLines'])
+                ->middleware('check.permission:sales_invoices,edit');
+            Route::post('sales-invoices/{sales_invoice}/post', [SalesInvoiceController::class, 'post'])
+                ->middleware('check.permission:sales_invoices,edit');
+
             Route::get('salesmen/{salesman}/attachments/{attachment}/download', [SalesmanAttachmentController::class, 'download'])
                 ->middleware('check.permission:salesmen,view')
                 ->name('salesmen.attachments.download');

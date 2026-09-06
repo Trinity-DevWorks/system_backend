@@ -159,6 +159,55 @@ readonly class StockMovementData
         );
     }
 
+    public static function forSale(
+        string $itemId,
+        int $warehouseId,
+        string $quantityDelta,
+        string $salesInvoiceId,
+        ?int $itemUomId,
+        ?string $notes,
+        ?string $userId,
+        ?int $lotId = null,
+    ): self {
+        return new self(
+            itemId: $itemId,
+            warehouseId: $warehouseId,
+            quantityDelta: self::formatDelta($quantityDelta),
+            type: StockMovementType::Sale,
+            referenceType: 'sales_invoice',
+            referenceId: $salesInvoiceId,
+            itemUomId: $itemUomId,
+            notes: self::normalizeNotes($notes),
+            userId: $userId,
+            unitCost: null,
+            lotId: $lotId,
+        );
+    }
+
+    public static function forSaleBundleComponent(
+        string $itemId,
+        int $warehouseId,
+        string $quantityDelta,
+        string $salesInvoiceId,
+        ?string $notes,
+        ?string $userId,
+        ?int $lotId = null,
+    ): self {
+        return new self(
+            itemId: $itemId,
+            warehouseId: $warehouseId,
+            quantityDelta: self::formatDelta($quantityDelta),
+            type: StockMovementType::BundleSale,
+            referenceType: 'sales_invoice',
+            referenceId: $salesInvoiceId,
+            itemUomId: null,
+            notes: self::normalizeNotes($notes),
+            userId: $userId,
+            unitCost: null,
+            lotId: $lotId,
+        );
+    }
+
     public static function forCount(
         string $itemId,
         int $warehouseId,

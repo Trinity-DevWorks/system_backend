@@ -10,13 +10,13 @@ readonly class CustomerLedgerEntryResponseData
 {
     public function __construct(
         public int $id,
-        public int $customerId,
+        public string $customerId,
         public int $currencyId,
         public ?string $currencyCode,
         public string $debit,
         public string $credit,
         public string $referenceType,
-        public ?int $referenceId,
+        public ?string $referenceId,
         public string $transactionDate,
         public string $createdAt,
         public string $updatedAt,
@@ -27,14 +27,14 @@ readonly class CustomerLedgerEntryResponseData
         $entry->loadMissing('currency:id,code');
 
         return new self(
-            id: $entry->id,
-            customerId: $entry->customer_id,
+            id: (int) $entry->id,
+            customerId: (string) $entry->customer_id,
             currencyId: (int) $entry->currency_id,
             currencyCode: $entry->currency?->code,
             debit: (string) $entry->debit,
             credit: (string) $entry->credit,
             referenceType: $entry->reference_type instanceof \BackedEnum ? $entry->reference_type->value : (string) $entry->reference_type,
-            referenceId: $entry->reference_id !== null ? (int) $entry->reference_id : null,
+            referenceId: $entry->reference_id !== null ? (string) $entry->reference_id : null,
             transactionDate: $entry->transaction_date->toDateString(),
             createdAt: (string) $entry->created_at,
             updatedAt: (string) $entry->updated_at,

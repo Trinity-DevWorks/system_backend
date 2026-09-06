@@ -25,6 +25,7 @@ class UpdateCustomerAddressRequest extends FormRequest
             'city' => ['sometimes', 'string', 'max:120'],
             'state' => ['sometimes', 'string', 'max:120'],
             'country' => ['sometimes', 'string', 'max:100'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:32'],
             'is_default' => ['sometimes', 'boolean'],
         ];
     }

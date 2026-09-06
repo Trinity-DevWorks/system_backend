@@ -20,7 +20,7 @@ class CustomerLedgerService
         return $this->balanceInCurrencyForCustomerId($customer->id, $currencyId);
     }
 
-    public function balanceInCurrencyForCustomerId(int $customerId, int $currencyId): string
+    public function balanceInCurrencyForCustomerId(string $customerId, int $currencyId): string
     {
         $raw = CustomerLedgerEntry::query()
             ->where('customer_id', $customerId)
@@ -52,7 +52,7 @@ class CustomerLedgerService
 
     /**
      * @param  list<int>  $customerIds
-     * @return array<int, array<int, string>> customer_id => currency_id => balance
+     * @return array<string, array<int, string>> customer_id => currency_id => balance
      */
     public function balancesGroupedByCustomerAndCurrency(array $customerIds): array
     {
@@ -68,7 +68,7 @@ class CustomerLedgerService
 
         $out = [];
         foreach ($rows as $row) {
-            $cid = (int) $row->customer_id;
+            $cid = (string) $row->customer_id;
             $curId = (int) $row->currency_id;
             $out[$cid][$curId] = $this->formatMoney($row->bal);
         }
@@ -107,7 +107,7 @@ class CustomerLedgerService
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
-        ?int $referenceId,
+        ?string $referenceId,
         string $transactionDate
     ): CustomerLedgerEntry {
         $d = (float) $debit;
@@ -147,7 +147,7 @@ class CustomerLedgerService
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
-        ?int $referenceId,
+        ?string $referenceId,
         string $transactionDate
     ): CustomerLedgerEntry {
         return CustomerLedgerEntry::query()->create([

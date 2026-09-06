@@ -32,8 +32,16 @@ class ItemController extends Controller
                 'name' => $item->name,
                 'track_inventory' => (bool) $item->track_inventory,
                 'track_lots' => (bool) $item->track_lots,
+                'allow_sale' => (bool) $item->allow_sale,
                 'allow_purchase' => (bool) $item->allow_purchase,
                 'is_active' => (bool) $item->is_active,
+                'vat_group_id' => $item->vat_group_id !== null ? (int) $item->vat_group_id : null,
+                'vat_group' => $item->vatGroup
+                    ? [
+                        'id' => $item->vatGroup->id,
+                        'percentage' => (string) $item->vatGroup->percentage,
+                    ]
+                    : null,
                 'base_uom' => $item->baseUom
                     ? [
                         'id' => $item->baseUom->id,
