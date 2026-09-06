@@ -71,11 +71,14 @@ class StoreCustomerRequest extends FormRequest
             'notes' => ['nullable', 'string'],
 
             'addresses' => ['nullable', 'array'],
+            'addresses.*.id' => ['nullable', 'integer'],
+            'addresses.*.address_type' => ['required_with:addresses', 'string', 'in:billing,shipping'],
             'addresses.*.address_line_1' => ['required_with:addresses', 'string', 'max:255'],
             'addresses.*.address_line_2' => ['nullable', 'string', 'max:255'],
             'addresses.*.city' => ['required_with:addresses', 'string', 'max:120'],
             'addresses.*.state' => ['required_with:addresses', 'string', 'max:120'],
             'addresses.*.country' => ['required_with:addresses', 'string', 'max:100'],
+            'addresses.*.phone' => ['nullable', 'string', 'max:32'],
             'addresses.*.is_default' => ['nullable', 'boolean'],
 
             'contacts' => ['nullable', 'array'],

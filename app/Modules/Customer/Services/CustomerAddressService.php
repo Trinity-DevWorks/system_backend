@@ -31,6 +31,7 @@ class CustomerAddressService
                 'city' => $data['city'],
                 'state' => $data['state'],
                 'country' => $data['country'],
+                'phone' => isset($data['phone']) && $data['phone'] !== '' ? (string) $data['phone'] : null,
                 'is_default' => (bool) ($data['is_default'] ?? false),
             ]);
 

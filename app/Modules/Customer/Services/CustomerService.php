@@ -128,11 +128,13 @@ class CustomerService
                     }
                     CustomerAddress::query()->create([
                         'customer_id' => $customer->id,
+                        'address_type' => $row['address_type'] ?? 'shipping',
                         'address_line_1' => $row['address_line_1'],
                         'address_line_2' => $row['address_line_2'] ?? null,
                         'city' => $row['city'],
                         'state' => $row['state'],
                         'country' => $row['country'],
+                        'phone' => isset($row['phone']) && $row['phone'] !== '' ? (string) $row['phone'] : null,
                         'is_default' => $isDefault,
                     ]);
                 }
@@ -190,7 +192,8 @@ class CustomerService
             $customer = $this->lockCustomerForBalanceWrites($customer);
 
             $currencyBalances = $patch['currency_balances'] ?? null;
-            $scalar = collect($patch)->except(['currency_balances', 'is_system'])->all();
+            $addresses = array_key_exists('addresses', $patch) ? $patch['addresses'] : null;
+            $scalar = collect($patch)->except(['currency_balances', 'is_system', 'addresses'])->all();
 
             if ($customer->is_system && array_key_exists('status', $scalar)) {
                 $next = $scalar['status'] instanceof CustomerStatus
@@ -211,6 +214,10 @@ class CustomerService
 
             if (is_array($currencyBalances)) {
                 $this->syncCurrencyBalances($customer, $currencyBalances);
+            }
+
+            if (is_array($addresses)) {
+                $this->syncAddresses($customer, $addresses);
             }
         });
 
@@ -321,6 +328,67 @@ class CustomerService
         }
 
         $customer->delete();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function syncAddresses(Customer $customer, array $rows): void
+    {
+        $keepIds = [];
+
+        foreach ($rows as $row) {
+            $payload = [
+                'address_type' => (string) ($row['address_type'] ?? 'shipping'),
+                'address_line_1' => $row['address_line_1'],
+                'address_line_2' => $row['address_line_2'] ?? null,
+                'city' => $row['city'],
+                'state' => $row['state'],
+                'country' => $row['country'],
+                'phone' => isset($row['phone']) && $row['phone'] !== '' ? (string) $row['phone'] : null,
+                'is_default' => (bool) ($row['is_default'] ?? false),
+            ];
+
+            $id = isset($row['id']) ? (int) $row['id'] : 0;
+            $existing = $id > 0 ? $customer->addresses()->whereKey($id)->first() : null;
+
+            if ($existing instanceof CustomerAddress) {
+                $existing->update($payload);
+                $keepIds[] = $existing->id;
+            } else {
+                $created = $customer->addresses()->create($payload);
+                $keepIds[] = $created->id;
+            }
+        }
+
+        $query = $customer->addresses();
+        if ($keepIds !== []) {
+            $query->whereNotIn('id', $keepIds);
+        }
+        $query->delete();
+
+        foreach (['billing', 'shipping'] as $type) {
+            $defaults = $customer->addresses()
+                ->where('address_type', $type)
+                ->where('is_default', true)
+                ->orderBy('id')
+                ->get();
+
+            if ($defaults->count() > 1) {
+                $keep = (int) $defaults->first()->id;
+                $customer->addresses()
+                    ->where('address_type', $type)
+                    ->where('is_default', true)
+                    ->where('id', '!=', $keep)
+                    ->update(['is_default' => false]);
+            } elseif ($defaults->isEmpty()) {
+                $customer->addresses()
+                    ->where('address_type', $type)
+                    ->orderBy('id')
+                    ->first()
+                    ?->update(['is_default' => true]);
+            }
+        }
     }
 
     public function normalizeDefaultAddresses(Customer $customer): void

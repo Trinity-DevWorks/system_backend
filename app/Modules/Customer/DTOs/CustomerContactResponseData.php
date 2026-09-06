@@ -11,7 +11,7 @@ readonly class CustomerContactResponseData
 {
     public function __construct(
         public int $id,
-        public int $customerId,
+        public string $customerId,
         public string $name,
         public ?string $phone,
         public ?string $email,
@@ -23,8 +23,8 @@ readonly class CustomerContactResponseData
     public static function fromModel(CustomerContact $contact): self
     {
         return new self(
-            id: $contact->id,
-            customerId: $contact->customer_id,
+            id: (int) $contact->id,
+            customerId: (string) $contact->customer_id,
             name: $contact->name,
             phone: $contact->phone,
             email: $contact->email,

@@ -116,6 +116,10 @@ return [
             'label' => 'Customer Management',
             'actions' => $crud,
         ],
+        'sales_invoices' => [
+            'label' => 'Sales Invoice Management',
+            'actions' => $crud,
+        ],
 
         'supplier_groups' => [
             'label' => 'Supplier Group Management',

@@ -170,13 +170,13 @@ readonly class CustomerResponseData
 
     /**
      * @param  Collection<int, Customer>  $customers
-     * @param  array<int, array<int, string>>  $ledgerGrouped  customer_id => currency_id => balance
+     * @param  array<string, array<int, string>>  $ledgerGrouped  customer_id => currency_id => balance
      */
     public static function collectionToArray(Collection $customers, array $ledgerGrouped, ?int $primaryCurrencyId): array
     {
         return $customers
             ->map(function (Customer $c) use ($ledgerGrouped, $primaryCurrencyId): array {
-                $byCur = $ledgerGrouped[$c->id] ?? [];
+                $byCur = $ledgerGrouped[(string) $c->id] ?? [];
 
                 return self::fromModel($c, $byCur, $primaryCurrencyId)->toArray();
             })

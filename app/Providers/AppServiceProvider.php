@@ -48,6 +48,8 @@ use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
@@ -102,6 +104,8 @@ class AppServiceProvider extends ServiceProvider
             'customer_address' => CustomerAddress::class,
             'customer_balance' => CustomerBalance::class,
             'salesman' => Salesman::class,
+            'sales_invoice' => SalesInvoice::class,
+            'sales_invoice_line' => SalesInvoiceLine::class,
             'supplier' => Supplier::class,
             'supplier_group' => SupplierGroup::class,
             'supplier_address' => SupplierAddress::class,

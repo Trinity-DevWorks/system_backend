@@ -18,6 +18,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'city',
     'state',
     'country',
+    'phone',
     'is_default',
 ])]
 class CustomerAddress extends Model implements AuditableContract
