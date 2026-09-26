@@ -321,6 +321,23 @@ class ProductionService
         });
     }
 
+    public function reverse(Production $document, ?string $userId): Production
+    {
+        return DB::transaction(function () use ($document, $userId): Production {
+            $locked = Production::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== ProductionStatus::Posted) {
+                abort(422, 'Only a posted production can be reversed.', [
+                    'X-Error-Code' => 'PRODUCTION_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->stockMovementService->reverseReference(Production::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $locked->update(['status' => ProductionStatus::Reversed]);
+
+            return $this->find($locked->id);
+        });
+    }
+
     /**
      * @param  array<string, int|null>  $preservedLots
      */

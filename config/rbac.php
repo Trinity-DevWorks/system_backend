@@ -22,7 +22,7 @@ $crud = ['view', 'add', 'edit', 'delete'];
 $viewEdit = ['view', 'edit'];
 
 return [
-    'actions' => ['view', 'add', 'edit', 'delete', 'import', 'export'],
+    'actions' => ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse'],
 
     'resources' => [
         'notifications' => [
@@ -88,7 +88,7 @@ return [
         ],
         'stock' => [
             'label' => 'Stock Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'reverse'],
         ],
         'salesmen' => [
             'label' => 'Salesman Management',
@@ -118,7 +118,7 @@ return [
         ],
         'sales_invoices' => [
             'label' => 'Sales Invoice Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'reverse'],
         ],
 
         'supplier_groups' => [
@@ -128,6 +128,10 @@ return [
         'suppliers' => [
             'label' => 'Supplier Management',
             'actions' => $crud,
+        ],
+        'purchase_invoices' => [
+            'label' => 'Purchase Invoice Management',
+            'actions' => [...$crud, 'reverse'],
         ],
     ],
 ];

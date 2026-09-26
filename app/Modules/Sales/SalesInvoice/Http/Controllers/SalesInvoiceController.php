@@ -114,6 +114,20 @@ class SalesInvoiceController extends Controller
         );
     }
 
+    public function reverse(Request $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $invoice = $this->salesInvoiceService->reverse(
+            $salesInvoice,
+            $userId !== null ? (string) $userId : null
+        );
+
+        return ApiResponse::success(
+            SalesInvoiceResponseData::fromModel($invoice),
+            'Sales invoice reversed successfully.'
+        );
+    }
+
     public function itemAvailability(Request $request): JsonResponse
     {
         $itemId = trim((string) $request->query('item_id', ''));

@@ -200,6 +200,23 @@ class OpeningStockService
         });
     }
 
+    public function reverse(OpeningStock $document, ?string $userId): OpeningStock
+    {
+        return DB::transaction(function () use ($document, $userId): OpeningStock {
+            $locked = OpeningStock::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== OpeningStockStatus::Posted) {
+                abort(422, 'Only a posted opening stock document can be reversed.', [
+                    'X-Error-Code' => 'OPENING_STOCK_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->stockMovementService->reverseReference(OpeningStock::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $locked->update(['status' => OpeningStockStatus::Reversed]);
+
+            return $this->find($locked->id);
+        });
+    }
+
     /**
      * @param  list<array<string, mixed>>  $lines
      */

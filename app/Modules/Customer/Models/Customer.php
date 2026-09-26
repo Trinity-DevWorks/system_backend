@@ -34,6 +34,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'payment_terms_id',
     'vat_group_id',
     'customer_code',
+    'account_number',
     'name',
     'email',
     'phone',

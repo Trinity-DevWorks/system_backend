@@ -37,6 +37,7 @@ readonly class RoleResponseData
                     'can_delete' => (bool) $p->pivot->can_delete,
                     'can_import' => (bool) $p->pivot->can_import,
                     'can_export' => (bool) $p->pivot->can_export,
+                    'can_reverse' => (bool) $p->pivot->can_reverse,
                 ];
             })->values()->all();
         }

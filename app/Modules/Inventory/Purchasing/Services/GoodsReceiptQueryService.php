@@ -18,12 +18,15 @@ class GoodsReceiptQueryService
 
     /**
      * @param  array{
-     *   status?:string,
-     *   purchase_order_id?:string,
-     *   warehouse_id?:int,
-     *   search?:string,
-     *   from?:string,
-     *   to?:string
+     *   status?:string|null,
+     *   purchase_order_id?:string|null,
+     *   supplier_id?:string|null,
+     *   warehouse_id?:int|null,
+     *   available_for_invoice?:bool|null,
+     *   except_purchase_invoice_id?:string|null,
+     *   search?:string|null,
+     *   from?:string|null,
+     *   to?:string|null
      * }  $filters
      * @return LengthAwarePaginator<int, GoodsReceipt>
      */
@@ -37,12 +40,15 @@ class GoodsReceiptQueryService
 
     /**
      * @param  array{
-     *   status?:string,
-     *   purchase_order_id?:string,
-     *   warehouse_id?:int,
-     *   search?:string,
-     *   from?:string,
-     *   to?:string
+     *   status?:string|null,
+     *   purchase_order_id?:string|null,
+     *   supplier_id?:string|null,
+     *   warehouse_id?:int|null,
+     *   available_for_invoice?:bool|null,
+     *   except_purchase_invoice_id?:string|null,
+     *   search?:string|null,
+     *   from?:string|null,
+     *   to?:string|null
      * }  $filters
      * @return Builder<GoodsReceipt>
      */
@@ -70,6 +76,22 @@ class GoodsReceiptQueryService
 
         if (! empty($filters['purchase_order_id'])) {
             $query->where('purchase_order_id', $filters['purchase_order_id']);
+        }
+
+        if (! empty($filters['supplier_id'])) {
+            $query->where('supplier_id', $filters['supplier_id']);
+        }
+
+        if (! empty($filters['available_for_invoice'])) {
+            $exceptId = $filters['except_purchase_invoice_id'] ?? null;
+            $query->whereNotExists(function ($sub) use ($exceptId): void {
+                $sub->selectRaw('1')
+                    ->from('purchase_invoices')
+                    ->whereColumn('purchase_invoices.goods_receipt_id', 'goods_receipts.id');
+                if (is_string($exceptId) && $exceptId !== '') {
+                    $sub->where('purchase_invoices.id', '!=', $exceptId);
+                }
+            });
         }
 
         if (! empty($filters['warehouse_id'])) {

@@ -23,7 +23,7 @@ class UpdateItemUomRequest extends FormRequest
 
         return [
             'currency_id' => ['sometimes', 'integer', 'exists:currencies,id'],
-            'conversion_factor' => ['sometimes', 'numeric', 'min:0.000001', 'max:999999.999999'],
+            'conversion_factor' => ['sometimes', 'numeric', 'gt:0', 'max:999999999.999999999999'],
             'barcode' => [
                 'sometimes',
                 'nullable',

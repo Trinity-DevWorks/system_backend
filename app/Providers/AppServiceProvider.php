@@ -26,6 +26,8 @@ use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoiceLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
 use App\Modules\Inventory\Stock\Models\BundleExplosion;
@@ -41,7 +43,11 @@ use App\Modules\Inventory\Stock\Models\StockAdjustmentReason;
 use App\Modules\Inventory\Stock\Models\StockCount;
 use App\Modules\Inventory\Stock\Models\StockCountLine;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
+use App\Modules\Inventory\Stock\Models\StockTransferClosure;
+use App\Modules\Inventory\Stock\Models\StockTransferClosureLine;
 use App\Modules\Inventory\Stock\Models\StockTransferLine;
+use App\Modules\Inventory\Stock\Models\StockTransferReceipt;
+use App\Modules\Inventory\Stock\Models\StockTransferReceiptLine;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
@@ -124,10 +130,16 @@ class AppServiceProvider extends ServiceProvider
             'recipe_item' => RecipeItem::class,
             'stock_transfer' => StockTransfer::class,
             'stock_transfer_line' => StockTransferLine::class,
+            'stock_transfer_receipt' => StockTransferReceipt::class,
+            'stock_transfer_receipt_line' => StockTransferReceiptLine::class,
+            'stock_transfer_closure' => StockTransferClosure::class,
+            'stock_transfer_closure_line' => StockTransferClosureLine::class,
             'purchase_order' => PurchaseOrder::class,
             'purchase_order_line' => PurchaseOrderLine::class,
             'goods_receipt' => GoodsReceipt::class,
             'goods_receipt_line' => GoodsReceiptLine::class,
+            'purchase_invoice' => PurchaseInvoice::class,
+            'purchase_invoice_line' => PurchaseInvoiceLine::class,
             'opening_stock' => OpeningStock::class,
             'opening_stock_line' => OpeningStockLine::class,
             'stock_adjustment' => StockAdjustment::class,

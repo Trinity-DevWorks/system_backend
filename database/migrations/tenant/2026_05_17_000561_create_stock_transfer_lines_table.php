@@ -16,6 +16,12 @@ return new class extends Migration
             $table->foreignId('lot_id')->nullable()->constrained('inventory_lots')->restrictOnDelete();
             $table->decimal('quantity', 14, 6);
             $table->decimal('base_quantity', 14, 6);
+            $table->decimal('received_quantity', 14, 6)->default(0);
+            $table->decimal('received_base_quantity', 14, 6)->default(0);
+            $table->decimal('returned_quantity', 14, 6)->default(0);
+            $table->decimal('returned_base_quantity', 14, 6)->default(0);
+            $table->decimal('written_off_quantity', 14, 6)->default(0);
+            $table->decimal('written_off_base_quantity', 14, 6)->default(0);
             $table->foreignId('item_uom_id')->nullable()->constrained('item_uoms')->nullOnDelete();
             $table->text('notes')->nullable();
             $table->timestamps();

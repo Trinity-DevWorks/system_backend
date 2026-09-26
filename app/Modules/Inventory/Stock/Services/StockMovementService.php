@@ -103,6 +103,83 @@ class StockMovementService
         });
     }
 
+    /**
+     * Post the opposite of every movement for a document, newest first.
+     * Caller must already be inside a database transaction.
+     */
+    public function reverseReference(string $referenceType, string $referenceId, ?string $userId): void
+    {
+        $movements = StockMovement::query()
+            ->where('reference_type', $referenceType)
+            ->where('reference_id', $referenceId)
+            ->orderByDesc('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($movements as $original) {
+            $this->reverseMovement($original, $userId);
+        }
+    }
+
+    private function reverseMovement(StockMovement $original, ?string $userId): void
+    {
+        $originalDelta = (string) $original->quantity_delta;
+        if (bccomp($originalDelta, '0', 6) === 0) {
+            return;
+        }
+
+        $item = Item::query()->findOrFail($original->item_id);
+        $warehouse = Warehouse::query()->findOrFail($original->warehouse_id);
+        $this->warehouseService->assertVisible($warehouse);
+
+        $reverseDelta = bcmul($originalDelta, '-1', 6);
+        $warehouseOnHand = StockBalance::onHandForWarehouse((string) $item->id, (int) $warehouse->id);
+        $balance = StockBalance::lockRow((string) $item->id, (int) $warehouse->id, $original->lot_id !== null ? (int) $original->lot_id : null);
+
+        $newQuantity = bcadd((string) $balance->quantity, $reverseDelta, 6);
+        if (
+            bccomp($newQuantity, '0', 6) < 0
+            && ! CompanySetting::current()->allowsNegativeStock()
+        ) {
+            abort(422, 'Insufficient stock to reverse this document.', ['X-Error-Code' => 'STOCK_INSUFFICIENT']);
+        }
+
+        $note = trim((string) ($original->notes ?? ''));
+        $reverse = StockMovement::query()->create([
+            'item_id' => $original->item_id,
+            'warehouse_id' => $original->warehouse_id,
+            'lot_id' => $original->lot_id,
+            'quantity_delta' => $reverseDelta,
+            'unit_cost' => $original->unit_cost,
+            'value_delta' => bcmul((string) ($original->value_delta ?? '0'), '-1', 4),
+            'type' => $original->type,
+            'reference_type' => $original->reference_type,
+            'reference_id' => $original->reference_id,
+            'item_uom_id' => $original->item_uom_id,
+            'notes' => $note !== '' ? 'Reverse — '.$note : 'Reverse',
+            'user_id' => $userId,
+        ]);
+
+        $this->inventoryCostingService->unwind(
+            $item,
+            $balance,
+            $originalDelta,
+            (string) ($original->value_delta ?? '0'),
+            $original->unit_cost !== null ? (string) $original->unit_cost : null,
+            (int) $original->id,
+            (int) $reverse->id,
+        );
+
+        $balance->update(['quantity' => $newQuantity]);
+
+        $this->instantLowStockNotifier->afterBalanceChanged(
+            $item,
+            $warehouse,
+            $warehouseOnHand,
+            bcadd($warehouseOnHand, $reverseDelta, 6),
+        );
+    }
+
     private function assertStockableItem(Item $item): void
     {
         if (! $item->is_active) {

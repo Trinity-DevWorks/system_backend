@@ -30,7 +30,7 @@ class ItemService
             ->get();
     }
 
-    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    public function paginateForTable(?string $search, int $perPage, array $filters = []): LengthAwarePaginator
     {
         $query = Item::query()
             ->with([
@@ -44,6 +44,16 @@ class ItemService
             ])
             ->orderBy('name');
 
+        if (array_key_exists('allow_sale', $filters) && $filters['allow_sale'] !== null) {
+            $query->where('allow_sale', (bool) $filters['allow_sale']);
+        }
+        if (array_key_exists('allow_purchase', $filters) && $filters['allow_purchase'] !== null) {
+            $query->where('allow_purchase', (bool) $filters['allow_purchase']);
+        }
+        if (array_key_exists('is_active', $filters) && $filters['is_active'] !== null) {
+            $query->where('is_active', (bool) $filters['is_active']);
+        }
+
         ListPagination::applySearch(
             $query,
             $search,
@@ -52,10 +62,66 @@ class ItemService
                 'category' => ['code', 'name'],
                 'brand' => ['code', 'name'],
                 'itemType' => ['code', 'name'],
+                'barcodes' => ['barcode'],
+                'itemUoms' => ['barcode'],
             ],
         );
 
         return $query->paginate($perPage);
+    }
+
+    /**
+     * Slim paginated items for sales/purchase invoice typeahead.
+     *
+     * @param  'sale'|'purchase'  $context
+     */
+    public function paginateForInvoice(string $context, ?string $search, int $perPage): LengthAwarePaginator
+    {
+        $query = Item::query()
+            ->select([
+                'id',
+                'item_code',
+                'name',
+                'vat_group_id',
+                'track_inventory',
+                'track_lots',
+                'allow_sale',
+                'allow_purchase',
+                'is_active',
+            ])
+            ->with(['vatGroup:id,percentage'])
+            ->where('is_active', true)
+            ->orderBy('name');
+
+        if ($context === 'purchase') {
+            $query->where('allow_purchase', true);
+        } else {
+            $query->where('allow_sale', true);
+        }
+
+        ListPagination::applySearch(
+            $query,
+            $search,
+            ['sku', 'item_code', 'plu_code', 'name'],
+            [
+                'barcodes' => ['barcode'],
+                'itemUoms' => ['barcode'],
+            ],
+        );
+
+        return $query->paginate($perPage);
+    }
+
+    /**
+     * Load UOMs + barcodes for one invoice line item (single round-trip).
+     */
+    public function findForInvoiceLineSetup(Item $item): Item
+    {
+        return $item->load([
+            'itemUoms.uom:id,code,name,unit_group_id',
+            'itemUoms.barcodes:id,item_uom_id,barcode,is_primary',
+            'barcodes:id,item_id,item_uom_id,barcode,is_primary',
+        ]);
     }
 
     /**

@@ -378,6 +378,7 @@ class SalesInvoiceApiTest extends TestCase
             'name' => 'Sales WH',
             'shortcut_name' => 'SWH',
             'type' => WarehouseType::Central,
+            'manager_id' => $this->tenantUser->id,
             'is_active' => true,
             'is_default' => true,
             'is_default_sales' => true,

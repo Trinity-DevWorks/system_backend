@@ -109,4 +109,18 @@ class StockAdjustmentController extends Controller
             'Stock adjustment posted successfully.'
         );
     }
+
+    public function reverse(Request $request, StockAdjustment $stock_adjustment): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $document = $this->stockAdjustmentService->reverse(
+            $stock_adjustment,
+            $userId !== null ? (string) $userId : null
+        );
+
+        return ApiResponse::success(
+            StockAdjustmentResponseData::fromModel($document),
+            'Stock adjustment reversed successfully.'
+        );
+    }
 }

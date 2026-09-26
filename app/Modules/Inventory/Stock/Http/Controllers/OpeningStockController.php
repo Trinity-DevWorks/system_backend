@@ -108,4 +108,18 @@ class OpeningStockController extends Controller
             'Opening stock document posted successfully.'
         );
     }
+
+    public function reverse(Request $request, OpeningStock $opening_stock): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $document = $this->openingStockService->reverse(
+            $opening_stock,
+            $userId !== null ? (string) $userId : null
+        );
+
+        return ApiResponse::success(
+            OpeningStockResponseData::fromModel($document),
+            'Opening stock document reversed successfully.'
+        );
+    }
 }

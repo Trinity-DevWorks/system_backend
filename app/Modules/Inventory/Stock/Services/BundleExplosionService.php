@@ -250,6 +250,23 @@ class BundleExplosionService
         });
     }
 
+    public function reverse(BundleExplosion $document, ?string $userId): BundleExplosion
+    {
+        return DB::transaction(function () use ($document, $userId): BundleExplosion {
+            $locked = BundleExplosion::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== BundleExplosionStatus::Posted) {
+                abort(422, 'Only a posted bundle explosion can be reversed.', [
+                    'X-Error-Code' => 'BUNDLE_EXPLOSION_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->stockMovementService->reverseReference(BundleExplosion::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $locked->update(['status' => BundleExplosionStatus::Reversed]);
+
+            return $this->find($locked->id);
+        });
+    }
+
     /**
      * @param  Collection<int, BundleItem>  $components
      * @param  array<string, int|null>  $preservedLots

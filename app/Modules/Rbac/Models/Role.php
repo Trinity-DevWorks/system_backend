@@ -47,7 +47,7 @@ class Role extends Model implements AuditableContract
     public function permissions(): BelongsToMany
     {
         return $this->belongsToMany(Permission::class, 'role_permissions')
-            ->withPivot(['can_view', 'can_add', 'can_edit', 'can_delete', 'can_import', 'can_export'])
+            ->withPivot(['can_view', 'can_add', 'can_edit', 'can_delete', 'can_import', 'can_export', 'can_reverse'])
             ->withTimestamps();
     }
 

@@ -38,6 +38,9 @@ class PurchaseOrderController extends Controller
             'search' => ListPagination::search($request),
             'from' => $request->string('from')->toString() ?: null,
             'to' => $request->string('to')->toString() ?: null,
+            'available_for_invoice' => $request->boolean('available_for_invoice'),
+            'available_for_receipt' => $request->boolean('available_for_receipt'),
+            'except_purchase_invoice_id' => $request->string('except_purchase_invoice_id')->toString() ?: null,
         ];
 
         return ListPagination::json(

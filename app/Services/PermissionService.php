@@ -129,6 +129,7 @@ class PermissionService
                 'role_permissions.can_delete',
                 'role_permissions.can_import',
                 'role_permissions.can_export',
+                'role_permissions.can_reverse',
             ])
             ->get();
 
@@ -145,6 +146,7 @@ class PermissionService
                 'can_delete' => $row->can_delete,
                 'can_import' => $row->can_import,
                 'can_export' => $row->can_export,
+                'can_reverse' => $row->can_reverse,
             ]);
             foreach ($clamped as $flag => $on) {
                 if ($on) {

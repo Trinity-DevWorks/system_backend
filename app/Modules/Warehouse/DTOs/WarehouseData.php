@@ -17,7 +17,7 @@ readonly class WarehouseData
         public ?int $branchId,
         public ?string $address,
         public ?string $description,
-        public ?string $managerId,
+        public string $managerId,
         public bool $isActive,
         public bool $isDefault,
         public bool $isDefaultSales,
@@ -57,9 +57,7 @@ readonly class WarehouseData
             branchId: $branchId,
             address: self::nullableString($data['address'] ?? null),
             description: self::nullableString($data['description'] ?? null),
-            managerId: isset($data['manager_id']) && $data['manager_id'] !== ''
-                ? (string) $data['manager_id']
-                : null,
+            managerId: (string) $data['manager_id'],
             isActive: (bool) $data['is_active'],
             isDefault: (bool) $data['is_default'],
             isDefaultSales: (bool) $data['is_default_sales'],

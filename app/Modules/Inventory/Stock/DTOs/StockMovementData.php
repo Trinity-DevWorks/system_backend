@@ -108,6 +108,32 @@ readonly class StockMovementData
         );
     }
 
+    public static function forPurchaseInvoice(
+        string $itemId,
+        int $warehouseId,
+        string $quantityDelta,
+        string $purchaseInvoiceId,
+        ?string $unitCost,
+        ?int $itemUomId,
+        ?string $notes,
+        ?string $userId,
+        ?int $lotId = null,
+    ): self {
+        return new self(
+            itemId: $itemId,
+            warehouseId: $warehouseId,
+            quantityDelta: self::formatDelta($quantityDelta),
+            type: StockMovementType::Purchase,
+            referenceType: 'purchase_invoice',
+            referenceId: $purchaseInvoiceId,
+            itemUomId: $itemUomId,
+            notes: self::normalizeNotes($notes),
+            userId: $userId,
+            unitCost: self::normalizeUnitCost($unitCost),
+            lotId: $lotId,
+        );
+    }
+
     public static function forProduction(
         string $itemId,
         int $warehouseId,

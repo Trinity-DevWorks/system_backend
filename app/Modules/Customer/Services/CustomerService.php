@@ -47,7 +47,7 @@ class CustomerService
             ->get();
     }
 
-    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    public function paginateForTable(?string $search, int $perPage, array $filters = []): LengthAwarePaginator
     {
         $query = Customer::query()
             ->select([
@@ -69,10 +69,14 @@ class CustomerService
             ])
             ->orderBy('name');
 
+        if (! empty($filters['exclude_blacklisted'])) {
+            $query->where('status', '!=', CustomerStatus::Blacklisted->value);
+        }
+
         ListPagination::applySearch(
             $query,
             $search,
-            ['customer_code', 'name', 'phone', 'email'],
+            ['customer_code', 'account_number', 'name', 'phone', 'email'],
             [
                 'customerGroup' => ['name'],
                 'salesman' => ['full_name', 'salesman_code'],
@@ -103,6 +107,7 @@ class CustomerService
                 'payment_terms_id' => $validated['payment_terms_id'] ?? null,
                 'vat_group_id' => $validated['vat_group_id'] ?? null,
                 'customer_code' => SequentialCodeGenerator::next(Customer::class, 'customer_code', 'CUST-', 6),
+                'account_number' => $validated['account_number'] ?? null,
                 'name' => $validated['name'],
                 'email' => $validated['email'] ?? null,
                 'phone' => $validated['phone'] ?? null,

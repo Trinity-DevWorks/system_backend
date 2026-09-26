@@ -23,7 +23,10 @@ class PurchaseOrderQueryService
      *   warehouse_id?:int,
      *   search?:string,
      *   from?:string,
-     *   to?:string
+     *   to?:string,
+     *   available_for_invoice?:bool|null,
+     *   available_for_receipt?:bool|null,
+     *   except_purchase_invoice_id?:string|null
      * }  $filters
      * @return LengthAwarePaginator<int, PurchaseOrder>
      */
@@ -42,7 +45,10 @@ class PurchaseOrderQueryService
      *   warehouse_id?:int,
      *   search?:string,
      *   from?:string,
-     *   to?:string
+     *   to?:string,
+     *   available_for_invoice?:bool|null,
+     *   available_for_receipt?:bool|null,
+     *   except_purchase_invoice_id?:string|null
      * }  $filters
      * @return Builder<PurchaseOrder>
      */
@@ -69,6 +75,35 @@ class PurchaseOrderQueryService
 
         if (! empty($filters['supplier_id'])) {
             $query->where('supplier_id', (string) $filters['supplier_id']);
+        }
+
+        if (! empty($filters['available_for_invoice'])) {
+            $exceptId = $filters['except_purchase_invoice_id'] ?? null;
+            $query->whereIn('status', [
+                PurchaseOrderStatus::Confirmed->value,
+                PurchaseOrderStatus::Sent->value,
+            ]);
+            $query->whereNotExists(function ($sub) use ($exceptId): void {
+                $sub->selectRaw('1')
+                    ->from('purchase_invoices')
+                    ->whereColumn('purchase_invoices.purchase_order_id', 'purchase_orders.id');
+                if (is_string($exceptId) && $exceptId !== '') {
+                    $sub->where('purchase_invoices.id', '!=', $exceptId);
+                }
+            });
+            $query->whereNotExists(function ($sub): void {
+                $sub->selectRaw('1')
+                    ->from('goods_receipts')
+                    ->whereColumn('goods_receipts.purchase_order_id', 'purchase_orders.id');
+            });
+        }
+
+        if (! empty($filters['available_for_receipt'])) {
+            $query->whereNotExists(function ($sub): void {
+                $sub->selectRaw('1')
+                    ->from('purchase_invoices')
+                    ->whereColumn('purchase_invoices.purchase_order_id', 'purchase_orders.id');
+            });
         }
 
         if (! empty($filters['warehouse_id'])) {

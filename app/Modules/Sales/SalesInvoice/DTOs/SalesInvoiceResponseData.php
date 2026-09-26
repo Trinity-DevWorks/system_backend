@@ -19,7 +19,7 @@ readonly class SalesInvoiceResponseData
     public static function fromModel(SalesInvoice $invoice, bool $includeLines = true): array
     {
         $invoice->loadMissing([
-            'customer:id,customer_code,name,status,is_system,salesman_id,payment_method_id,payment_terms_id',
+            'customer:id,customer_code,name,phone,status,is_system,salesman_id,payment_method_id,payment_terms_id',
             'warehouse:id,name,shortcut_name,is_active',
             'currency:id,code,name,symbol',
             'salesman:id,full_name,salesman_code',
@@ -95,6 +95,7 @@ readonly class SalesInvoiceResponseData
             'id' => $customer->id,
             'customer_code' => $customer->customer_code,
             'name' => $customer->name,
+            'phone' => $customer->phone,
             'status' => $customer->status instanceof \BackedEnum ? $customer->status->value : (string) $customer->status,
             'is_system' => (bool) $customer->is_system,
         ];

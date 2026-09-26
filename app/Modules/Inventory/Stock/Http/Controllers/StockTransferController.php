@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Inventory\Stock\DTOs\StockTransferLineResponseData;
 use App\Modules\Inventory\Stock\DTOs\StockTransferResponseData;
+use App\Modules\Inventory\Stock\Http\Requests\CloseStockTransferOpenRequest;
+use App\Modules\Inventory\Stock\Http\Requests\PostStockTransferReceiptRequest;
 use App\Modules\Inventory\Stock\Http\Requests\StoreStockTransferRequest;
 use App\Modules\Inventory\Stock\Http\Requests\SyncStockTransferLinesRequest;
 use App\Modules\Inventory\Stock\Http\Requests\UpdateStockTransferRequest;
@@ -108,17 +110,33 @@ class StockTransferController extends Controller
         );
     }
 
-    public function receive(Request $request, StockTransfer $stockTransfer): JsonResponse
+    public function receive(PostStockTransferReceiptRequest $request, StockTransfer $stockTransfer): JsonResponse
     {
         $userId = $request->user()?->id;
         $transfer = $this->stockTransferService->receive(
             $stockTransfer,
-            $userId !== null ? (string) $userId : null
+            $userId !== null ? (string) $userId : null,
+            $request->validated()
         );
 
         return ApiResponse::success(
             StockTransferResponseData::fromModel($transfer),
             'Stock transfer received successfully.'
+        );
+    }
+
+    public function closeOpen(CloseStockTransferOpenRequest $request, StockTransfer $stockTransfer): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $transfer = $this->stockTransferService->closeOpen(
+            $stockTransfer,
+            $userId !== null ? (string) $userId : null,
+            $request->validated()
+        );
+
+        return ApiResponse::success(
+            StockTransferResponseData::fromModel($transfer),
+            'Remaining transfer quantity closed successfully.'
         );
     }
 

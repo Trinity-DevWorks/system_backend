@@ -85,6 +85,83 @@ class InventoryCostingService
         ];
     }
 
+    /**
+     * Undo one posted movement's quantity and value on a locked balance row.
+     * Inbound layers that were already issued cannot be unwound.
+     */
+    public function unwind(
+        Item $item,
+        StockBalance $balance,
+        string $originalQuantityDelta,
+        string $originalValueDelta,
+        ?string $originalUnitCost,
+        int $originalMovementId,
+        int $reverseMovementId,
+    ): void {
+        $method = $this->methodFor($item);
+        $reverseQty = bcmul($originalQuantityDelta, '-1', Math::QTY_SCALE);
+        $oldQty = Math::qty($balance->quantity);
+        $newQty = bcadd($oldQty, $reverseQty, Math::QTY_SCALE);
+
+        if (bccomp($originalQuantityDelta, '0', Math::QTY_SCALE) > 0 && $method->usesLayers()) {
+            $this->releaseInboundLayer($originalMovementId, Math::qty($originalQuantityDelta));
+        }
+
+        $oldValue = Math::money($balance->inventory_value);
+        $newValue = bcsub($oldValue, Math::money($originalValueDelta), Math::MONEY_SCALE);
+
+        if (bccomp($newQty, '0', Math::QTY_SCALE) <= 0) {
+            $newValue = Math::money(0);
+        } elseif (bccomp($newValue, '0', Math::MONEY_SCALE) < 0) {
+            $newValue = Math::money(0);
+        } elseif ($method === InventoryCostingMethod::Standard) {
+            $standard = $this->standardUnitCost($item) ?? $this->normalizeCost($originalUnitCost);
+            if ($standard !== null) {
+                $newValue = Math::value($newQty, $standard);
+            }
+        }
+
+        if (bccomp($originalQuantityDelta, '0', Math::QTY_SCALE) < 0 && $method->usesLayers()) {
+            $restoreQty = Math::absQty($originalQuantityDelta);
+            $unitCost = $this->normalizeCost($originalUnitCost) ?? Math::money(0);
+            if (bccomp($restoreQty, '0', Math::QTY_SCALE) > 0) {
+                InventoryCostLayer::query()->create([
+                    'item_id' => $item->id,
+                    'warehouse_id' => $balance->warehouse_id,
+                    'lot_id' => $balance->lot_id,
+                    'source_movement_id' => $reverseMovementId,
+                    'quantity_remaining' => $restoreQty,
+                    'unit_cost' => $unitCost,
+                ]);
+            }
+        }
+
+        $this->writeBalanceValue($balance, $newQty, $newValue, $this->normalizeCost($originalUnitCost));
+    }
+
+    private function releaseInboundLayer(int $sourceMovementId, string $qty): void
+    {
+        $layer = InventoryCostLayer::query()
+            ->where('source_movement_id', $sourceMovementId)
+            ->lockForUpdate()
+            ->first();
+
+        if ($layer === null) {
+            return;
+        }
+
+        $remaining = Math::qty($layer->quantity_remaining);
+        if (bccomp($remaining, $qty, Math::QTY_SCALE) < 0) {
+            abort(422, 'Stock from this document has already been issued and cannot be reversed.', [
+                'X-Error-Code' => 'DOCUMENT_REVERSE_STOCK_CONSUMED',
+            ]);
+        }
+
+        $layer->update([
+            'quantity_remaining' => bcsub($remaining, $qty, Math::QTY_SCALE),
+        ]);
+    }
+
     private function resolveInboundUnitCost(
         InventoryCostingMethod $method,
         Item $item,

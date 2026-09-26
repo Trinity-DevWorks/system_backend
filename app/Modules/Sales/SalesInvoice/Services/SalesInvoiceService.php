@@ -226,6 +226,43 @@ class SalesInvoiceService
         });
     }
 
+    public function reverse(SalesInvoice $invoice, ?string $userId): SalesInvoice
+    {
+        return DB::transaction(function () use ($invoice, $userId): SalesInvoice {
+            $locked = SalesInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== SalesInvoiceStatus::Posted) {
+                abort(422, 'Only a posted sales invoice can be reversed.', [
+                    'X-Error-Code' => 'SALES_INVOICE_NOT_POSTED',
+                ]);
+            }
+            if (bccomp((string) $locked->paid_total, '0', 4) > 0) {
+                abort(422, 'This invoice has payments and cannot be reversed.', [
+                    'X-Error-Code' => 'SALES_INVOICE_HAS_PAYMENTS',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+
+            $this->stockMovementService->reverseReference(SalesInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
+
+            if (bccomp((string) $locked->grand_total, '0', 4) > 0) {
+                $customer = SalesInvoiceRules::assertCustomer((string) $locked->customer_id);
+                $this->customerLedgerService->postEntry(
+                    $customer,
+                    (int) $locked->currency_id,
+                    '0',
+                    (string) $locked->grand_total,
+                    LedgerReferenceType::Invoice,
+                    (string) $locked->id,
+                    now()->toDateString(),
+                );
+            }
+
+            $locked->update(['status' => SalesInvoiceStatus::Reversed]);
+
+            return $this->find($locked->id);
+        });
+    }
+
     /**
      * Warehouses (and lots) that currently hold the item — for line warehouse pickers.
      *

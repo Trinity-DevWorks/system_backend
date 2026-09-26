@@ -28,6 +28,7 @@ class StoreRoleRequest extends FormRequest
             'permissions.*.can_delete' => ['required', 'boolean'],
             'permissions.*.can_import' => ['required', 'boolean'],
             'permissions.*.can_export' => ['required', 'boolean'],
+            'permissions.*.can_reverse' => ['required', 'boolean'],
         ];
     }
 }

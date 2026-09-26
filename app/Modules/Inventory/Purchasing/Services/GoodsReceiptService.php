@@ -7,12 +7,15 @@ namespace App\Modules\Inventory\Purchasing\Services;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Enums\GoodsReceiptStatus;
+use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
 use App\Modules\Inventory\Purchasing\Support\GoodsReceiptRules;
+use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderLineQuantity;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
@@ -22,6 +25,7 @@ use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Supplier\Services\SupplierItemService;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -273,6 +277,77 @@ class GoodsReceiptService
         return $posted;
     }
 
+    public function reverse(GoodsReceipt $receipt, ?string $userId): GoodsReceipt
+    {
+        return DB::transaction(function () use ($receipt, $userId): GoodsReceipt {
+            $locked = GoodsReceipt::query()->whereKey($receipt->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== GoodsReceiptStatus::Posted) {
+                abort(422, 'Only a posted goods receipt can be reversed.', [
+                    'X-Error-Code' => 'GOODS_RECEIPT_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+
+            $hasInvoice = PurchaseInvoice::query()
+                ->where('goods_receipt_id', $locked->id)
+                ->where('status', '!=', PurchaseInvoiceStatus::Reversed->value)
+                ->exists();
+            if ($hasInvoice) {
+                abort(422, 'Delete the draft purchase invoice, or reverse the posted one, before reversing this goods receipt.', [
+                    'X-Error-Code' => 'GOODS_RECEIPT_HAS_INVOICE',
+                ]);
+            }
+
+            $this->stockMovementService->reverseReference(GoodsReceipt::REFERENCE_TYPE, (string) $locked->id, $userId);
+
+            $lines = GoodsReceiptLine::query()
+                ->where('goods_receipt_id', $locked->id)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($lines as $line) {
+                if ($line->purchase_order_line_id === null) {
+                    continue;
+                }
+                $poLine = PurchaseOrderLine::query()->whereKey($line->purchase_order_line_id)->lockForUpdate()->first();
+                if ($poLine === null) {
+                    continue;
+                }
+                $received = bcsub((string) $poLine->received_quantity, (string) $line->quantity, 6);
+                $receivedBase = bcsub((string) $poLine->received_base_quantity, (string) $line->base_quantity, 6);
+                if (bccomp($received, '0', 6) < 0) {
+                    $received = '0';
+                }
+                if (bccomp($receivedBase, '0', 6) < 0) {
+                    $receivedBase = '0';
+                }
+                $poLine->update([
+                    'received_quantity' => $received,
+                    'received_base_quantity' => $receivedBase,
+                ]);
+            }
+
+            if ($locked->purchase_order_id !== null) {
+                $order = PurchaseOrder::query()->whereKey($locked->purchase_order_id)->lockForUpdate()->first();
+                if ($order !== null && $order->status === PurchaseOrderStatus::Closed) {
+                    $order->setRelation('lines', PurchaseOrderLine::query()->where('purchase_order_id', $order->id)->get());
+                    if (! GoodsReceiptRules::isFullyReceived($order)) {
+                        $order->update([
+                            'status' => $order->sent_at !== null
+                                ? PurchaseOrderStatus::Sent
+                                : PurchaseOrderStatus::Confirmed,
+                        ]);
+                    }
+                }
+            }
+
+            $locked->update(['status' => GoodsReceiptStatus::Reversed]);
+
+            return $this->find($locked->id);
+        });
+    }
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -286,6 +361,10 @@ class GoodsReceiptService
         $this->warehouseService->assertVisibleById((int) $order->warehouse_id);
 
         return DB::transaction(function () use ($data, $order, $userId): GoodsReceipt {
+            $order = PurchaseOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            GoodsReceiptRules::assertReceivablePurchaseOrder($order);
+            PurchaseInvoiceRules::assertPurchaseOrderNotInvoiced($order);
+
             $receipt = GoodsReceipt::query()->create([
                 'purchase_order_id' => $order->id,
                 'supplier_id' => $order->supplier_id,
@@ -294,9 +373,8 @@ class GoodsReceiptService
                 'received_date' => $data['received_date'] ?? now()->toDateString(),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
+                'grn_number' => SequentialCodeGenerator::next(GoodsReceipt::class, 'grn_number', 'GRN-'),
             ]);
-
-            $receipt->update(['grn_number' => $this->formatGrnNumber()]);
 
             if (! empty($data['lines'])) {
                 $this->replaceLines($receipt, $data['lines']);
@@ -338,9 +416,8 @@ class GoodsReceiptService
                 'received_date' => $data['received_date'] ?? now()->toDateString(),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
+                'grn_number' => SequentialCodeGenerator::next(GoodsReceipt::class, 'grn_number', 'GRN-'),
             ]);
-
-            $receipt->update(['grn_number' => $this->formatGrnNumber()]);
 
             if (! empty($data['lines'])) {
                 $this->replaceLines($receipt, $data['lines']);
@@ -620,13 +697,6 @@ class GoodsReceiptService
         GoodsReceiptRules::assertDraft($locked);
 
         return $locked;
-    }
-
-    private function formatGrnNumber(): string
-    {
-        $seq = GoodsReceipt::query()->count();
-
-        return 'GRN-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
     }
 
     private function normalizeNotes(mixed $value): ?string

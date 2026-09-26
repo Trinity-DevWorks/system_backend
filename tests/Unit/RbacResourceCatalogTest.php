@@ -27,6 +27,7 @@ class RbacResourceCatalogTest extends TestCase
             'can_delete' => true,
             'can_import' => true,
             'can_export' => true,
+            'can_reverse' => true,
         ]);
 
         $this->assertTrue($clamped['can_view']);
@@ -35,6 +36,7 @@ class RbacResourceCatalogTest extends TestCase
         $this->assertFalse($clamped['can_delete']);
         $this->assertFalse($clamped['can_import']);
         $this->assertTrue($clamped['can_export']);
+        $this->assertFalse($clamped['can_reverse']);
     }
 
     public function test_users_keep_crud_without_import_export(): void
@@ -47,13 +49,17 @@ class RbacResourceCatalogTest extends TestCase
         $this->assertFalse(RbacResourceCatalog::allows('users', 'export'));
     }
 
-    public function test_stock_allows_full_crud(): void
+    public function test_stock_allows_full_crud_and_reverse(): void
     {
         $this->assertSame(
-            ['view', 'add', 'edit', 'delete'],
+            ['view', 'add', 'edit', 'delete', 'reverse'],
             RbacResourceCatalog::actions('stock'),
         );
         $this->assertTrue(RbacResourceCatalog::allows('stock', 'add'));
         $this->assertTrue(RbacResourceCatalog::allows('stock', 'delete'));
+        $this->assertTrue(RbacResourceCatalog::allows('stock', 'reverse'));
+        $this->assertTrue(RbacResourceCatalog::allows('sales_invoices', 'reverse'));
+        $this->assertTrue(RbacResourceCatalog::allows('purchase_invoices', 'reverse'));
+        $this->assertFalse(RbacResourceCatalog::allows('customers', 'reverse'));
     }
 }

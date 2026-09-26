@@ -16,6 +16,12 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'lot_id',
     'quantity',
     'base_quantity',
+    'received_quantity',
+    'received_base_quantity',
+    'returned_quantity',
+    'returned_base_quantity',
+    'written_off_quantity',
+    'written_off_base_quantity',
     'item_uom_id',
     'notes',
 ])]
@@ -31,6 +37,12 @@ class StockTransferLine extends Model implements AuditableContract
         return [
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',
+            'received_quantity' => 'decimal:6',
+            'received_base_quantity' => 'decimal:6',
+            'returned_quantity' => 'decimal:6',
+            'returned_base_quantity' => 'decimal:6',
+            'written_off_quantity' => 'decimal:6',
+            'written_off_base_quantity' => 'decimal:6',
         ];
     }
 
