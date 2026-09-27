@@ -21,6 +21,7 @@ return new class extends Migration
             $table->boolean('tax_enabled')->default(true);
             $table->string('tax_price_mode', 16)->default('exclusive');
             $table->boolean('allow_negative_stock')->default(false);
+            $table->boolean('invoice_proofs_enabled')->default(false);
             $table->string('inventory_costing_method', 32)->default('moving_average');
             $table->string('price_rounding_mode', 32)->default('half_up');
             $table->unsignedTinyInteger('price_decimal_places')->default(2);

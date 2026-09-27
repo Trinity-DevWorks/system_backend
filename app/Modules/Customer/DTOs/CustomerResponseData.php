@@ -49,6 +49,7 @@ readonly class CustomerResponseData
         public ?string $exemptedTo,
         public ?string $vatNumber,
         public ?string $notes,
+        public ?string $walletAddress,
         /** Ledger balance in primary currency. */
         public string $balance,
         public array $currencyBalances,
@@ -160,6 +161,7 @@ readonly class CustomerResponseData
             exemptedTo: $customer->exempted_to?->toDateString(),
             vatNumber: $customer->vat_number,
             notes: $customer->notes,
+            walletAddress: $customer->wallet_address,
             balance: $primaryBalance,
             currencyBalances: $currencyBalances,
             createdAt: (string) $customer->created_at,
@@ -219,6 +221,7 @@ readonly class CustomerResponseData
             'exempted_to' => $this->exemptedTo,
             'vat_number' => $this->vatNumber,
             'notes' => $this->notes,
+            'wallet_address' => $this->walletAddress,
             'balance' => $this->balance,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,

@@ -6,6 +6,7 @@ namespace App\Modules\CompanyProfile\DTOs;
 
 use App\Models\Attachment;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
+use App\Modules\InvoiceProof\Support\BlockchainNetwork;
 
 readonly class CompanyProfileResponseData
 {
@@ -22,6 +23,11 @@ readonly class CompanyProfileResponseData
         public ?string $taxNumber,
         public ?string $registrationNumber,
         public ?string $address,
+        public ?string $walletAddress,
+        public ?string $walletAddressAnvil,
+        public ?string $walletAddressSepolia,
+        public string $blockchainNetwork,
+        public int $blockchainChainId,
         public ?array $logo,
         public string $createdAt,
         public string $updatedAt,
@@ -41,6 +47,11 @@ readonly class CompanyProfileResponseData
             taxNumber: $profile->tax_number,
             registrationNumber: $profile->registration_number,
             address: $profile->address,
+            walletAddress: $profile->wallet_address,
+            walletAddressAnvil: $profile->wallet_address_anvil,
+            walletAddressSepolia: $profile->wallet_address_sepolia,
+            blockchainNetwork: BlockchainNetwork::key(),
+            blockchainChainId: (int) config('blockchain.chain_id'),
             logo: self::logoBrief($profile->logoAttachment),
             createdAt: (string) $profile->created_at,
             updatedAt: (string) $profile->updated_at,
@@ -62,6 +73,11 @@ readonly class CompanyProfileResponseData
             'tax_number' => $this->taxNumber,
             'registration_number' => $this->registrationNumber,
             'address' => $this->address,
+            'wallet_address' => $this->walletAddress,
+            'wallet_address_anvil' => $this->walletAddressAnvil,
+            'wallet_address_sepolia' => $this->walletAddressSepolia,
+            'blockchain_network' => $this->blockchainNetwork,
+            'blockchain_chain_id' => $this->blockchainChainId,
             'logo' => $this->logo,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,

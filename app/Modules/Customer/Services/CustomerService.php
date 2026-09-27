@@ -10,6 +10,9 @@ use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
 use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerContact;
+use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
+use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
+use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Support\ListPagination;
 use App\Support\SequentialCodeGenerator;
 use Carbon\Carbon;
@@ -20,7 +23,9 @@ use Illuminate\Support\Facades\DB;
 class CustomerService
 {
     public function __construct(
-        private readonly CustomerLedgerService $ledgerService
+        private readonly CustomerLedgerService $ledgerService,
+        private readonly CompanySafeSignerGuard $companySafeSignerGuard,
+        private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
     ) {}
 
     public function listForTable(): Collection
@@ -95,7 +100,10 @@ class CustomerService
      */
     public function create(array $validated): Customer
     {
-        return DB::transaction(function () use ($validated): Customer {
+        $customer = DB::transaction(function () use ($validated): Customer {
+            $walletAddress = WalletAddress::normalize($validated['wallet_address'] ?? null);
+            $this->companySafeSignerGuard->abortIfCustomerWalletForbidden($walletAddress);
+
             $customer = Customer::query()->create([
                 'customer_group_id' => $validated['customer_group_id'] ?? null,
                 'salesman_id' => $validated['salesman_id'] ?? null,
@@ -116,6 +124,7 @@ class CustomerService
                 'exempted_to' => $validated['exempted_to'] ?? null,
                 'vat_number' => $validated['vat_number'] ?? null,
                 'notes' => $validated['notes'] ?? null,
+                'wallet_address' => $walletAddress,
             ]);
 
             $addresses = $validated['addresses'] ?? [];
@@ -181,6 +190,12 @@ class CustomerService
                 'vatGroup',
             ]);
         });
+
+        if (WalletAddress::normalize($customer->wallet_address) !== null) {
+            $this->invoiceChainRegistrationService->dispatchBuyerPartySync((string) $customer->id);
+        }
+
+        return $customer;
     }
 
     /**
@@ -188,12 +203,19 @@ class CustomerService
      */
     public function update(Customer $customer, array $patch): Customer
     {
+        $previousWallet = WalletAddress::normalize($customer->wallet_address);
+
         DB::transaction(function () use ($customer, $patch): void {
             $customer = $this->lockCustomerForBalanceWrites($customer);
 
             $currencyBalances = $patch['currency_balances'] ?? null;
             $addresses = array_key_exists('addresses', $patch) ? $patch['addresses'] : null;
             $scalar = collect($patch)->except(['currency_balances', 'is_system', 'addresses'])->all();
+
+            if (array_key_exists('wallet_address', $scalar)) {
+                $scalar['wallet_address'] = WalletAddress::normalize($scalar['wallet_address']);
+                $this->companySafeSignerGuard->abortIfCustomerWalletForbidden($scalar['wallet_address']);
+            }
 
             if ($customer->is_system && array_key_exists('status', $scalar)) {
                 $next = $scalar['status'] instanceof CustomerStatus
@@ -221,7 +243,7 @@ class CustomerService
             }
         });
 
-        return $customer->refresh()->load([
+        $customer = $customer->refresh()->load([
             'customerGroup',
             'balances.currency',
             'salesman',
@@ -229,6 +251,13 @@ class CustomerService
             'paymentTerm',
             'vatGroup',
         ]);
+
+        $nextWallet = WalletAddress::normalize($customer->wallet_address);
+        if ($nextWallet !== null && $nextWallet !== $previousWallet) {
+            $this->invoiceChainRegistrationService->dispatchBuyerPartySync((string) $customer->id);
+        }
+
+        return $customer;
     }
 
     /**

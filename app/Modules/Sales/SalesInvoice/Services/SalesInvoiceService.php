@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Sales\SalesInvoice\Services;
 
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\ExchangeRateService;
@@ -17,6 +18,8 @@ use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Models\InventoryLot;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
+use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
+use App\Modules\InvoiceProof\Services\InvoiceSnapshotService;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
@@ -40,6 +43,8 @@ class SalesInvoiceService
         private readonly CustomerLedgerService $customerLedgerService,
         private readonly StockMovementService $stockMovementService,
         private readonly ExchangeRateService $exchangeRateService,
+        private readonly InvoiceSnapshotService $invoiceSnapshotService,
+        private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
     ) {}
 
     /**
@@ -182,7 +187,8 @@ class SalesInvoiceService
 
     public function post(SalesInvoice $invoice, ?string $userId): SalesInvoice
     {
-        return DB::transaction(function () use ($invoice, $userId): SalesInvoice {
+        $proofId = null;
+        $posted = DB::transaction(function () use ($invoice, $userId, &$proofId): SalesInvoice {
             $locked = SalesInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             SalesInvoiceRules::assertPostable($locked);
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
@@ -222,8 +228,20 @@ class SalesInvoiceService
                 'posted_at' => now(),
             ]);
 
+            if (CompanySetting::current()->invoiceProofsEnabled()) {
+                $snapshot = $this->invoiceSnapshotService->captureSalesInvoice($locked->fresh() ?? $locked);
+                $this->invoiceChainRegistrationService->recordPending($snapshot);
+                $proofId = (string) $snapshot->id;
+            }
+
             return $this->find($locked->id);
         });
+
+        if (is_string($proofId)) {
+            $this->invoiceChainRegistrationService->dispatchRegistration($proofId);
+        }
+
+        return $posted;
     }
 
     /**

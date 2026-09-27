@@ -7,12 +7,14 @@ namespace App\Modules\Sales\SalesInvoice\DTOs;
 use App\Models\User;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
+use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Warehouse\Models\Warehouse;
+use JsonException;
 
 readonly class SalesInvoiceResponseData
 {
@@ -79,7 +81,151 @@ readonly class SalesInvoiceResponseData
             $payload['lines'] = SalesInvoiceLineResponseData::collectionToArray($invoice->lines);
         }
 
+        return self::applySealedSnapshot($invoice, $payload);
+    }
+
+    /**
+     * Posted proof text replaces live master data. Payment balances stay live.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private static function applySealedSnapshot(SalesInvoice $invoice, array $payload): array
+    {
+        $invoice->loadMissing('snapshot');
+        $canonical = self::canonicalArray($invoice->snapshot);
+        if ($canonical === null) {
+            return $payload;
+        }
+
+        foreach (['invoice_number', 'invoice_date', 'due_on', 'exchange_rate', 'notes', 'subtotal', 'discount_total', 'tax_total', 'adjustment', 'grand_total'] as $key) {
+            if (array_key_exists($key, $canonical)) {
+                $payload[$key] = $canonical[$key];
+            }
+        }
+
+        if (is_array($payload['customer'] ?? null) && is_array($canonical['buyer'] ?? null)) {
+            $payload['customer']['name'] = $canonical['buyer']['name'] ?? $payload['customer']['name'];
+        }
+
+        if (is_array($payload['currency'] ?? null) && is_string($canonical['currency_code'] ?? null)) {
+            $payload['currency']['code'] = $canonical['currency_code'];
+        }
+
+        $payload['billing_address'] = self::sealedAddress($canonical['billing_address'] ?? null, $invoice->billing_address);
+        $payload['shipping_address'] = self::sealedAddress($canonical['shipping_address'] ?? null, $invoice->shipping_address);
+        self::overlayNamed($payload, 'warehouse', $canonical['warehouse'] ?? null, ['name', 'shortcut_name']);
+        self::overlayNamed($payload, 'salesman', $canonical['salesman'] ?? null, ['code', 'name']);
+        self::overlayNamed($payload, 'payment_method', $canonical['payment_method'] ?? null, ['code', 'name']);
+        self::overlayNamed($payload, 'payment_term', $canonical['payment_terms'] ?? null, ['code', 'name', 'due_days']);
+
+        if (is_array($payload['lines'] ?? null) && is_array($canonical['lines'] ?? null)) {
+            foreach ($payload['lines'] as $index => $line) {
+                if (! is_array($line) || ! is_array($canonical['lines'][$index] ?? null)) {
+                    continue;
+                }
+                $payload['lines'][$index] = self::sealedLine($line, $canonical['lines'][$index]);
+            }
+        }
+
         return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private static function canonicalArray(?InvoiceSnapshot $snapshot): ?array
+    {
+        if ($snapshot === null || ! is_string($snapshot->canonical_json) || $snapshot->canonical_json === '') {
+            return null;
+        }
+
+        try {
+            $canonical = json_decode($snapshot->canonical_json, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return null;
+        }
+
+        return is_array($canonical) ? $canonical : null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $live
+     * @return array<string, mixed>|null
+     */
+    private static function sealedAddress(mixed $sealed, mixed $live): ?array
+    {
+        if (! is_array($sealed)) {
+            return null;
+        }
+
+        $liveId = is_array($live) ? ($live['id'] ?? null) : null;
+
+        return [
+            'id' => $liveId,
+            'address_line_1' => $sealed['address_line_1'] ?? '',
+            'address_line_2' => $sealed['address_line_2'] ?? null,
+            'city' => $sealed['city'] ?? '',
+            'state' => $sealed['state'] ?? '',
+            'country' => $sealed['country'] ?? '',
+            'phone' => $sealed['phone'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<string>  $keys
+     */
+    private static function overlayNamed(array &$payload, string $payloadKey, mixed $sealed, array $keys): void
+    {
+        if (! is_array($sealed) || ! is_array($payload[$payloadKey] ?? null)) {
+            return;
+        }
+
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $sealed)) {
+                $payload[$payloadKey][$key] = $sealed[$key];
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $line
+     * @param  array<string, mixed>  $sealed
+     * @return array<string, mixed>
+     */
+    private static function sealedLine(array $line, array $sealed): array
+    {
+        foreach (['quantity', 'unit_price', 'discount_percent', 'discount_amount', 'tax_rate', 'line_subtotal', 'tax_amount', 'line_total', 'description', 'notes'] as $key) {
+            if (array_key_exists($key, $sealed)) {
+                $line[$key] = $sealed[$key];
+            }
+        }
+
+        if (is_array($line['item'] ?? null)) {
+            if (array_key_exists('item_code', $sealed)) {
+                $line['item']['item_code'] = $sealed['item_code'];
+            }
+            if (array_key_exists('item_name', $sealed)) {
+                $line['item']['name'] = $sealed['item_name'];
+            }
+        }
+
+        if (is_array($line['item_uom']['uom'] ?? null) && array_key_exists('uom_code', $sealed)) {
+            $line['item_uom']['uom']['code'] = $sealed['uom_code'];
+        }
+
+        if (is_array($line['warehouse'] ?? null) && is_array($sealed['warehouse'] ?? null)) {
+            $line['warehouse']['name'] = $sealed['warehouse']['name'] ?? $line['warehouse']['name'];
+            $line['warehouse']['shortcut_name'] = $sealed['warehouse']['shortcut_name'] ?? $line['warehouse']['shortcut_name'];
+        }
+
+        if (is_array($line['lot'] ?? null) && is_array($sealed['lot'] ?? null)) {
+            $line['lot']['lot_number'] = $sealed['lot']['lot_number'] ?? $line['lot']['lot_number'];
+            $line['lot']['expiry_date'] = $sealed['lot']['expiry_date'] ?? $line['lot']['expiry_date'];
+        }
+
+        return $line;
     }
 
     /**

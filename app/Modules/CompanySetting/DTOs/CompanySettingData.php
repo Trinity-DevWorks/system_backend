@@ -24,6 +24,7 @@ readonly class CompanySettingData
         public bool $taxEnabled,
         public TaxPriceMode $taxPriceMode,
         public bool $allowNegativeStock,
+        public bool $invoiceProofsEnabled,
         public InventoryCostingMethod $inventoryCostingMethod,
         public PriceRoundingMode $priceRoundingMode,
         public int $priceDecimalPlaces,
@@ -58,6 +59,9 @@ readonly class CompanySettingData
             allowNegativeStock: array_key_exists('allow_negative_stock', $data)
                 ? (bool) $data['allow_negative_stock']
                 : (bool) $settings->allow_negative_stock,
+            invoiceProofsEnabled: array_key_exists('invoice_proofs_enabled', $data)
+                ? (bool) $data['invoice_proofs_enabled']
+                : (bool) $settings->invoice_proofs_enabled,
             inventoryCostingMethod: array_key_exists('inventory_costing_method', $data)
                 ? InventoryCostingMethod::from((string) $data['inventory_costing_method'])
                 : $settings->inventory_costing_method,
@@ -80,6 +84,7 @@ readonly class CompanySettingData
      *     tax_enabled: bool,
      *     tax_price_mode: string,
      *     allow_negative_stock: bool,
+     *     invoice_proofs_enabled: bool,
      *     inventory_costing_method: string,
      *     price_rounding_mode: string,
      *     price_decimal_places: int
@@ -96,6 +101,7 @@ readonly class CompanySettingData
             'tax_enabled' => $this->taxEnabled,
             'tax_price_mode' => $this->taxPriceMode->value,
             'allow_negative_stock' => $this->allowNegativeStock,
+            'invoice_proofs_enabled' => $this->invoiceProofsEnabled,
             'inventory_costing_method' => $this->inventoryCostingMethod->value,
             'price_rounding_mode' => $this->priceRoundingMode->value,
             'price_decimal_places' => $this->priceDecimalPlaces,

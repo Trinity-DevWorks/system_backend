@@ -6,6 +6,8 @@ namespace App\Modules\CompanyProfile\DTOs;
 
 use App\Modules\CompanyProfile\Http\Requests\UpdateCompanyProfileRequest;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
+use App\Modules\InvoiceProof\Support\BlockchainNetwork;
+use App\Modules\InvoiceProof\Support\WalletAddress;
 
 readonly class CompanyProfileData
 {
@@ -18,11 +20,29 @@ readonly class CompanyProfileData
         public ?string $taxNumber,
         public ?string $registrationNumber,
         public ?string $address,
+        public ?string $walletAddressAnvil,
+        public ?string $walletAddressSepolia,
     ) {}
 
     public static function fromUpdateRequest(UpdateCompanyProfileRequest $request, CompanyProfile $profile): self
     {
         $data = $request->validated();
+
+        $anvil = array_key_exists('wallet_address_anvil', $data)
+            ? WalletAddress::normalize($data['wallet_address_anvil'])
+            : $profile->wallet_address_anvil;
+        $sepolia = array_key_exists('wallet_address_sepolia', $data)
+            ? WalletAddress::normalize($data['wallet_address_sepolia'])
+            : $profile->wallet_address_sepolia;
+
+        if (array_key_exists('wallet_address', $data)) {
+            $active = WalletAddress::normalize($data['wallet_address']);
+            if (BlockchainNetwork::isSepolia()) {
+                $sepolia = $active;
+            } else {
+                $anvil = $active;
+            }
+        }
 
         return new self(
             companyName: $data['company_name'] ?? $profile->company_name,
@@ -47,6 +67,8 @@ readonly class CompanyProfileData
             address: array_key_exists('address', $data)
                 ? self::nullableString($data['address'])
                 : $profile->address,
+            walletAddressAnvil: $anvil,
+            walletAddressSepolia: $sepolia,
         );
     }
 
@@ -59,7 +81,9 @@ readonly class CompanyProfileData
      *     website: ?string,
      *     tax_number: ?string,
      *     registration_number: ?string,
-     *     address: ?string
+     *     address: ?string,
+     *     wallet_address_anvil: ?string,
+     *     wallet_address_sepolia: ?string
      * }
      */
     public function toArray(): array
@@ -73,6 +97,8 @@ readonly class CompanyProfileData
             'tax_number' => $this->taxNumber,
             'registration_number' => $this->registrationNumber,
             'address' => $this->address,
+            'wallet_address_anvil' => $this->walletAddressAnvil,
+            'wallet_address_sepolia' => $this->walletAddressSepolia,
         ];
     }
 

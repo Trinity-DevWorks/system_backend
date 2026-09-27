@@ -44,6 +44,13 @@ use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferLine;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
+use App\Modules\InvoiceProof\Contracts\CompanySafeOwnerLookup;
+use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
+use App\Modules\InvoiceProof\Support\BlockchainNetwork;
+use App\Modules\InvoiceProof\Support\DisabledInvoiceRegistryGateway;
+use App\Modules\InvoiceProof\Support\EmptyCompanySafeOwnerLookup;
+use App\Modules\InvoiceProof\Support\JsonRpcCompanySafeOwnerLookup;
+use App\Modules\InvoiceProof\Support\JsonRpcInvoiceRegistryGateway;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Rbac\Models\Permission;
@@ -74,6 +81,38 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(InvoiceRegistryGateway::class, function (): InvoiceRegistryGateway {
+            $contract = trim((string) config('blockchain.contract_address'));
+            $registrar = trim((string) config('blockchain.registrar_address'));
+            $rpc = trim((string) config('blockchain.rpc_url'));
+
+            if (! (bool) config('blockchain.enabled') || $contract === '' || $registrar === '' || $rpc === '') {
+                return new DisabledInvoiceRegistryGateway;
+            }
+
+            return new JsonRpcInvoiceRegistryGateway(
+                rpcUrl: $rpc,
+                contractAddress: $contract,
+                registrarAddress: $registrar,
+                timeoutSeconds: max(1, (int) config('blockchain.timeout_seconds', 15)),
+                receiptAttempts: max(1, (int) config('blockchain.receipt_attempts', 10)),
+                chainId: (int) config('blockchain.chain_id', 0),
+                registrarPrivateKey: BlockchainNetwork::registrarPrivateKey(),
+            );
+        });
+
+        $this->app->bind(CompanySafeOwnerLookup::class, function (): CompanySafeOwnerLookup {
+            $rpc = trim((string) config('blockchain.rpc_url'));
+            if (! (bool) config('blockchain.enabled') || $rpc === '') {
+                return new EmptyCompanySafeOwnerLookup;
+            }
+
+            return new JsonRpcCompanySafeOwnerLookup(
+                rpcUrl: $rpc,
+                timeoutSeconds: max(1, (int) config('blockchain.timeout_seconds', 15)),
+            );
+        });
+
         $this->app->bind(VirusScanner::class, function (): VirusScanner {
             return match ((string) config('attachments.virus_scan.driver', 'null')) {
                 'clamav' => new ClamAvVirusScanner,

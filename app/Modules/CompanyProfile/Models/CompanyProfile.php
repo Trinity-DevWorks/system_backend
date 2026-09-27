@@ -6,7 +6,9 @@ namespace App\Modules\CompanyProfile\Models;
 
 use App\Enums\AttachmentViewerCategory;
 use App\Models\Attachment;
+use App\Modules\InvoiceProof\Support\BlockchainNetwork;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -23,6 +25,9 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'tax_number',
     'registration_number',
     'address',
+    'wallet_address',
+    'wallet_address_anvil',
+    'wallet_address_sepolia',
 ])]
 class CompanyProfile extends Model implements AuditableContract
 {
@@ -30,6 +35,32 @@ class CompanyProfile extends Model implements AuditableContract
     use HasUuids;
 
     protected $table = 'company_profiles';
+
+    /**
+     * Active-network company Safe. Writes land on the Anvil or Sepolia column.
+     *
+     * @return Attribute<string|null, string|null>
+     */
+    protected function walletAddress(): Attribute
+    {
+        return Attribute::make(
+            get: function (): ?string {
+                $column = BlockchainNetwork::walletColumn();
+                if (array_key_exists($column, $this->attributes)) {
+                    $value = $this->attributes[$column];
+
+                    return is_string($value) ? $value : null;
+                }
+
+                $legacy = $this->attributes['wallet_address'] ?? null;
+
+                return is_string($legacy) ? $legacy : null;
+            },
+            set: function (?string $value): array {
+                return [BlockchainNetwork::walletColumn() => $value];
+            },
+        );
+    }
 
     /**
      * Single row per tenant database.

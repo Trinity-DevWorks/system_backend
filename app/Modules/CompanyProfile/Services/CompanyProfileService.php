@@ -6,11 +6,19 @@ namespace App\Modules\CompanyProfile\Services;
 
 use App\Modules\CompanyProfile\DTOs\CompanyProfileData;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
+use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
+use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
+use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Support\TenantReferenceCache;
 
 class CompanyProfileService
 {
     public const CACHE_KEY = 'company_profile.singleton';
+
+    public function __construct(
+        private readonly CompanySafeSignerGuard $companySafeSignerGuard,
+        private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
+    ) {}
 
     public function get(): CompanyProfile
     {
@@ -25,11 +33,22 @@ class CompanyProfileService
 
     public function update(CompanyProfileData $data): CompanyProfile
     {
+        $payload = $data->toArray();
+        $this->companySafeSignerGuard->abortIfCompanySafeForbidden($payload['wallet_address_anvil'] ?? null);
+        $this->companySafeSignerGuard->abortIfCompanySafeForbidden($payload['wallet_address_sepolia'] ?? null);
+
         $profile = CompanyProfile::singleton();
-        $profile->update($data->toArray());
+        $previousWallet = WalletAddress::normalize($profile->wallet_address);
+        $profile->update($payload);
         $this->forgetCache();
 
-        return $profile->refresh()->load('logoAttachment');
+        $profile = $profile->refresh()->load('logoAttachment');
+        $nextWallet = WalletAddress::normalize($profile->wallet_address);
+        if ($nextWallet !== null && $nextWallet !== $previousWallet) {
+            $this->invoiceChainRegistrationService->dispatchSupplierPartySync();
+        }
+
+        return $profile;
     }
 
     public function forgetCache(): void

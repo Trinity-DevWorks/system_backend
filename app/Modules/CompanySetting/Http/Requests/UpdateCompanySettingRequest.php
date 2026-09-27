@@ -47,6 +47,7 @@ class UpdateCompanySettingRequest extends FormRequest
             'tax_enabled' => ['sometimes', 'required', 'boolean'],
             'tax_price_mode' => ['sometimes', 'required', Rule::enum(TaxPriceMode::class)],
             'allow_negative_stock' => ['sometimes', 'required', 'boolean'],
+            'invoice_proofs_enabled' => ['sometimes', 'required', 'boolean'],
             'inventory_costing_method' => ['sometimes', 'required', Rule::enum(InventoryCostingMethod::class)],
             'price_rounding_mode' => ['sometimes', 'required', Rule::enum(PriceRoundingMode::class)],
             'price_decimal_places' => ['sometimes', 'required', 'integer', 'min:0', 'max:6'],

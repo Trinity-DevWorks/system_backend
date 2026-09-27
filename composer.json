@@ -7,7 +7,9 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "ext-gmp": "*",
         "barryvdh/laravel-dompdf": "^3.1",
+        "kornrunner/keccak": "^1.1",
         "laravel/framework": "^13.0",
         "laravel/reverb": "^1.11",
         "laravel/sanctum": "^4.3",
@@ -17,6 +19,7 @@
         "owen-it/laravel-auditing": "^14.0",
         "phpoffice/phpspreadsheet": "^1.30.4",
         "predis/predis": "^3.4",
+        "simplito/elliptic-php": "^1.0.12",
         "stancl/tenancy": "^3.10"
     },
     "require-dev": {

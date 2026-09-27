@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Modules\Customer\Enums\CustomerType;
 use App\Modules\Customer\Models\Customer;
 use App\Services\ModuleEntitlementService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -112,6 +113,10 @@ trait InteractsWithTenant
      */
     protected function asTenantRequest(?string $bearerToken = null): static
     {
+        // Each HTTP call must re-resolve Sanctum from the Bearer header.
+        // Otherwise a prior request's authenticated user sticks on the guard.
+        Auth::forgetGuards();
+
         return $this->withHeaders($this->tenantJsonHeaders($bearerToken));
     }
 

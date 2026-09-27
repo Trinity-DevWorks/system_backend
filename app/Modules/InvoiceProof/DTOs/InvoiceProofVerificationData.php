@@ -1,0 +1,99 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\InvoiceProof\DTOs;
+
+use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
+
+/**
+ * Verification payload. Status is the snapshot hash versus the chain hash.
+ * live_invoice_matches is diagnostic and does not change status.
+ */
+readonly class InvoiceProofVerificationData
+{
+    /**
+     * @param  array{
+     *     domain: array{name: string, version: string, chain_id: int, verifying_contract: string},
+     *     primary_type: string,
+     *     types: array<string, list<array{name: string, type: string}>>,
+     *     message: array{proof_id: string, content_hash: string, invoice_number: string}
+     * }|null  $eip712
+     */
+    public function __construct(
+        public InvoiceProofVerificationStatus $status,
+        public ?bool $snapshotIntact,
+        public ?bool $liveInvoiceMatches,
+        public ?bool $chainMatches,
+        public ?int $chainId = null,
+        public ?string $contractAddress = null,
+        public ?string $supplierWallet = null,
+        public ?string $buyerWallet = null,
+        public ?string $proofId = null,
+        public ?array $eip712 = null,
+        public bool $canApproveAsCompany = false,
+        public bool $canApproveAsBuyer = false,
+        public ?string $blockchainNetwork = null,
+        public ?string $safeTxServiceUrl = null,
+        public ?string $safeApiKey = null,
+        public ?string $registeredAt = null,
+        public ?string $supplierApprovedAt = null,
+        public ?string $buyerApprovedAt = null,
+    ) {}
+
+    public static function notRegistered(): self
+    {
+        return new self(
+            status: InvoiceProofVerificationStatus::NotRegistered,
+            snapshotIntact: null,
+            liveInvoiceMatches: null,
+            chainMatches: null,
+        );
+    }
+
+    /**
+     * @return array{
+     *     status: string,
+     *     snapshot_intact: ?bool,
+     *     live_invoice_matches: ?bool,
+     *     chain_matches: ?bool,
+     *     chain_id: ?int,
+     *     contract_address: ?string,
+     *     supplier_wallet: ?string,
+     *     buyer_wallet: ?string,
+     *     proof_id: ?string,
+     *     eip712: ?array<string, mixed>,
+     *     can_approve_as_company: bool,
+     *     can_approve_as_buyer: bool,
+     *     blockchain_network: ?string,
+     *     safe_tx_service_url: ?string,
+     *     safe_api_key: ?string,
+     *     registered_at: ?string,
+     *     supplier_approved_at: ?string,
+     *     buyer_approved_at: ?string
+     * }
+     */
+    public function toArray(): array
+    {
+        return [
+            'status' => $this->status->value,
+            'snapshot_intact' => $this->snapshotIntact,
+            'live_invoice_matches' => $this->liveInvoiceMatches,
+            'chain_matches' => $this->chainMatches,
+            'chain_id' => $this->chainId,
+            'contract_address' => $this->contractAddress,
+            'supplier_wallet' => $this->supplierWallet,
+            'buyer_wallet' => $this->buyerWallet,
+            'proof_id' => $this->proofId,
+            'eip712' => $this->eip712,
+            'can_approve_as_company' => $this->canApproveAsCompany,
+            'can_approve_as_buyer' => $this->canApproveAsBuyer,
+            'blockchain_network' => $this->blockchainNetwork,
+            'safe_tx_service_url' => $this->safeTxServiceUrl,
+            'safe_api_key' => $this->safeApiKey,
+            'registered_at' => $this->registeredAt,
+            'supplier_approved_at' => $this->supplierApprovedAt,
+            'buyer_approved_at' => $this->buyerApprovedAt,
+        ];
+    }
+}

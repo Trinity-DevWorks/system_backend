@@ -20,6 +20,9 @@ return new class extends Migration
             $table->string('tax_number', 64)->nullable();
             $table->string('registration_number', 64)->nullable();
             $table->text('address')->nullable();
+            $table->string('wallet_address', 42)->nullable();
+            $table->string('wallet_address_anvil', 42)->nullable();
+            $table->string('wallet_address_sepolia', 42)->nullable();
             $table->timestamps();
         });
     }

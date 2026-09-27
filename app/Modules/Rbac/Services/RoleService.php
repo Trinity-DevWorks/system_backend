@@ -2,6 +2,7 @@
 
 namespace App\Modules\Rbac\Services;
 
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\RolePermission;
@@ -159,6 +160,21 @@ class RoleService
      */
     private function syncPermissions(Role $role, array $permissionRows): void
     {
+        $invoiceProofsLocked = ! CompanySetting::current()->invoiceProofsEnabled();
+        $lockedInvoiceProofsView = false;
+        $lockedInvoiceProofsEdit = false;
+        if ($invoiceProofsLocked) {
+            $invoiceProofsId = Permission::query()->where('resource_key', 'invoice_proofs')->value('id');
+            if ($invoiceProofsId !== null) {
+                $existing = RolePermission::query()
+                    ->where('role_id', $role->id)
+                    ->where('permission_id', $invoiceProofsId)
+                    ->first();
+                $lockedInvoiceProofsView = (bool) $existing?->can_view;
+                $lockedInvoiceProofsEdit = (bool) $existing?->can_edit;
+            }
+        }
+
         $role->permissions()->detach();
 
         $permissionIds = [];
@@ -182,6 +198,13 @@ class RoleService
                     'can_import' => false,
                     'can_export' => false,
                 ];
+
+            if ($invoiceProofsLocked && $resourceKey === 'invoice_proofs') {
+                $flags = RbacResourceCatalog::clampFlags($resourceKey, [
+                    'can_view' => $lockedInvoiceProofsView,
+                    'can_edit' => $lockedInvoiceProofsEdit,
+                ]);
+            }
 
             RolePermission::query()->create([
                 'role_id' => $role->id,

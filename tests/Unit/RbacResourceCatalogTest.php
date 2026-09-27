@@ -56,4 +56,28 @@ class RbacResourceCatalogTest extends TestCase
         $this->assertTrue(RbacResourceCatalog::allows('stock', 'add'));
         $this->assertTrue(RbacResourceCatalog::allows('stock', 'delete'));
     }
+
+    public function test_invoice_proofs_allows_view_and_edit(): void
+    {
+        $this->assertSame(['view', 'edit'], RbacResourceCatalog::actions('invoice_proofs'));
+        $this->assertTrue(RbacResourceCatalog::allows('invoice_proofs', 'view'));
+        $this->assertTrue(RbacResourceCatalog::allows('invoice_proofs', 'edit'));
+        $this->assertFalse(RbacResourceCatalog::allows('invoice_proofs', 'add'));
+
+        $clamped = RbacResourceCatalog::clampFlags('invoice_proofs', [
+            'can_view' => true,
+            'can_add' => true,
+            'can_edit' => true,
+            'can_delete' => true,
+            'can_import' => true,
+            'can_export' => true,
+        ]);
+
+        $this->assertTrue($clamped['can_view']);
+        $this->assertFalse($clamped['can_add']);
+        $this->assertTrue($clamped['can_edit']);
+        $this->assertFalse($clamped['can_delete']);
+        $this->assertFalse($clamped['can_import']);
+        $this->assertFalse($clamped['can_export']);
+    }
 }

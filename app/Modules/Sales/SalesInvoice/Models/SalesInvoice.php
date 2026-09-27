@@ -7,6 +7,8 @@ namespace App\Modules\Sales\SalesInvoice\Models;
 use App\Models\User;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
+use App\Modules\InvoiceProof\Enums\InvoiceProofType;
+use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
@@ -17,6 +19,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
@@ -154,5 +157,14 @@ class SalesInvoice extends Model implements AuditableContract
     public function lines(): HasMany
     {
         return $this->hasMany(SalesInvoiceLine::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /**
+     * @return HasOne<InvoiceSnapshot, $this>
+     */
+    public function snapshot(): HasOne
+    {
+        return $this->hasOne(InvoiceSnapshot::class, 'invoice_id')
+            ->where('invoice_type', InvoiceProofType::Sales);
     }
 }

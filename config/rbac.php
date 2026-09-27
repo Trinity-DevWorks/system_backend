@@ -120,6 +120,10 @@ return [
             'label' => 'Sales Invoice Management',
             'actions' => $crud,
         ],
+        'invoice_proofs' => [
+            'label' => 'Invoice Proofs',
+            'actions' => ['view', 'edit'],
+        ],
 
         'supplier_groups' => [
             'label' => 'Supplier Group Management',

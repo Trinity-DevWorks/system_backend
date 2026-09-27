@@ -46,10 +46,10 @@ return [
         ],
         'sales' => [
             'name' => 'Sales / CRM',
-            'description' => 'Customers, customer groups, salesmen, and sales invoices.',
+            'description' => 'Customers, customer groups, salesmen, sales invoices, and invoice proofs.',
             'is_core' => false,
             'sort_order' => 40,
-            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_invoices'],
+            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_invoices', 'invoice_proofs'],
         ],
         'purchasing' => [
             'name' => 'Purchasing',

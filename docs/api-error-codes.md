@@ -4,13 +4,13 @@ This project uses a stable JSON API envelope for errors:
 
 ```json
 {
-  "success": false,
-  "status": false,
-  "message": "Human-readable message",
-  "code": "STABLE_ERROR_CODE",
-  "errors": {},
-  "error_type": "optional",
-  "details": {}
+    "success": false,
+    "status": false,
+    "message": "Human-readable message",
+    "code": "STABLE_ERROR_CODE",
+    "errors": {},
+    "error_type": "optional",
+    "details": {}
 }
 ```
 
@@ -71,6 +71,8 @@ VAT / lookup groups:
 - `CUSTOMER_GROUP_DELETE_HAS_MEMBERS` (HTTP 409)
 - `CUSTOMER_SYSTEM_DELETE_FORBIDDEN` (HTTP 422)
 - `CUSTOMER_SYSTEM_STATUS_FORBIDDEN` (HTTP 422)
+- `CUSTOMER_WALLET_IS_COMPANY_SAFE_OWNER` (HTTP 422) — customer `wallet_address` is the company Safe or one of its owners
+- `COMPANY_SAFE_WALLET_USED_BY_CUSTOMER` (HTTP 422) — company Safe (or an owner of that Safe) matches an existing customer wallet
 - `SUPPLIER_GROUP_DELETE_HAS_MEMBERS` (HTTP 409)
 
 Currency:
@@ -239,6 +241,30 @@ Customer/Supplier scope and attachments:
 - `SUPPLIER_CONTACT_SCOPE_MISMATCH` (HTTP 404)
 - `SUPPLIER_ADDRESS_SCOPE_MISMATCH` (HTTP 404)
 
+Invoice proof:
+
+- `INVOICE_SNAPSHOT_ALREADY_EXISTS` (HTTP 409) — a posted invoice already has an immutable snapshot
+- `INVOICE_PROOFS_DISABLED` (HTTP 403) — company setting `invoice_proofs_enabled` is off; snapshot, chain registration, verify, company approval, and the public buyer portal are skipped
+- `PROOF_LINK_INVALID` (HTTP 404) — buyer portal HMAC `exp`/`sig` is missing or does not match
+- `PROOF_LINK_EXPIRED` (HTTP 403) — buyer portal HMAC `exp` is in the past
+- `PROOF_WALLET_REQUIRED` (HTTP 422) — buyer portal unlock requires a customer `wallet_address`
+- `PROOF_WALLET_MISMATCH` (HTTP 422) — personal_sign signer is not the invoice buyer wallet
+- `PROOF_BUYER_UNKNOWN` (HTTP 422) — buyer history sign-in wallet is not stored on a customer of this company
+- `PROOF_UNLOCK_INVALID` (HTTP 422) — unlock nonce is missing, expired, or already used
+- `SALES_INVOICE_NOT_POSTED` (HTTP 422) — company approval is only allowed on posted invoices
+- `INVOICE_PROOF_NOT_ON_CHAIN` (HTTP 422) — the hash is not on InvoiceRegistry yet
+- `INVOICE_PROOF_TAMPERED` (HTTP 422) — local or chain proof no longer matches; company approval is blocked
+- `INVOICE_PROOF_COMPANY_ALREADY_APPROVED` (HTTP 422) — `approveBySupplier` has already run for this proof
+- `INVOICE_PROOF_PARTY_NOT_SET` (HTTP 422) — company approve was requested but the on-chain supplier slot is still `address(0)`
+- `COMPANY_APPROVAL_REQUIRES_WALLET` (HTTP 422) — company approval is executed by the company Safe (`msg.sender` = supplier); Laravel does not broadcast `approveBySupplier`
+- `INVOICE_PROOF_CHAIN_FAILED` (HTTP 503) — JSON-RPC / InvoiceRegistry write failed
+
+Local invoice proof verification (`GET sales-invoices/{id}/verify`, `sales_invoices,view` plus `invoice_proofs,view` or `invoice_proofs,edit`) returns `data.status` of `verified`, `tampered`, `not_registered`, `pending_chain`, `waiting_company`, `waiting_buyer`, or `fully_approved`. It is a successful 200 check, not an error code. `chain_matches` is `null` until the hash is read from the InvoiceRegistry contract. Status compares the SHA-256 of the sealed snapshot JSON with that on-chain hash. `snapshot_intact` is false when that JSON no longer hashes to the stored `content_hash`, which is also `tampered`. `live_invoice_matches` only reports whether the current ERP invoice still serializes to the stored hash; it does not change `status`. A later customer, item, or invoice edit therefore stays `verified`, `waiting_company`, `waiting_buyer`, or `fully_approved` while the snapshot and chain still match. When the hash matches, `waiting_company` / `waiting_buyer` / `fully_approved` reflect on-chain approvals **only when that party address is set**. A matching register with empty supplier/buyer slots is `verified` (sealed); approvals stay unavailable until `setParties` fills the slot. When `waiting_company`, the payload includes `supplier_wallet` (the company Safe), `blockchain_network`, `safe_tx_service_url` (Sepolia only), and EIP-712 `SupplierApproval` typed data so the UI can encode `approveBySupplier`. Company approve is executed by that Safe (`msg.sender` must be supplier). When `waiting_buyer`, it includes `buyer_wallet` and `BuyerApproval` typed data for MetaMask. The endpoint is only available while invoice proofs are enabled.
+
+Company approval (`POST sales-invoices/{id}/approve-as-company`) remains an ERP permission gate (`invoice_proofs,edit`), not `sales_invoices,edit`. Laravel does not broadcast `approveBySupplier`. The company Safe executes that call: Anvil uses the local 1-of-1 `OneOwnerSafe`; Sepolia uses Safe{Wallet} (typically 2-of-N) via the Safe Transaction Service. The Invoice Proofs row on the permissions matrix can only be assigned while company setting `invoice_proofs_enabled` is on; while it is off the checkboxes stay visible but disabled. `registerInvoice` stamps `proofId` + `contentHash` and optional party addresses (company Safe for the active network and/or customer `wallet_address`). Missing wallets register as `address(0)`; the seal still succeeds. Later wallet saves call registrar `setParties` to fill empty slots without changing the hash. Customer wallets must not be the company Safe or a Safe owner (`CUSTOMER_WALLET_IS_COMPANY_SAFE_OWNER`); company Safe addresses must not already be used by a customer (or have an owner that is) (`COMPANY_SAFE_WALLET_USED_BY_CUSTOMER`). `BLOCKCHAIN_NETWORK=anvil|sepolia` selects RPC, chain, contract, and registrar. Sepolia registration is signed with `BLOCKCHAIN_SEPOLIA_REGISTRAR_PRIVATE_KEY`.
+
+The public buyer portal (`GET proofs/{sales_invoice}?exp=&sig=`) is unauthenticated on the tenant host. The clerk copies a signed URL from `POST sales-invoices/{id}/buyer-portal-link` (`sales_invoices,view` and `invoice_proofs,view`). UUID alone 404s with `PROOF_LINK_INVALID`; an expired stamp is `PROOF_LINK_EXPIRED`. A valid HMAC GET returns only a locked challenge (`locked`, `chain_id`, `buyer_wallet`, `nonce`, `message`) — no lines, totals, parties, `content_hash`, or EIP-712 payload. The buyer unlocks with `POST proofs/{sales_invoice}/unlock?exp=&sig=` by connecting the customer wallet and signing that message (`personal_sign`). A matching one-use nonce returns the sealed snapshot. Commercial fields (parties, dates, lines, totals) come from the sealed snapshot, not the live ERP invoice. It also returns `content_hash` (SHA-256 of the snapshot) so the buyer can see the seal they are binding to. It does not return `canonical_json` or company-approve flags. After the company has approved, `supplier_wallet` is the company Safe address stored on the chain. Verify compares the sealed snapshot hash with the chain. A mismatch is `tampered` and `can_approve_as_buyer` is false. Live ERP edits are not part of that check. Draft invoices and posted invoices with no snapshot 404. Buyer approval is signed in the browser (MetaMask) on that page; there is no buyer private key on the server.
+
 ## Rules For New Endpoints
 
 1. Always return `code` for API errors.
@@ -246,6 +272,5 @@ Customer/Supplier scope and attachments:
 3. Add new codes only when behavior/handling differs.
 4. Keep one semantic meaning per code.
 5. When adding a new code:
-   - add backend usage in response envelope
-   - add frontend translations under `ApiErrors.codes.<CODE>` in `messages/en.json` and `messages/ar.json`
-
+    - add backend usage in response envelope
+    - add frontend translations under `ApiErrors.codes.<CODE>` in `messages/en.json` and `messages/ar.json`

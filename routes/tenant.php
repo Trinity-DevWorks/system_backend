@@ -43,6 +43,7 @@ use App\Modules\Inventory\Stock\Http\Controllers\StockMovementController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockTransferController;
 use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
 use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementController;
+use App\Modules\InvoiceProof\Http\Controllers\InvoiceProofPortalController;
 use App\Modules\Notification\Http\Controllers\NotificationController;
 use App\Modules\PaymentMethod\Http\Controllers\PaymentMethodController;
 use App\Modules\PaymentTerm\Http\Controllers\PaymentTermController;
@@ -101,6 +102,15 @@ Route::middleware([
         ->middleware('throttle:password-reset');
     Route::post('auth/reset-password', ResetPasswordController::class)
         ->middleware('throttle:password-reset');
+
+    Route::get('proofs/history', [InvoiceProofPortalController::class, 'historyChallenge'])
+        ->middleware('throttle:60,1');
+    Route::post('proofs/history', [InvoiceProofPortalController::class, 'history'])
+        ->middleware('throttle:60,1');
+    Route::get('proofs/{sales_invoice}', [InvoiceProofPortalController::class, 'show'])
+        ->middleware('throttle:60,1');
+    Route::post('proofs/{sales_invoice}/unlock', [InvoiceProofPortalController::class, 'unlock'])
+        ->middleware('throttle:60,1');
 
     Route::middleware(['auth:sanctum', 'ensure.active', 'resolve.branch'])->group(function () {
         // Echo/Reverb private channel auth — inherits tenant domain tenancy + Bearer Sanctum.
@@ -538,6 +548,12 @@ Route::middleware([
                 ->middleware('check.permission:sales_invoices,edit');
             Route::post('sales-invoices/{sales_invoice}/post', [SalesInvoiceController::class, 'post'])
                 ->middleware('check.permission:sales_invoices,edit');
+            Route::get('sales-invoices/{sales_invoice}/verify', [SalesInvoiceController::class, 'verify'])
+                ->middleware('check.permission:sales_invoices,view');
+            Route::post('sales-invoices/{sales_invoice}/approve-as-company', [SalesInvoiceController::class, 'approveAsCompany'])
+                ->middleware('check.permission:invoice_proofs,edit');
+            Route::post('sales-invoices/{sales_invoice}/buyer-portal-link', [SalesInvoiceController::class, 'buyerPortalLink'])
+                ->middleware(['check.permission:sales_invoices,view', 'check.permission:invoice_proofs,view']);
 
             Route::get('salesmen/{salesman}/attachments/{attachment}/download', [SalesmanAttachmentController::class, 'download'])
                 ->middleware('check.permission:salesmen,view')

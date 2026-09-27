@@ -36,6 +36,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'tax_enabled',
     'tax_price_mode',
     'allow_negative_stock',
+    'invoice_proofs_enabled',
     'inventory_costing_method',
     'price_rounding_mode',
     'price_decimal_places',
@@ -60,6 +61,7 @@ class CompanySetting extends Model implements AuditableContract
             'tax_enabled' => true,
             'tax_price_mode' => TaxPriceMode::Exclusive,
             'allow_negative_stock' => false,
+            'invoice_proofs_enabled' => false,
             'inventory_costing_method' => InventoryCostingMethod::MovingAverage,
             'price_rounding_mode' => PriceRoundingMode::HalfUp,
             'price_decimal_places' => 2,
@@ -86,6 +88,7 @@ class CompanySetting extends Model implements AuditableContract
             'tax_enabled' => 'boolean',
             'tax_price_mode' => TaxPriceMode::class,
             'allow_negative_stock' => 'boolean',
+            'invoice_proofs_enabled' => 'boolean',
             'inventory_costing_method' => InventoryCostingMethod::class,
             'price_rounding_mode' => PriceRoundingMode::class,
             'price_decimal_places' => 'integer',
@@ -111,5 +114,10 @@ class CompanySetting extends Model implements AuditableContract
     public function allowsNegativeStock(): bool
     {
         return (bool) $this->allow_negative_stock;
+    }
+
+    public function invoiceProofsEnabled(): bool
+    {
+        return (bool) $this->invoice_proofs_enabled;
     }
 }

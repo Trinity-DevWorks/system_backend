@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Customer\Http\Requests;
 
 use App\Modules\Customer\Enums\CustomerStatus;
+use App\Modules\InvoiceProof\Support\WalletAddress;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
@@ -38,6 +39,11 @@ class StoreCustomerRequest extends FormRequest
                 'exempted_to' => null,
             ]);
         }
+
+        $wallet = $this->input('wallet_address');
+        if ($wallet === null || (is_string($wallet) && trim($wallet) === '')) {
+            $this->merge(['wallet_address' => null]);
+        }
     }
 
     /**
@@ -69,6 +75,7 @@ class StoreCustomerRequest extends FormRequest
             'is_vat_registered' => ['nullable', 'boolean'],
             'vat_number' => ['nullable', 'string', 'max:128', 'required_if:is_vat_registered,true'],
             'notes' => ['nullable', 'string'],
+            'wallet_address' => WalletAddress::optionalRule(),
 
             'addresses' => ['nullable', 'array'],
             'addresses.*.id' => ['nullable', 'integer'],

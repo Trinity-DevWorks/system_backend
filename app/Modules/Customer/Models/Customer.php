@@ -47,6 +47,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'exempted_to',
     'vat_number',
     'notes',
+    'wallet_address',
     'is_system',
 ])]
 class Customer extends Model implements AuditableContract
