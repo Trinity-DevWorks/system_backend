@@ -53,10 +53,10 @@ return [
         ],
         'purchasing' => [
             'name' => 'Purchasing',
-            'description' => 'Suppliers and supplier groups.',
+            'description' => 'Suppliers, supplier groups, and purchase invoices.',
             'is_core' => false,
             'sort_order' => 50,
-            'resources' => ['supplier_groups', 'suppliers'],
+            'resources' => ['supplier_groups', 'suppliers', 'purchase_invoices'],
         ],
     ],
 

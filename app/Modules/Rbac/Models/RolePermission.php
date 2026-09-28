@@ -12,7 +12,7 @@ class RolePermission extends Model
     /** @var list<string> */
     protected $fillable = [
         'role_id', 'permission_id',
-        'can_view', 'can_add', 'can_edit', 'can_delete', 'can_import', 'can_export',
+        'can_view', 'can_add', 'can_edit', 'can_delete', 'can_import', 'can_export', 'can_reverse',
     ];
 
     /**
@@ -27,6 +27,7 @@ class RolePermission extends Model
             'can_delete' => 'boolean',
             'can_import' => 'boolean',
             'can_export' => 'boolean',
+            'can_reverse' => 'boolean',
         ];
     }
 

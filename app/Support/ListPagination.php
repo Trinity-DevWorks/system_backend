@@ -36,6 +36,14 @@ final class ListPagination
     }
 
     /**
+     * Case-insensitive contains match. PostgreSQL `LIKE` is case-sensitive.
+     */
+    private static function containsOperator(Builder $query): string
+    {
+        return $query->getConnection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+    }
+
+    /**
      * @param  list<string>  $columns
      * @param  array<string, list<string>>  $relations
      */
@@ -46,24 +54,25 @@ final class ListPagination
         }
 
         $like = '%'.addcslashes($search, '%_\\').'%';
+        $operator = self::containsOperator($query);
 
-        return $query->where(function (Builder $q) use ($like, $columns, $relations): void {
+        return $query->where(function (Builder $q) use ($like, $columns, $relations, $operator): void {
             foreach ($columns as $index => $column) {
                 if ($index === 0) {
-                    $q->where($column, 'like', $like);
+                    $q->where($column, $operator, $like);
                 } else {
-                    $q->orWhere($column, 'like', $like);
+                    $q->orWhere($column, $operator, $like);
                 }
             }
 
             foreach ($relations as $relation => $relColumns) {
-                $q->orWhereHas($relation, function (Builder $rq) use ($like, $relColumns): void {
-                    $rq->where(function (Builder $inner) use ($like, $relColumns): void {
+                $q->orWhereHas($relation, function (Builder $rq) use ($like, $relColumns, $operator): void {
+                    $rq->where(function (Builder $inner) use ($like, $relColumns, $operator): void {
                         foreach ($relColumns as $index => $column) {
                             if ($index === 0) {
-                                $inner->where($column, 'like', $like);
+                                $inner->where($column, $operator, $like);
                             } else {
-                                $inner->orWhere($column, 'like', $like);
+                                $inner->orWhere($column, $operator, $like);
                             }
                         }
                     });

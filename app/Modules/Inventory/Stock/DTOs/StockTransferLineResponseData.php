@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\Models\StockTransferLine;
+use App\Modules\Inventory\Stock\Support\StockTransferLineQuantity;
 use Illuminate\Support\Collection;
 
 readonly class StockTransferLineResponseData
@@ -32,6 +33,14 @@ readonly class StockTransferLineResponseData
             ] : null,
             'quantity' => (string) $line->quantity,
             'base_quantity' => (string) $line->base_quantity,
+            'received_quantity' => (string) $line->received_quantity,
+            'received_base_quantity' => (string) $line->received_base_quantity,
+            'returned_quantity' => (string) $line->returned_quantity,
+            'returned_base_quantity' => (string) $line->returned_base_quantity,
+            'written_off_quantity' => (string) $line->written_off_quantity,
+            'written_off_base_quantity' => (string) $line->written_off_base_quantity,
+            'open_quantity' => StockTransferLineQuantity::openQuantity($line),
+            'open_base_quantity' => StockTransferLineQuantity::openBaseQuantity($line),
             'item_uom_id' => $line->item_uom_id,
             'notes' => $line->notes,
             'item' => self::itemBrief($line->item),

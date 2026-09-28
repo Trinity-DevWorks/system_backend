@@ -26,6 +26,14 @@ class UpdateCustomerRequest extends FormRequest
             return;
         }
 
+        if ($this->exists('account_number')) {
+            $accountNumber = $this->input('account_number');
+            if (is_string($accountNumber)) {
+                $trimmed = trim($accountNumber);
+                $this->merge(['account_number' => $trimmed === '' ? null : $trimmed]);
+            }
+        }
+
         $status = $this->has('status')
             ? $this->input('status')
             : ($customer->status instanceof CustomerStatus
@@ -63,6 +71,7 @@ class UpdateCustomerRequest extends FormRequest
         $customerId = is_object($customer) ? $customer->id : $customer;
 
         return [
+            'account_number' => ['sometimes', 'nullable', 'string', 'max:128', Rule::unique('customers', 'account_number')->ignore($customerId)],
             'name' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'nullable', 'email', 'max:255', Rule::unique('customers', 'email')->ignore($customerId)],
             'phone' => ['sometimes', 'nullable', 'string', 'max:32'],

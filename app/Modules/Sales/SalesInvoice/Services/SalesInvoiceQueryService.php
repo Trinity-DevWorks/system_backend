@@ -48,7 +48,7 @@ class SalesInvoiceQueryService
     {
         $query = SalesInvoice::query()
             ->with([
-                'customer:id,customer_code,name,status,is_system',
+                'customer:id,customer_code,name,phone,status,is_system',
                 'warehouse:id,name,shortcut_name,is_active',
                 'currency:id,code,name',
                 'createdByUser:id,name,email',

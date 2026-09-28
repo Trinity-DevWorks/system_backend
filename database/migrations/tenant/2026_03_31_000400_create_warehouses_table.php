@@ -19,7 +19,7 @@ return new class extends Migration
             $table->foreignId('branch_id')->nullable()->constrained('branches')->nullOnDelete();
             $table->text('address')->nullable();
             $table->text('description')->nullable();
-            $table->foreignUuid('manager_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignUuid('manager_id')->constrained('users')->restrictOnDelete();
             $table->boolean('is_active')->default(true);
             $table->boolean('is_default')->default(false);
             $table->boolean('is_default_sales')->default(false);

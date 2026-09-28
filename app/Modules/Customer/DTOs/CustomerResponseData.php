@@ -22,6 +22,7 @@ readonly class CustomerResponseData
     public function __construct(
         public string $id,
         public string $customerCode,
+        public ?string $accountNumber,
         public string $name,
         public ?string $email,
         public ?string $phone,
@@ -116,6 +117,9 @@ readonly class CustomerResponseData
         return new self(
             id: $customer->id,
             customerCode: (string) $customer->customer_code,
+            accountNumber: $customer->account_number !== null && $customer->account_number !== ''
+                ? (string) $customer->account_number
+                : null,
             name: $customer->name,
             email: $customer->email,
             phone: $customer->phone,
@@ -194,6 +198,7 @@ readonly class CustomerResponseData
         return [
             'id' => $this->id,
             'customer_code' => $this->customerCode,
+            'account_number' => $this->accountNumber,
             'name' => $this->name,
             'email' => $this->email,
             'phone' => $this->phone,

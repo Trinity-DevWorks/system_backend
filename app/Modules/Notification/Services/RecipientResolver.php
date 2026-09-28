@@ -61,6 +61,7 @@ class RecipientResolver
             'delete' => 'can_delete',
             'import' => 'can_import',
             'export' => 'can_export',
+            'reverse' => 'can_reverse',
             default => null,
         };
 

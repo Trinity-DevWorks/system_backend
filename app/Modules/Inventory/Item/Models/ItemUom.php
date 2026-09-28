@@ -32,7 +32,7 @@ class ItemUom extends Model
     protected function casts(): array
     {
         return [
-            'conversion_factor' => 'decimal:6',
+            'conversion_factor' => 'decimal:12',
             'selling_price' => 'decimal:4',
             'cost_price' => 'decimal:4',
             'takeaway_price' => 'decimal:4',

@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignUuid('item_id')->constrained('items')->cascadeOnDelete();
             $table->foreignId('uom_id')->constrained('unit_of_measurements')->restrictOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
-            $table->decimal('conversion_factor', 14, 6)->default(1);
+            $table->decimal('conversion_factor', 24, 12)->default(1);
             $table->string('barcode', 128)->nullable();
             $table->decimal('selling_price', 14, 4)->nullable();
             $table->decimal('cost_price', 14, 4)->nullable();

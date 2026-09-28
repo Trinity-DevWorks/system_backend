@@ -62,7 +62,10 @@ class CustomerController extends Controller
         return ListPagination::json(
             $this->customerService->paginateForTable(
                 ListPagination::search($request),
-                ListPagination::perPage($request)
+                ListPagination::perPage($request),
+                [
+                    'exclude_blacklisted' => $request->boolean('exclude_blacklisted'),
+                ],
             ),
             fn (Customer $c): array => CustomerTableRowResponseData::fromModel($c)->toArray(),
             'Customers fetched successfully.'

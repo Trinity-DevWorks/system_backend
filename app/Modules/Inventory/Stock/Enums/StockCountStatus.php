@@ -8,6 +8,7 @@ enum StockCountStatus: string
 {
     case Draft = 'draft';
     case Posted = 'posted';
+    case Reversed = 'reversed';
 
     /**
      * @return list<string>

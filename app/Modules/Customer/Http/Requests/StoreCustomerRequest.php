@@ -19,6 +19,12 @@ class StoreCustomerRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $accountNumber = $this->input('account_number');
+        if (is_string($accountNumber)) {
+            $trimmed = trim($accountNumber);
+            $this->merge(['account_number' => $trimmed === '' ? null : $trimmed]);
+        }
+
         if (! $this->boolean('is_vat_registered')) {
             $this->merge([
                 'is_vat_registered' => false,
@@ -52,6 +58,7 @@ class StoreCustomerRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'account_number' => ['nullable', 'string', 'max:128', 'unique:customers,account_number'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', 'unique:customers,email'],
             'phone' => ['nullable', 'string', 'max:32'],

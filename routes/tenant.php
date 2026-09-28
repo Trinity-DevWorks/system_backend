@@ -28,6 +28,7 @@ use App\Modules\Inventory\Item\Http\Controllers\RecipeController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeItemController;
 use App\Modules\Inventory\ItemType\Http\Controllers\ItemTypeController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\GoodsReceiptController;
+use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseInvoiceController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseOrderController;
 use App\Modules\Inventory\Stock\Http\Controllers\BundleExplosionController;
 use App\Modules\Inventory\Stock\Http\Controllers\InventoryLotController;
@@ -41,6 +42,7 @@ use App\Modules\Inventory\Stock\Http\Controllers\StockBalanceController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockCountController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockMovementController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockTransferController;
+use App\Modules\Inventory\Stock\Http\Controllers\SuggestedUnitCostController;
 use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
 use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementController;
 use App\Modules\InvoiceProof\Http\Controllers\InvoiceProofPortalController;
@@ -276,6 +278,8 @@ Route::middleware([
                 ->middleware('check.permission:stock,view');
             Route::get('stock/balances/show', [StockBalanceController::class, 'show'])
                 ->middleware('check.permission:stock,view');
+            Route::get('stock/suggested-unit-cost', [SuggestedUnitCostController::class, 'show'])
+                ->middleware('check.permission:stock,view');
             Route::get('stock/movements', [StockMovementController::class, 'index'])
                 ->middleware('check.permission:stock,view');
             Route::get('stock/movements/{stock_movement}', [StockMovementController::class, 'show'])
@@ -304,6 +308,8 @@ Route::middleware([
             Route::post('stock/transfers/{stock_transfer}/dispatch', [StockTransferController::class, 'dispatch'])
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/transfers/{stock_transfer}/receive', [StockTransferController::class, 'receive'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/transfers/{stock_transfer}/close-open', [StockTransferController::class, 'closeOpen'])
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/transfers/{stock_transfer}/cancel', [StockTransferController::class, 'cancel'])
                 ->middleware('check.permission:stock,edit');
@@ -345,6 +351,8 @@ Route::middleware([
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/goods-receipts/{goods_receipt}/post', [GoodsReceiptController::class, 'post'])
                 ->middleware('check.permission:stock,edit');
+            Route::post('stock/goods-receipts/{goods_receipt}/reverse', [GoodsReceiptController::class, 'reverse'])
+                ->middleware('check.permission:stock,reverse');
 
             Route::get('stock/opening-stocks', [OpeningStockController::class, 'index'])
                 ->middleware('check.permission:stock,view');
@@ -360,6 +368,8 @@ Route::middleware([
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/opening-stocks/{opening_stock}/post', [OpeningStockController::class, 'post'])
                 ->middleware('check.permission:stock,edit');
+            Route::post('stock/opening-stocks/{opening_stock}/reverse', [OpeningStockController::class, 'reverse'])
+                ->middleware('check.permission:stock,reverse');
 
             Route::get('stock/adjustment-reasons', [StockAdjustmentReasonController::class, 'index'])
                 ->middleware('check.permission:stock,view');
@@ -386,6 +396,8 @@ Route::middleware([
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/adjustments/{stock_adjustment}/post', [StockAdjustmentController::class, 'post'])
                 ->middleware('check.permission:stock,edit');
+            Route::post('stock/adjustments/{stock_adjustment}/reverse', [StockAdjustmentController::class, 'reverse'])
+                ->middleware('check.permission:stock,reverse');
 
             Route::get('stock/productions', [ProductionController::class, 'index'])
                 ->middleware('check.permission:stock,view');
@@ -401,6 +413,8 @@ Route::middleware([
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/productions/{production}/post', [ProductionController::class, 'post'])
                 ->middleware('check.permission:stock,edit');
+            Route::post('stock/productions/{production}/reverse', [ProductionController::class, 'reverse'])
+                ->middleware('check.permission:stock,reverse');
 
             Route::get('stock/bundle-explosions', [BundleExplosionController::class, 'index'])
                 ->middleware('check.permission:stock,view');
@@ -416,6 +430,8 @@ Route::middleware([
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/bundle-explosions/{bundle_explosion}/post', [BundleExplosionController::class, 'post'])
                 ->middleware('check.permission:stock,edit');
+            Route::post('stock/bundle-explosions/{bundle_explosion}/reverse', [BundleExplosionController::class, 'reverse'])
+                ->middleware('check.permission:stock,reverse');
 
             Route::get('stock/stock-counts', [StockCountController::class, 'index'])
                 ->middleware('check.permission:stock,view');
@@ -433,6 +449,8 @@ Route::middleware([
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/stock-counts/{stock_count}/post', [StockCountController::class, 'post'])
                 ->middleware('check.permission:stock,edit');
+            Route::post('stock/stock-counts/{stock_count}/reverse', [StockCountController::class, 'reverse'])
+                ->middleware('check.permission:stock,reverse');
 
             Route::get('unit-groups/{unit_group}/units', [UnitGroupController::class, 'units'])
                 ->middleware('check.permission:unit_groups,view');
@@ -460,6 +478,8 @@ Route::middleware([
             Route::delete('items/{item}/item-uoms/{item_uom}', [ItemUomController::class, 'destroy'])
                 ->middleware('check.permission:items,edit');
             Route::get('items/lookup-by-barcode', [ItemBarcodeController::class, 'lookup'])
+                ->middleware('check.permission:items,view');
+            Route::get('items/{item}/invoice-line-setup', [ItemController::class, 'invoiceLineSetup'])
                 ->middleware('check.permission:items,view');
             Route::get('items/{item}/barcodes', [ItemBarcodeController::class, 'index'])
                 ->middleware('check.permission:items,view');
@@ -548,6 +568,8 @@ Route::middleware([
                 ->middleware('check.permission:sales_invoices,edit');
             Route::post('sales-invoices/{sales_invoice}/post', [SalesInvoiceController::class, 'post'])
                 ->middleware('check.permission:sales_invoices,edit');
+            Route::post('sales-invoices/{sales_invoice}/reverse', [SalesInvoiceController::class, 'reverse'])
+                ->middleware('check.permission:sales_invoices,reverse');
             Route::get('sales-invoices/{sales_invoice}/verify', [SalesInvoiceController::class, 'verify'])
                 ->middleware('check.permission:sales_invoices,view');
             Route::post('sales-invoices/{sales_invoice}/approve-as-company', [SalesInvoiceController::class, 'approveAsCompany'])
@@ -614,6 +636,23 @@ Route::middleware([
         });
 
         Route::middleware(['ensure.module:purchasing'])->group(function () {
+            Route::get('purchase-invoices', [PurchaseInvoiceController::class, 'index'])
+                ->middleware('check.permission:purchase_invoices,view');
+            Route::post('purchase-invoices', [PurchaseInvoiceController::class, 'store'])
+                ->middleware('check.permission:purchase_invoices,add');
+            Route::get('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'show'])
+                ->middleware('check.permission:purchase_invoices,view');
+            Route::put('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'update'])
+                ->middleware('check.permission:purchase_invoices,edit');
+            Route::delete('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'destroy'])
+                ->middleware('check.permission:purchase_invoices,delete');
+            Route::put('purchase-invoices/{purchase_invoice}/lines/sync', [PurchaseInvoiceController::class, 'syncLines'])
+                ->middleware('check.permission:purchase_invoices,edit');
+            Route::post('purchase-invoices/{purchase_invoice}/post', [PurchaseInvoiceController::class, 'post'])
+                ->middleware('check.permission:purchase_invoices,edit');
+            Route::post('purchase-invoices/{purchase_invoice}/reverse', [PurchaseInvoiceController::class, 'reverse'])
+                ->middleware('check.permission:purchase_invoices,reverse');
+
             Route::apiResource('supplier-groups', SupplierGroupController::class)
                 ->middlewareFor(['index', 'show'], ['check.permission:supplier_groups,view'])
                 ->middlewareFor(['store'], ['check.permission:supplier_groups,add'])

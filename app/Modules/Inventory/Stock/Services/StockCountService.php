@@ -228,6 +228,23 @@ class StockCountService
         });
     }
 
+    public function reverse(StockCount $document, ?string $userId): StockCount
+    {
+        return DB::transaction(function () use ($document, $userId): StockCount {
+            $locked = StockCount::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== StockCountStatus::Posted) {
+                abort(422, 'Only a posted stock count can be reversed.', [
+                    'X-Error-Code' => 'STOCK_COUNT_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->stockMovementService->reverseReference(StockCount::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $locked->update(['status' => StockCountStatus::Reversed]);
+
+            return $this->find($locked->id);
+        });
+    }
+
     /**
      * @param  list<array<string, mixed>>  $lines
      */

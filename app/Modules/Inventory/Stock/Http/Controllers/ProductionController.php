@@ -109,4 +109,18 @@ class ProductionController extends Controller
             'Production posted successfully.'
         );
     }
+
+    public function reverse(Request $request, Production $production): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $document = $this->productionService->reverse(
+            $production,
+            $userId !== null ? (string) $userId : null
+        );
+
+        return ApiResponse::success(
+            ProductionResponseData::fromModel($document),
+            'Production reversed successfully.'
+        );
+    }
 }

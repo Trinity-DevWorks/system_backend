@@ -221,6 +221,23 @@ class StockAdjustmentService
         });
     }
 
+    public function reverse(StockAdjustment $document, ?string $userId): StockAdjustment
+    {
+        return DB::transaction(function () use ($document, $userId): StockAdjustment {
+            $locked = StockAdjustment::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== StockAdjustmentStatus::Posted) {
+                abort(422, 'Only a posted stock adjustment can be reversed.', [
+                    'X-Error-Code' => 'STOCK_ADJUSTMENT_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->stockMovementService->reverseReference(StockAdjustment::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $locked->update(['status' => StockAdjustmentStatus::Reversed]);
+
+            return $this->find($locked->id);
+        });
+    }
+
     /**
      * @param  list<array<string, mixed>>  $lines
      */

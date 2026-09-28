@@ -16,7 +16,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  *     can_edit: bool,
  *     can_delete: bool,
  *     can_import: bool,
- *     can_export: bool
+ *     can_export: bool,
+ *     can_reverse: bool
  * } $pivot
  */
 #[Fillable(['resource_key', 'resource_label'])]
@@ -31,7 +32,7 @@ class Permission extends Model implements AuditableContract
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'role_permissions')
-            ->withPivot(['can_view', 'can_add', 'can_edit', 'can_delete', 'can_import', 'can_export'])
+            ->withPivot(['can_view', 'can_add', 'can_edit', 'can_delete', 'can_import', 'can_export', 'can_reverse'])
             ->withTimestamps();
     }
 }

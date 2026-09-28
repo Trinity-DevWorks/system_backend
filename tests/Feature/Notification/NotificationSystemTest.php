@@ -155,6 +155,7 @@ class NotificationSystemTest extends TestCase
                 'name' => 'Notification Test Warehouse',
                 'shortcut_name' => 'NTW',
                 'type' => 'central',
+                'manager_id' => $this->tenantUser->id,
                 'is_active' => true,
             ]);
 
@@ -189,6 +190,7 @@ class NotificationSystemTest extends TestCase
                 'name' => 'GRN Notify Warehouse',
                 'shortcut_name' => 'GNW',
                 'type' => 'central',
+                'manager_id' => $this->tenantUser->id,
                 'is_active' => true,
             ]);
 
@@ -223,6 +225,7 @@ class NotificationSystemTest extends TestCase
                 'name' => 'PO Closed Warehouse',
                 'shortcut_name' => 'PCW',
                 'type' => 'central',
+                'manager_id' => $this->tenantUser->id,
                 'is_active' => true,
             ]);
 

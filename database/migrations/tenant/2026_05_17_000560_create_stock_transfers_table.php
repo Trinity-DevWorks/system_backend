@@ -13,7 +13,7 @@ return new class extends Migration
             $table->string('transfer_number', 32)->nullable()->unique();
             $table->foreignId('from_warehouse_id')->constrained('warehouses')->restrictOnDelete();
             $table->foreignId('to_warehouse_id')->constrained('warehouses')->restrictOnDelete();
-            $table->string('status', 20)->default('draft');
+            $table->string('status', 24)->default('draft');
             $table->text('notes')->nullable();
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('dispatched_by')->nullable()->constrained('users')->nullOnDelete();

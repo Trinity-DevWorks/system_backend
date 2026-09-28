@@ -168,7 +168,7 @@ class SupplierLedgerService
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
-        ?int $referenceId,
+        ?string $referenceId,
         string $transactionDate
     ): SupplierLedgerEntry {
         $d = (float) $debit;
@@ -208,7 +208,7 @@ class SupplierLedgerService
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
-        ?int $referenceId,
+        ?string $referenceId,
         string $transactionDate
     ): SupplierLedgerEntry {
         return SupplierLedgerEntry::query()->create([

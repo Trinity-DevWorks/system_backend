@@ -31,6 +31,11 @@ class UserController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'branch_ids' => $user->branches
+                    ->pluck('id')
+                    ->map(static fn ($id): int => (int) $id)
+                    ->values()
+                    ->all(),
             ])->values()->all();
         }, 'User names fetched successfully.');
         if ($names) {
