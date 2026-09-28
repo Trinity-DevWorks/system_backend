@@ -46,6 +46,7 @@ use App\Modules\Inventory\Stock\Http\Controllers\SuggestedUnitCostController;
 use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
 use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementController;
 use App\Modules\InvoiceProof\Http\Controllers\InvoiceProofPortalController;
+use App\Modules\InvoiceProof\Http\Controllers\InvoiceVerifierController;
 use App\Modules\Notification\Http\Controllers\NotificationController;
 use App\Modules\PaymentMethod\Http\Controllers\PaymentMethodController;
 use App\Modules\PaymentTerm\Http\Controllers\PaymentTermController;
@@ -576,6 +577,21 @@ Route::middleware([
                 ->middleware('check.permission:invoice_proofs,edit');
             Route::post('sales-invoices/{sales_invoice}/buyer-portal-link', [SalesInvoiceController::class, 'buyerPortalLink'])
                 ->middleware(['check.permission:sales_invoices,view', 'check.permission:invoice_proofs,view']);
+            Route::get('sales-invoices/{sales_invoice}/proof-fields', [SalesInvoiceController::class, 'proofFields'])
+                ->middleware(['check.permission:sales_invoices,view', 'check.permission:invoice_proofs,view']);
+            Route::post('sales-invoices/{sales_invoice}/proof-disclosure', [SalesInvoiceController::class, 'proofDisclosure'])
+                ->middleware(['check.permission:sales_invoices,view', 'check.permission:invoice_proofs,view']);
+
+            Route::get('invoice-verifiers', [InvoiceVerifierController::class, 'index'])
+                ->middleware('check.permission:invoice_proofs,view');
+            Route::post('invoice-verifiers', [InvoiceVerifierController::class, 'store'])
+                ->middleware('check.permission:invoice_proofs,edit');
+            Route::put('invoice-verifiers/{invoice_verifier}', [InvoiceVerifierController::class, 'update'])
+                ->middleware('check.permission:invoice_proofs,edit');
+            Route::delete('invoice-verifiers/{invoice_verifier}', [InvoiceVerifierController::class, 'destroy'])
+                ->middleware('check.permission:invoice_proofs,edit');
+            Route::post('invoice-verifiers/{invoice_verifier}/sync', [InvoiceVerifierController::class, 'sync'])
+                ->middleware('check.permission:invoice_proofs,edit');
 
             Route::get('salesmen/{salesman}/attachments/{attachment}/download', [SalesmanAttachmentController::class, 'download'])
                 ->middleware('check.permission:salesmen,view')

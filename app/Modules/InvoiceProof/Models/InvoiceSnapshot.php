@@ -6,12 +6,14 @@ namespace App\Modules\InvoiceProof\Models;
 
 use App\Modules\InvoiceProof\Enums\InvoiceProofType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 
 /**
- * Immutable posted-invoice proof: canonical JSON plus SHA-256. Insert-only; no update or delete.
+ * Immutable posted-invoice proof: canonical JSON plus its salted Merkle root.
+ * Insert-only; no update or delete.
  *
  * @property InvoiceProofType $invoice_type
  */
@@ -22,7 +24,9 @@ use RuntimeException;
     'schema_version',
     'canonical_json',
     'content_hash',
+    'disclosure_secret',
 ])]
+#[Hidden(['disclosure_secret'])]
 class InvoiceSnapshot extends Model
 {
     use HasUuids;

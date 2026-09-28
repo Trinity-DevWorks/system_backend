@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\InvoiceProof\DTOs;
 
 use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
+use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 
 /**
  * Verification payload. Status is the snapshot hash versus the chain hash.
@@ -19,6 +20,7 @@ readonly class InvoiceProofVerificationData
      *     types: array<string, list<array{name: string, type: string}>>,
      *     message: array{proof_id: string, content_hash: string, invoice_number: string}
      * }|null  $eip712
+     * @param  list<InvoiceAttestationRecord>  $attestations
      */
     public function __construct(
         public InvoiceProofVerificationStatus $status,
@@ -39,7 +41,22 @@ readonly class InvoiceProofVerificationData
         public ?string $registeredAt = null,
         public ?string $supplierApprovedAt = null,
         public ?string $buyerApprovedAt = null,
+        public array $attestations = [],
     ) {}
+
+    /**
+     * The contract allows at most one financier attestation per proof.
+     */
+    public function financedBy(): ?string
+    {
+        foreach ($this->attestations as $attestation) {
+            if ($attestation->role === InvoiceVerifierRole::Financier) {
+                return $attestation->verifier;
+            }
+        }
+
+        return null;
+    }
 
     public static function notRegistered(): self
     {
@@ -70,7 +87,9 @@ readonly class InvoiceProofVerificationData
      *     safe_api_key: ?string,
      *     registered_at: ?string,
      *     supplier_approved_at: ?string,
-     *     buyer_approved_at: ?string
+     *     buyer_approved_at: ?string,
+     *     attestations: list<array{verifier: string, verifier_name: ?string, role: string, reference_hash: ?string, attested_at: ?string}>,
+     *     financed_by: ?string
      * }
      */
     public function toArray(): array
@@ -94,6 +113,11 @@ readonly class InvoiceProofVerificationData
             'registered_at' => $this->registeredAt,
             'supplier_approved_at' => $this->supplierApprovedAt,
             'buyer_approved_at' => $this->buyerApprovedAt,
+            'attestations' => array_map(
+                static fn (InvoiceAttestationRecord $attestation): array => $attestation->toArray(),
+                $this->attestations,
+            ),
+            'financed_by' => $this->financedBy(),
         ];
     }
 }

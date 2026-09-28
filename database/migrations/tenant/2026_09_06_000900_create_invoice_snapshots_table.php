@@ -18,6 +18,8 @@ return new class extends Migration
             // Stored as text so PostgreSQL jsonb cannot reorder keys or change bytes.
             $table->longText('canonical_json');
             $table->char('content_hash', 64);
+            // Hex HMAC key for per-leaf Merkle salts. Never returned by the API.
+            $table->char('disclosure_secret', 64);
             $table->timestamp('created_at');
 
             $table->unique(['invoice_type', 'invoice_id']);

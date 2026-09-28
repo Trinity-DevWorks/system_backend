@@ -65,6 +65,6 @@ class CanonicalInvoiceFormatterTest extends TestCase
             'name' => 'Acme',
         ]);
 
-        $this->assertSame('{"schema_version":1,"notes":null,"name":"Acme"}', $json);
+        $this->assertSame('{"schema_version":2,"notes":null,"name":"Acme"}', $json);
     }
 }

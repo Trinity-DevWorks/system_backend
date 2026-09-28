@@ -5,15 +5,19 @@ declare(strict_types=1);
 namespace App\Modules\InvoiceProof;
 
 /**
- * Defines Canonical Invoice Schema v1: version, decimal scales, date formats,
+ * Defines the Canonical Invoice Schema: version, decimal scales, date formats,
  * and the frozen JSON key lists.
  *
  * This is the contract for the hashed proof document, not the sales/purchase
  * API payload. Field names and key order must not change for a given version.
+ *
+ * v1 sealed SHA-256 of the whole JSON string. v2 seals the salted Merkle root
+ * of the document leaves (CanonicalInvoiceMerkle) so single fields can be
+ * disclosed and verified without revealing the rest of the invoice.
  */
 final class CanonicalInvoiceSchema
 {
-    public const VERSION = 1;
+    public const VERSION = 2;
 
     public const MONEY_SCALE = 4;
 

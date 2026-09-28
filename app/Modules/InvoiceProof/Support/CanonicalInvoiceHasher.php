@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\InvoiceProof\Support;
 
-use App\Modules\InvoiceProof\CanonicalInvoiceSchema;
-
 /**
- * SHA-256 of canonical invoice JSON. Hash the stored string; do not decode and re-encode first.
+ * Content hash of a canonical invoice: the salted Merkle root of its leaves.
+ * The same JSON and disclosure secret always produce the same root.
  */
 final class CanonicalInvoiceHasher
 {
-    public static function sha256(string $canonicalJson): string
+    public static function hash(string $canonicalJson, string $disclosureSecret): string
     {
-        return hash(CanonicalInvoiceSchema::HASH_ALGO, $canonicalJson);
+        return CanonicalInvoiceMerkle::build($canonicalJson, $disclosureSecret)->root();
     }
 }

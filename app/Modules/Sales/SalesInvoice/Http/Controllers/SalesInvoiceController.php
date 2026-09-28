@@ -7,7 +7,9 @@ namespace App\Modules\Sales\SalesInvoice\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\CompanySetting\Models\CompanySetting;
+use App\Modules\InvoiceProof\Http\Requests\DiscloseInvoiceProofRequest;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
+use App\Modules\InvoiceProof\Services\InvoiceProofDisclosureService;
 use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
 use App\Modules\InvoiceProof\Services\InvoiceProofVerificationService;
 use App\Modules\Sales\SalesInvoice\DTOs\SalesInvoiceLineResponseData;
@@ -29,6 +31,7 @@ class SalesInvoiceController extends Controller
         private readonly InvoiceProofVerificationService $invoiceProofVerificationService,
         private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
         private readonly InvoiceProofPortalService $invoiceProofPortalService,
+        private readonly InvoiceProofDisclosureService $invoiceProofDisclosureService,
         private readonly PermissionService $permissionService,
     ) {}
 
@@ -196,6 +199,25 @@ class SalesInvoiceController extends Controller
         return ApiResponse::success(
             $this->invoiceProofPortalService->issueLink($salesInvoice)->toArray(),
             'Buyer portal link created successfully.'
+        );
+    }
+
+    public function proofFields(SalesInvoice $salesInvoice): JsonResponse
+    {
+        return ApiResponse::success(
+            $this->invoiceProofDisclosureService->fields($salesInvoice)->toArray(),
+            'Invoice proof fields fetched successfully.'
+        );
+    }
+
+    public function proofDisclosure(DiscloseInvoiceProofRequest $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        /** @var list<string> $fields */
+        $fields = array_values($request->validated('fields'));
+
+        return ApiResponse::success(
+            $this->invoiceProofDisclosureService->disclose($salesInvoice, $fields)->toArray(),
+            'Invoice proof disclosure created successfully.'
         );
     }
 

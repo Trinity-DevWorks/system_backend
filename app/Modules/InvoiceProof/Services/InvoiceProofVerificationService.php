@@ -6,11 +6,13 @@ namespace App\Modules\InvoiceProof\Services;
 
 use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
+use App\Modules\InvoiceProof\DTOs\InvoiceAttestationRecord;
 use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofVerificationData;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
+use App\Modules\InvoiceProof\Models\InvoiceVerifier;
 use App\Modules\InvoiceProof\Serializers\SalesInvoiceCanonicalSerializer;
 use App\Modules\InvoiceProof\Support\BlockchainNetwork;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceHasher;
@@ -25,7 +27,7 @@ use JsonException;
 use Throwable;
 
 /**
- * Proof check: SHA-256 of the sealed snapshot versus the on-chain hash.
+ * Proof check: salted Merkle root of the sealed snapshot versus the on-chain hash.
  *
  * Live invoice, customer, and item rows are not part of the verdict. A later
  * edit there leaves the snapshot and the chain unchanged.
@@ -44,6 +46,7 @@ class InvoiceProofVerificationService
         $invoice->loadMissing('customer');
         $snapshot = $this->invoiceSnapshotService->findForSalesInvoice((string) $invoice->id);
         $onChain = null;
+        $attestations = [];
         $chainEnabled = $this->invoiceChainRegistrationService->isConfigured();
 
         if ($snapshot !== null && $chainEnabled) {
@@ -54,15 +57,29 @@ class InvoiceProofVerificationService
             }
         }
 
-        return $this->evaluateSalesInvoice($invoice, $snapshot, $company, $onChain, $chainEnabled);
+        if ($onChain !== null) {
+            try {
+                $attestations = $this->withVerifierNames(
+                    $this->invoiceRegistryGateway->attestationsOf((string) $snapshot->id)
+                );
+            } catch (Throwable) {
+                $attestations = [];
+            }
+        }
+
+        return $this->evaluateSalesInvoice($invoice, $snapshot, $company, $onChain, $chainEnabled, $attestations);
     }
 
+    /**
+     * @param  list<InvoiceAttestationRecord>  $attestations
+     */
     public function evaluateSalesInvoice(
         SalesInvoice $invoice,
         ?InvoiceSnapshot $snapshot,
         ?CompanyProfile $company = null,
         InvoiceOnChainRecord|string|null $onChain = null,
         bool $chainEnabled = false,
+        array $attestations = [],
     ): InvoiceProofVerificationData {
         if ($snapshot === null) {
             return InvoiceProofVerificationData::notRegistered();
@@ -72,13 +89,13 @@ class InvoiceProofVerificationService
         $onChainContentHash = $onChainRecord?->contentHash
             ?? (is_string($onChain) ? $onChain : null);
 
-        $snapshotHash = CanonicalInvoiceHasher::sha256($snapshot->canonical_json);
-        $snapshotIntact = hash_equals($snapshot->content_hash, $snapshotHash);
+        $snapshotHash = self::snapshotContentHash($snapshot->canonical_json, $snapshot);
+        $snapshotIntact = $snapshotHash !== null && hash_equals($snapshot->content_hash, $snapshotHash);
         $liveInvoiceMatches = $this->liveInvoiceMatches($invoice, $snapshot, $company);
 
         $chainMatches = null;
         if ($chainEnabled && $onChainContentHash !== null) {
-            $chainMatches = hash_equals(
+            $chainMatches = $snapshotHash !== null && hash_equals(
                 InvoiceProofBytes::normalizedContentHash($snapshotHash),
                 InvoiceProofBytes::normalizedContentHash($onChainContentHash),
             );
@@ -124,6 +141,32 @@ class InvoiceProofVerificationService
             registeredAt: self::chainInstant($onChainRecord?->registeredAt),
             supplierApprovedAt: self::chainInstant($onChainRecord?->supplierApprovedAt),
             buyerApprovedAt: self::chainInstant($onChainRecord?->buyerApprovedAt),
+            attestations: $onChainRecord !== null ? $attestations : [],
+        );
+    }
+
+    /**
+     * @param  list<InvoiceAttestationRecord>  $attestations
+     * @return list<InvoiceAttestationRecord>
+     */
+    private function withVerifierNames(array $attestations): array
+    {
+        if ($attestations === []) {
+            return [];
+        }
+
+        $names = InvoiceVerifier::query()
+            ->whereIn('wallet_address', array_map(
+                static fn (InvoiceAttestationRecord $attestation): string => $attestation->verifier,
+                $attestations,
+            ))
+            ->pluck('name', 'wallet_address');
+
+        return array_map(
+            static fn (InvoiceAttestationRecord $attestation): InvoiceAttestationRecord => $attestation->withVerifierName(
+                $names->get($attestation->verifier)
+            ),
+            $attestations,
         );
     }
 
@@ -154,10 +197,21 @@ class InvoiceProofVerificationService
             return null;
         }
 
-        return hash_equals(
-            $snapshot->content_hash,
-            CanonicalInvoiceHasher::sha256($liveJson),
-        );
+        $liveHash = self::snapshotContentHash($liveJson, $snapshot);
+
+        return $liveHash === null ? null : hash_equals($snapshot->content_hash, $liveHash);
+    }
+
+    /**
+     * Null when the JSON or the stored disclosure secret cannot be hashed.
+     */
+    private static function snapshotContentHash(string $canonicalJson, InvoiceSnapshot $snapshot): ?string
+    {
+        try {
+            return CanonicalInvoiceHasher::hash($canonicalJson, (string) $snapshot->disclosure_secret);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
     }
 
     /**

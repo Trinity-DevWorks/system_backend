@@ -12,6 +12,7 @@ use App\Modules\InvoiceProof\DTOs\BuyerPortalLinkData;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofPortalChallengeData;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofPortalData;
 use App\Modules\InvoiceProof\Support\EthereumPersonalSign;
+use App\Modules\InvoiceProof\Support\InvoiceApprovalStatement;
 use App\Modules\InvoiceProof\Support\ProofPortalHistoryChallenge;
 use App\Modules\InvoiceProof\Support\ProofPortalLink;
 use App\Modules\InvoiceProof\Support\ProofPortalUnlockChallenge;
@@ -174,7 +175,7 @@ class InvoiceProofPortalService
     {
         $this->assertProofsEnabled();
         $companyName = (string) CompanyProfile::singleton()->company_name;
-        $message = \App\Modules\InvoiceProof\Support\InvoiceApprovalStatement::history($companyName, $nonce);
+        $message = InvoiceApprovalStatement::history($companyName, $nonce);
         ProofPortalHistoryChallenge::consume((string) tenant('id'), $message);
 
         $recovered = EthereumPersonalSign::recoverAddress($message, $signature);
@@ -241,6 +242,7 @@ class InvoiceProofPortalService
     private function historyItem(SalesInvoice $invoice, string $canonicalJson, string $status, array $issued): BuyerInvoiceHistoryItemData
     {
         $canonical = [];
+
         try {
             $decoded = json_decode($canonicalJson, true, 512, JSON_THROW_ON_ERROR);
             if (is_array($decoded)) {

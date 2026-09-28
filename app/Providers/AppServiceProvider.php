@@ -52,6 +52,7 @@ use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\InvoiceProof\Contracts\CompanySafeOwnerLookup;
 use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
+use App\Modules\InvoiceProof\Models\InvoiceVerifier;
 use App\Modules\InvoiceProof\Support\BlockchainNetwork;
 use App\Modules\InvoiceProof\Support\DisabledInvoiceRegistryGateway;
 use App\Modules\InvoiceProof\Support\EmptyCompanySafeOwnerLookup;
@@ -151,6 +152,7 @@ class AppServiceProvider extends ServiceProvider
             'salesman' => Salesman::class,
             'sales_invoice' => SalesInvoice::class,
             'sales_invoice_line' => SalesInvoiceLine::class,
+            'invoice_verifier' => InvoiceVerifier::class,
             'supplier' => Supplier::class,
             'supplier_group' => SupplierGroup::class,
             'supplier_address' => SupplierAddress::class,

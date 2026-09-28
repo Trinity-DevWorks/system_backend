@@ -11,7 +11,7 @@ use InvalidArgumentException;
 use JsonException;
 
 /**
- * The full Canonical Invoice Schema v1 document. Assembles header, parties,
+ * The full Canonical Invoice Schema document. Assembles header, parties,
  * lines, and totals into a stable array/JSON string that later phases hash.
  */
 readonly class CanonicalInvoiceData

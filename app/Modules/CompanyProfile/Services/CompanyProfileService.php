@@ -7,6 +7,7 @@ namespace App\Modules\CompanyProfile\Services;
 use App\Modules\CompanyProfile\DTOs\CompanyProfileData;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
+use App\Modules\InvoiceProof\Services\InvoiceVerifierService;
 use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
 use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Support\TenantReferenceCache;
@@ -18,6 +19,7 @@ class CompanyProfileService
     public function __construct(
         private readonly CompanySafeSignerGuard $companySafeSignerGuard,
         private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
+        private readonly InvoiceVerifierService $invoiceVerifierService,
     ) {}
 
     public function get(): CompanyProfile
@@ -46,6 +48,7 @@ class CompanyProfileService
         $nextWallet = WalletAddress::normalize($profile->wallet_address);
         if ($nextWallet !== null && $nextWallet !== $previousWallet) {
             $this->invoiceChainRegistrationService->dispatchSupplierPartySync();
+            $this->invoiceVerifierService->dispatchCompanyResync();
         }
 
         return $profile;

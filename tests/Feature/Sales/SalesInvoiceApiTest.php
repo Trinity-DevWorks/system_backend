@@ -26,16 +26,26 @@ use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
+use App\Modules\InvoiceProof\CanonicalInvoiceSchema;
+use App\Modules\InvoiceProof\Contracts\CompanySafeOwnerLookup;
 use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
+use App\Modules\InvoiceProof\DTOs\InvoiceAttestationRecord;
 use App\Modules\InvoiceProof\DTOs\InvoiceChainReceiptData;
 use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
+use App\Modules\InvoiceProof\Enums\InvoiceVerifierChainStatus;
+use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use App\Modules\InvoiceProof\Jobs\RegisterSalesInvoiceOnChainJob;
+use App\Modules\InvoiceProof\Jobs\SyncInvoiceVerifierOnChainJob;
 use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
+use App\Modules\InvoiceProof\Models\InvoiceVerifier;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
 use App\Modules\InvoiceProof\Services\InvoiceSnapshotService;
+use App\Modules\InvoiceProof\Services\InvoiceVerifierService;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceHasher;
+use App\Modules\InvoiceProof\Support\CanonicalInvoiceMerkle;
+use App\Modules\InvoiceProof\Support\EmptyCompanySafeOwnerLookup;
 use App\Modules\InvoiceProof\Support\EthereumPersonalSign;
 use App\Modules\InvoiceProof\Support\ProofPortalLink;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
@@ -205,10 +215,12 @@ class SalesInvoiceApiTest extends TestCase
             $this->assertInstanceOf(InvoiceSnapshot::class, $snapshot);
             $this->assertSame('sales', $snapshot->invoice_type->value);
             $this->assertSame($id, $snapshot->invoice_id);
-            $this->assertSame(1, $snapshot->schema_version);
+            $this->assertSame(CanonicalInvoiceSchema::VERSION, $snapshot->schema_version);
             $this->assertSame(64, strlen($snapshot->content_hash));
+            $this->assertSame(64, strlen((string) $snapshot->disclosure_secret));
+            $this->assertArrayNotHasKey('disclosure_secret', $snapshot->toArray());
             $this->assertSame(
-                CanonicalInvoiceHasher::sha256($snapshot->canonical_json),
+                CanonicalInvoiceHasher::hash($snapshot->canonical_json, (string) $snapshot->disclosure_secret),
                 $snapshot->content_hash,
             );
 
@@ -440,6 +452,322 @@ class SalesInvoiceApiTest extends TestCase
             ->asTenantRequest($clerkToken)
             ->getJson($this->tenantUrl("/sales-invoices/{$id}/verify"))
             ->assertForbidden();
+    }
+
+    public function test_proof_fields_lists_sealed_leaves_without_the_secret(): void
+    {
+        $id = $this->postServiceInvoice();
+
+        $response = $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}/proof-fields"))
+            ->assertOk()
+            ->assertJsonPath('data.schema_version', CanonicalInvoiceSchema::VERSION);
+
+        $data = $response->json('data');
+        $this->assertIsArray($data);
+        $paths = array_column($data['fields'], 'path');
+        $this->assertSame('schema_version', $paths[0]);
+        $this->assertContains('buyer.name', $paths);
+        $this->assertContains('lines.0.item_code', $paths);
+        $this->assertContains('grand_total', $paths);
+        $this->assertSame(count($paths), $data['leaf_count']);
+        $this->assertStringNotContainsString('disclosure_secret', $response->getContent());
+    }
+
+    public function test_proof_disclosure_returns_only_requested_fields_with_verifiable_proofs(): void
+    {
+        $id = $this->postServiceInvoice();
+
+        $response = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/proof-disclosure"), [
+                'fields' => ['grand_total', 'buyer.name'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.format', 'invoice-proof-disclosure')
+            ->assertJsonCount(2, 'data.fields');
+
+        $data = $response->json('data');
+        $this->assertIsArray($data);
+        $this->assertSame(['buyer.name', 'grand_total'], array_column($data['fields'], 'path'));
+        foreach ($data['fields'] as $field) {
+            $this->assertTrue(CanonicalInvoiceMerkle::verify(
+                $field['path'],
+                $field['value'],
+                $field['salt'],
+                $field['proof'],
+                $data['content_hash'],
+            ), $field['path']);
+        }
+        $this->assertStringNotContainsString('Service item', $response->getContent());
+        $this->assertStringNotContainsString('disclosure_secret', $response->getContent());
+    }
+
+    public function test_proof_disclosure_rejects_unknown_fields(): void
+    {
+        $id = $this->postServiceInvoice();
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/proof-disclosure"), [
+                'fields' => ['grand_total', 'buyer.bank_account'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'INVOICE_PROOF_FIELD_UNKNOWN');
+    }
+
+    public function test_proof_disclosure_rejects_draft_invoice(): void
+    {
+        $id = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices'), $this->baseInvoicePayload([
+                'lines' => [[
+                    'item_id' => $this->catalog['service_item_id'],
+                    'quantity' => 1,
+                    'unit_price' => 50,
+                ]],
+            ]))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}/proof-fields"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'SALES_INVOICE_NOT_POSTED');
+    }
+
+    public function test_proof_disclosure_blocked_when_snapshot_was_tampered(): void
+    {
+        $id = $this->postServiceInvoice();
+
+        $this->tenant->run(function () use ($id): void {
+            $snapshot = InvoiceSnapshot::query()->where('invoice_id', $id)->firstOrFail();
+            DB::table('invoice_snapshots')->where('id', $snapshot->id)->update([
+                'canonical_json' => str_replace('50.0000', '99.0000', $snapshot->canonical_json),
+            ]);
+        });
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/proof-disclosure"), [
+                'fields' => ['grand_total'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'INVOICE_PROOF_TAMPERED');
+    }
+
+    public function test_proof_disclosure_forbidden_when_invoice_proofs_disabled(): void
+    {
+        $id = $this->postServiceInvoice();
+        $this->setInvoiceProofsEnabled(false);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}/proof-fields"))
+            ->assertForbidden()
+            ->assertJsonPath('code', 'INVOICE_PROOFS_DISABLED');
+    }
+
+    public function test_proof_disclosure_requires_invoice_proofs_view(): void
+    {
+        $id = $this->postServiceInvoice();
+        $clerkToken = $this->clerkTokenWithoutInvoiceProofsView();
+
+        Auth::forgetGuards();
+
+        $this->flushHeaders()
+            ->asTenantRequest($clerkToken)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}/proof-fields"))
+            ->assertForbidden();
+
+        Auth::forgetGuards();
+
+        $this->flushHeaders()
+            ->asTenantRequest($clerkToken)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/proof-disclosure"), ['fields' => ['grand_total']])
+            ->assertForbidden();
+    }
+
+    public function test_invoice_verifier_create_is_listed_and_queues_chain_sync(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $this->app->instance(CompanySafeOwnerLookup::class, new EmptyCompanySafeOwnerLookup);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-verifiers'), [
+                'name' => 'Bank A',
+                'role' => 'financier',
+                'wallet_address' => '0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.name', 'Bank A')
+            ->assertJsonPath('data.role', 'financier')
+            ->assertJsonPath('data.wallet_address', '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc')
+            ->assertJsonPath('data.chain_status', 'pending');
+
+        Queue::assertPushed(SyncInvoiceVerifierOnChainJob::class);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/invoice-verifiers'))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Bank A');
+    }
+
+    public function test_invoice_verifier_rejects_company_safe_wallet(): void
+    {
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-verifiers'), [
+                'name' => 'Self',
+                'role' => 'auditor',
+                'wallet_address' => '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['wallet_address']);
+    }
+
+    public function test_invoice_verifier_sync_lists_wallet_for_company_safe(): void
+    {
+        $this->enableBlockchainConfig();
+        $verifierId = $this->tenant->run(fn (): string => (string) InvoiceVerifier::query()->create([
+            'name' => 'Bank A',
+            'role' => InvoiceVerifierRole::Financier,
+            'wallet_address' => '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc',
+            'chain_status' => InvoiceVerifierChainStatus::Pending,
+        ])->id);
+
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->expects($this->once())
+            ->method('setVerifier')
+            ->with(
+                '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+                '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc',
+                3,
+            )
+            ->willReturn(new InvoiceChainReceiptData(
+                txHash: '0xabc',
+                blockNumber: 1,
+                contractAddress: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
+            ));
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->tenant->run(function () use ($verifierId): void {
+            app(InvoiceVerifierService::class)->syncOnChain($verifierId);
+
+            $verifier = InvoiceVerifier::query()->findOrFail($verifierId);
+            $this->assertSame(InvoiceVerifierChainStatus::Active, $verifier->chain_status);
+            $this->assertSame('0x70997970c51812dc3a010c7d01b50e0d17dc79c8', $verifier->chain_company_wallet);
+            $this->assertSame('0xabc', $verifier->chain_tx_hash);
+        });
+    }
+
+    public function test_invoice_verifier_delete_revokes_on_chain_then_removes_row(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $verifierId = $this->tenant->run(fn (): string => (string) InvoiceVerifier::query()->create([
+            'name' => 'Audit Co',
+            'role' => InvoiceVerifierRole::Auditor,
+            'wallet_address' => '0x90f79bf6eb2c4f870365e785982e1f101e93b906',
+            'chain_status' => InvoiceVerifierChainStatus::Active,
+            'chain_company_wallet' => '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+        ])->id);
+
+        $this->asTenantRequest($this->token)
+            ->deleteJson($this->tenantUrl("/invoice-verifiers/{$verifierId}"))
+            ->assertOk();
+
+        Queue::assertPushed(SyncInvoiceVerifierOnChainJob::class);
+
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->expects($this->once())
+            ->method('setVerifier')
+            ->with(
+                '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+                '0x90f79bf6eb2c4f870365e785982e1f101e93b906',
+                0,
+            )
+            ->willReturn(new InvoiceChainReceiptData(
+                txHash: '0xdef',
+                blockNumber: 2,
+                contractAddress: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
+            ));
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->tenant->run(function () use ($verifierId): void {
+            $this->assertSame(
+                InvoiceVerifierChainStatus::Removing,
+                InvoiceVerifier::query()->findOrFail($verifierId)->chain_status,
+            );
+
+            app(InvoiceVerifierService::class)->syncOnChain($verifierId);
+
+            $this->assertNull(InvoiceVerifier::query()->find($verifierId));
+        });
+    }
+
+    public function test_invoice_verifier_changes_require_invoice_proofs_edit(): void
+    {
+        $clerkToken = $this->clerkTokenWithoutInvoiceProofsEdit();
+
+        Auth::forgetGuards();
+
+        $this->flushHeaders()
+            ->asTenantRequest($clerkToken)
+            ->postJson($this->tenantUrl('/invoice-verifiers'), [
+                'name' => 'Bank A',
+                'role' => 'financier',
+                'wallet_address' => '0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc',
+            ])
+            ->assertForbidden();
+
+        $this->flushHeaders()
+            ->asTenantRequest($clerkToken)
+            ->getJson($this->tenantUrl('/invoice-verifiers'))
+            ->assertOk();
+    }
+
+    public function test_verify_names_attestations_from_company_verifiers(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $id = $this->postServiceInvoice();
+
+        $proofId = null;
+        $hash = null;
+        $this->tenant->run(function () use ($id, &$proofId, &$hash): void {
+            $snapshot = InvoiceSnapshot::query()->where('invoice_id', $id)->firstOrFail();
+            $proofId = (string) $snapshot->id;
+            $hash = $snapshot->content_hash;
+            InvoiceVerifier::query()->create([
+                'name' => 'Bank A',
+                'role' => InvoiceVerifierRole::Financier,
+                'wallet_address' => '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc',
+                'chain_status' => InvoiceVerifierChainStatus::Active,
+            ]);
+        });
+
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->with($proofId)->willReturn(new InvoiceOnChainRecord(
+            contentHash: $hash,
+            supplierAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+            buyerAddress: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
+            supplierApproved: true,
+            buyerApproved: true,
+            status: InvoiceOnChainStatus::FullyApproved,
+        ));
+        $gateway->method('attestationsOf')->with($proofId)->willReturn([
+            new InvoiceAttestationRecord(
+                '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc',
+                InvoiceVerifierRole::Financier,
+                null,
+                1700000000,
+            ),
+        ]);
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}/verify"))
+            ->assertOk()
+            ->assertJsonPath('data.attestations.0.verifier_name', 'Bank A')
+            ->assertJsonPath('data.attestations.0.role', 'financier')
+            ->assertJsonPath('data.financed_by', '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc');
     }
 
     public function test_approve_as_company_forbidden_without_invoice_proofs_permission(): void

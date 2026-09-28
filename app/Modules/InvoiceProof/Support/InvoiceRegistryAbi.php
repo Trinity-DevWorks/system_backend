@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\InvoiceProof\Support;
 
+use App\Modules\InvoiceProof\DTOs\InvoiceAttestationRecord;
 use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
+use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use InvalidArgumentException;
 
 /**
@@ -24,6 +26,12 @@ final class InvoiceRegistryAbi
     public const INVOICES = '0xf8a8a076';
 
     public const SET_PARTIES = '0xe35129b1';
+
+    public const ATTESTATION_COUNT = '0xd65ddd52';
+
+    public const ATTESTATION_AT = '0x4ed051db';
+
+    public const SET_VERIFIER = '0x2b70a025';
 
     public const ALREADY_REGISTERED = '3a81d6fc';
 
@@ -156,6 +164,57 @@ final class InvoiceRegistryAbi
     public static function encodeInvoices(string $proofId): string
     {
         return self::encodeProofIdCall(self::INVOICES, $proofId);
+    }
+
+    public static function encodeSetVerifier(string $company, string $verifier, int $role): string
+    {
+        return self::SET_VERIFIER
+            .self::padAddress($company)
+            .self::padAddress($verifier)
+            .self::padUint($role);
+    }
+
+    public static function encodeAttestationCount(string $proofId): string
+    {
+        return self::encodeProofIdCall(self::ATTESTATION_COUNT, $proofId);
+    }
+
+    public static function encodeAttestationAt(string $proofId, int $index): string
+    {
+        return self::encodeProofIdCall(self::ATTESTATION_AT, $proofId).self::padUint($index);
+    }
+
+    public static function decodeUint(string $data): int
+    {
+        $word = substr(InvoiceProofBytes::strip0x($data), 0, 64);
+        if (! preg_match('/^[0-9a-fA-F]{64}$/', $word)) {
+            return 0;
+        }
+
+        return (int) hexdec($word);
+    }
+
+    /**
+     * Decodes `(address verifier, uint8 role, bytes32 referenceHash, uint256 attestedAt)`.
+     */
+    public static function decodeAttestation(string $data): ?InvoiceAttestationRecord
+    {
+        $hex = InvoiceProofBytes::strip0x($data);
+        if (strlen($hex) < 256) {
+            return null;
+        }
+
+        $role = InvoiceVerifierRole::fromChain((int) hexdec(substr($hex, 64, 64)));
+        if ($role === null) {
+            return null;
+        }
+
+        return new InvoiceAttestationRecord(
+            verifier: InvoiceProofBytes::address('0x'.substr($hex, 24, 40)),
+            role: $role,
+            referenceHash: self::decodeBytes32('0x'.substr($hex, 128, 64)),
+            attestedAt: self::decodeTimestamp(substr($hex, 192, 64)),
+        );
     }
 
     public static function decodeBytes32(string $data): ?string

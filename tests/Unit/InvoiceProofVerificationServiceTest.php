@@ -11,10 +11,12 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
+use App\Modules\InvoiceProof\DTOs\InvoiceAttestationRecord;
 use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceProofType;
 use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
+use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Serializers\SalesInvoiceCanonicalSerializer;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
@@ -323,6 +325,79 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $this->assertFalse($result->chainMatches);
     }
 
+    public function test_attestations_are_exposed_with_financier(): void
+    {
+        $invoice = $this->salesInvoice();
+        $snapshot = $this->snapshotFor($invoice);
+        $onChain = $this->onChain($snapshot->content_hash, InvoiceOnChainStatus::FullyApproved);
+        $attestations = [
+            new InvoiceAttestationRecord('0x90f79bf6eb2c4f870365e785982e1f101e93b906', InvoiceVerifierRole::Auditor, null, 1700000000),
+            new InvoiceAttestationRecord('0x15d34aaf54267db7d7c367839aaf71a00a2c6a65', InvoiceVerifierRole::Financier, str_repeat('cd', 32), 1700000100),
+        ];
+
+        $result = $this->service->evaluateSalesInvoice($invoice, $snapshot, $this->company(), $onChain, true, $attestations);
+        $payload = $result->toArray();
+
+        $this->assertSame('0x15d34aaf54267db7d7c367839aaf71a00a2c6a65', $payload['financed_by']);
+        $this->assertCount(2, $payload['attestations']);
+        $this->assertSame([
+            'verifier' => '0x90f79bf6eb2c4f870365e785982e1f101e93b906',
+            'verifier_name' => null,
+            'role' => 'auditor',
+            'reference_hash' => null,
+            'attested_at' => '2023-11-14T22:13:20+00:00',
+        ], $payload['attestations'][0]);
+        $this->assertSame('financier', $payload['attestations'][1]['role']);
+    }
+
+    public function test_attestations_are_dropped_without_chain_record(): void
+    {
+        $invoice = $this->salesInvoice();
+        $snapshot = $this->snapshotFor($invoice);
+        $attestations = [
+            new InvoiceAttestationRecord('0x15d34aaf54267db7d7c367839aaf71a00a2c6a65', InvoiceVerifierRole::Financier, null, 1700000100),
+        ];
+
+        $result = $this->service->evaluateSalesInvoice($invoice, $snapshot, $this->company(), null, true, $attestations);
+
+        $this->assertSame([], $result->toArray()['attestations']);
+        $this->assertNull($result->toArray()['financed_by']);
+    }
+
+    public function test_attestation_abi_round_trip(): void
+    {
+        $this->assertSame(
+            '0x4ed051db'.'11111111111141118111111111111111'.str_repeat('0', 32).str_repeat('0', 63).'2',
+            InvoiceRegistryAbi::encodeAttestationAt(self::PROOF_ID, 2),
+        );
+
+        $data = '0x'
+            .str_repeat('0', 24).'15d34aaf54267db7d7c367839aaf71a00a2c6a65'
+            .str_repeat('0', 63).'3'
+            .str_repeat('cd', 32)
+            .str_pad(dechex(1700000100), 64, '0', STR_PAD_LEFT);
+
+        $record = InvoiceRegistryAbi::decodeAttestation($data);
+
+        $this->assertNotNull($record);
+        $this->assertSame('0x15d34aaf54267db7d7c367839aaf71a00a2c6a65', $record->verifier);
+        $this->assertSame(InvoiceVerifierRole::Financier, $record->role);
+        $this->assertSame(str_repeat('cd', 32), $record->referenceHash);
+        $this->assertSame(1700000100, $record->attestedAt);
+        $this->assertSame(3, InvoiceRegistryAbi::decodeUint('0x'.str_repeat('0', 63).'3'));
+        $this->assertSame(
+            '0x2b70a025'
+                .str_repeat('0', 24).'5fbdb2315678afecb367f032d93f642f64180aa3'
+                .str_repeat('0', 24).'15d34aaf54267db7d7c367839aaf71a00a2c6a65'
+                .str_repeat('0', 63).'3',
+            InvoiceRegistryAbi::encodeSetVerifier(
+                '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+                '0x15d34aaf54267db7d7c367839aaf71a00a2c6a65',
+                InvoiceVerifierRole::Financier->toChain(),
+            ),
+        );
+    }
+
     private function onChain(string $contentHash, InvoiceOnChainStatus $status, ?int $registeredAt = null): InvoiceOnChainRecord
     {
         return new InvoiceOnChainRecord(
@@ -344,7 +419,8 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $snapshot->id = self::PROOF_ID;
         $snapshot->invoice_type = InvoiceProofType::Sales;
         $snapshot->canonical_json = $json;
-        $snapshot->content_hash = CanonicalInvoiceHasher::sha256($json);
+        $snapshot->disclosure_secret = str_repeat('ab', 32);
+        $snapshot->content_hash = CanonicalInvoiceHasher::hash($json, $snapshot->disclosure_secret);
 
         return $snapshot;
     }

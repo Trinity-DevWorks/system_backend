@@ -9,11 +9,13 @@ use App\Modules\InvoiceProof\Enums\InvoiceProofType;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Serializers\SalesInvoiceCanonicalSerializer;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceHasher;
+use App\Modules\InvoiceProof\Support\CanonicalInvoiceMerkle;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use Illuminate\Support\Str;
 
 /**
- * Builds canonical JSON for a posted invoice, stores it, and records its SHA-256 hash.
+ * Builds canonical JSON for a posted invoice, stores it with a fresh disclosure
+ * secret, and records its salted Merkle root as the content hash.
  */
 class InvoiceSnapshotService
 {
@@ -25,6 +27,7 @@ class InvoiceSnapshotService
 
         $proofId = (string) Str::uuid();
         $canonicalJson = SalesInvoiceCanonicalSerializer::serialize($invoice, $proofId)->toJson();
+        $disclosureSecret = CanonicalInvoiceMerkle::newSecret();
 
         return InvoiceSnapshot::query()->create([
             'id' => $proofId,
@@ -32,7 +35,8 @@ class InvoiceSnapshotService
             'invoice_id' => $invoice->id,
             'schema_version' => CanonicalInvoiceSchema::VERSION,
             'canonical_json' => $canonicalJson,
-            'content_hash' => CanonicalInvoiceHasher::sha256($canonicalJson),
+            'content_hash' => CanonicalInvoiceHasher::hash($canonicalJson, $disclosureSecret),
+            'disclosure_secret' => $disclosureSecret,
         ]);
     }
 

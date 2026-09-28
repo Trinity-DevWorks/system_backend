@@ -18,6 +18,8 @@ use RuntimeException;
  */
 final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
 {
+    private const MAX_ATTESTATIONS = 50;
+
     public function __construct(
         private readonly string $rpcUrl,
         private readonly string $contractAddress,
@@ -119,6 +121,41 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
     public function approveBySupplier(string $proofId, string $supplierAddress): InvoiceChainReceiptData
     {
         throw new RuntimeException('Company approval must be signed in the wallet.');
+    }
+
+    public function setVerifier(string $companyAddress, string $verifierAddress, int $role): InvoiceChainReceiptData
+    {
+        return $this->sendFrom(
+            $this->registrarAddress,
+            InvoiceRegistryAbi::encodeSetVerifier($companyAddress, $verifierAddress, $role),
+        );
+    }
+
+    public function attestationsOf(string $proofId): array
+    {
+        $count = $this->call(InvoiceRegistryAbi::encodeAttestationCount($proofId));
+        $total = min($count === null ? 0 : InvoiceRegistryAbi::decodeUint($count), self::MAX_ATTESTATIONS);
+
+        $attestations = [];
+        for ($index = 0; $index < $total; $index++) {
+            $result = $this->call(InvoiceRegistryAbi::encodeAttestationAt($proofId, $index));
+            $record = $result === null ? null : InvoiceRegistryAbi::decodeAttestation($result);
+            if ($record !== null) {
+                $attestations[] = $record;
+            }
+        }
+
+        return $attestations;
+    }
+
+    private function call(string $data): ?string
+    {
+        $result = $this->rpc('eth_call', [[
+            'to' => InvoiceProofBytes::address($this->contractAddress),
+            'data' => $data,
+        ], 'latest']);
+
+        return is_string($result) && $result !== '' && $result !== '0x' ? $result : null;
     }
 
     private function partiesAlreadyMatch(
