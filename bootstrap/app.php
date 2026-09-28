@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Middleware\CheckCentralPermission;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\EnsureModule;
+use App\Http\Middleware\EnsureTenantActive;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ResolveActiveBranch;
 use App\Http\Responses\ApiResponse;
@@ -45,7 +47,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // statefulApi() only if you add the SPA flow: GET /sanctum/csrf-cookie then POST with X-XSRF-TOKEN.
         $middleware->alias([
             'check.permission' => CheckPermission::class,
+            'check.central.permission' => CheckCentralPermission::class,
             'ensure.module' => EnsureModule::class,
+            'ensure.tenant.active' => EnsureTenantActive::class,
             'ensure.active' => EnsureUserIsActive::class,
             'resolve.branch' => ResolveActiveBranch::class,
         ]);

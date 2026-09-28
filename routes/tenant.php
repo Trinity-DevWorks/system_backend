@@ -92,6 +92,7 @@ Route::middleware([
     'api',
     InitializeTenancyByDomain::class,
     PreventAccessFromCentralDomains::class,
+    'ensure.tenant.active',
 ])->group(function () {
     Route::get('/', function () {
         return response()->json([

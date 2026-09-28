@@ -5,6 +5,7 @@ use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Jobs\BootstrapTenantWalkInCustomer;
+use App\Jobs\SyncCentralRbac;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchService;
@@ -134,6 +135,12 @@ Artisan::command('tenants:sync-rbac', function () {
 
     $this->info("Done. {$count} tenant(s) processed.");
 })->purpose('Sync permission catalog (including audits) for all existing tenants');
+
+Artisan::command('central:sync-rbac', function () {
+    SyncCentralRbac::dispatchSync();
+
+    $this->info('Synced central RBAC catalog and Super Admin role.');
+})->purpose('Sync central permission catalog, Super Admin role, and assign it to central users without a role');
 
 /*
 |--------------------------------------------------------------------------

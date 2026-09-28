@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Jobs\SyncCentralRbac;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
@@ -26,6 +27,8 @@ class DatabaseSeeder extends Seeder
                 'is_active' => true,
             ]
         );
+
+        SyncCentralRbac::dispatchSync();
 
         $this->call([
             ModuleSeeder::class,
