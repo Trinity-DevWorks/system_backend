@@ -157,6 +157,12 @@ return [
             'mail_subject' => 'Lot :lot_number of :item_code expires :expiry_date',
             'permission' => ['resource' => 'stock', 'action' => 'view'],
         ],
+        'invoice_proof.chain_issues' => [
+            'severity' => 'critical',
+            'default_channels' => ['database', 'mail'],
+            'mail_subject' => 'Blockchain consistency check found :issue_count issue(s)',
+            'permission' => ['resource' => 'invoice_proofs', 'action' => 'view'],
+        ],
         'stock_movement.posted' => [
             'severity' => 'info',
             'default_channels' => ['database'],

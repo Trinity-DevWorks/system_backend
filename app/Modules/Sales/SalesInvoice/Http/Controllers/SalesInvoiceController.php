@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\InvoiceProof\Http\Requests\DiscloseInvoiceProofRequest;
+use App\Modules\InvoiceProof\Services\InvoiceChainIssueLookup;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
 use App\Modules\InvoiceProof\Services\InvoiceProofDisclosureService;
 use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
@@ -33,6 +34,7 @@ class SalesInvoiceController extends Controller
         private readonly InvoiceProofPortalService $invoiceProofPortalService,
         private readonly InvoiceProofDisclosureService $invoiceProofDisclosureService,
         private readonly PermissionService $permissionService,
+        private readonly InvoiceChainIssueLookup $invoiceChainIssueLookup,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -45,9 +47,15 @@ class SalesInvoiceController extends Controller
             'to' => $request->string('to')->toString() ?: null,
         ];
 
-        return ListPagination::json(
+        return ListPagination::jsonMapped(
             $this->salesInvoiceService->list($filters, ListPagination::perPage($request, 50)),
-            fn (SalesInvoice $invoice): array => SalesInvoiceResponseData::fromModel($invoice, false),
+            function ($invoices): array {
+                $chainIssues = $this->invoiceChainIssueLookup->forInvoices($invoices->pluck('id'));
+
+                return $invoices->map(
+                    fn (SalesInvoice $invoice): array => SalesInvoiceResponseData::fromModel($invoice, false, $chainIssues[(string) $invoice->id] ?? null),
+                )->values()->all();
+            },
             'Sales invoices fetched successfully.'
         );
     }
@@ -68,8 +76,14 @@ class SalesInvoiceController extends Controller
 
     public function show(SalesInvoice $salesInvoice): JsonResponse
     {
+        $invoice = $this->salesInvoiceService->find($salesInvoice->id);
+
         return ApiResponse::success(
-            SalesInvoiceResponseData::fromModel($this->salesInvoiceService->find($salesInvoice->id)),
+            SalesInvoiceResponseData::fromModel(
+                $invoice,
+                true,
+                $this->invoiceChainIssueLookup->forInvoices([$invoice->id])[(string) $invoice->id] ?? null,
+            ),
             'Sales invoice fetched successfully.'
         );
     }

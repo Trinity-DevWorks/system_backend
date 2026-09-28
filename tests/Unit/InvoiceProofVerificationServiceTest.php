@@ -205,8 +205,10 @@ class InvoiceProofVerificationServiceTest extends TestCase
         );
     }
 
-    public function test_registered_without_supplier_is_verified_not_waiting_company(): void
+    public function test_registered_without_supplier_waits_for_company_without_approve_action(): void
     {
+        config(['blockchain.contract_address' => '0x5FbDB2315678afecb367f032d93F642f64180aa3']);
+
         $invoice = $this->salesInvoice();
         $snapshot = $this->snapshotFor($invoice);
         $onChain = new InvoiceOnChainRecord(
@@ -220,16 +222,19 @@ class InvoiceProofVerificationServiceTest extends TestCase
 
         $result = $this->service->evaluateSalesInvoice($invoice, $snapshot, $this->company(), $onChain, true);
 
-        $this->assertSame(InvoiceProofVerificationStatus::Verified, $result->status);
+        $this->assertSame(InvoiceProofVerificationStatus::WaitingCompany, $result->status);
         $this->assertTrue($result->chainMatches);
         $this->assertFalse($result->canApproveAsCompany);
         $this->assertFalse($result->canApproveAsBuyer);
+        $this->assertNull($result->eip712);
         $this->assertNull($result->supplierWallet);
         $this->assertNull($result->buyerWallet);
     }
 
-    public function test_supplier_approved_without_buyer_is_verified_not_waiting_buyer(): void
+    public function test_supplier_approved_without_buyer_waits_for_buyer_without_approve_action(): void
     {
+        config(['blockchain.contract_address' => '0x5FbDB2315678afecb367f032d93F642f64180aa3']);
+
         $invoice = $this->salesInvoice();
         $snapshot = $this->snapshotFor($invoice);
         $onChain = new InvoiceOnChainRecord(
@@ -243,9 +248,10 @@ class InvoiceProofVerificationServiceTest extends TestCase
 
         $result = $this->service->evaluateSalesInvoice($invoice, $snapshot, $this->company(), $onChain, true);
 
-        $this->assertSame(InvoiceProofVerificationStatus::Verified, $result->status);
+        $this->assertSame(InvoiceProofVerificationStatus::WaitingBuyer, $result->status);
         $this->assertFalse($result->canApproveAsCompany);
         $this->assertFalse($result->canApproveAsBuyer);
+        $this->assertNull($result->eip712);
         $this->assertSame('0x70997970c51812dc3a010c7d01b50e0d17dc79c8', $result->supplierWallet);
         $this->assertNull($result->buyerWallet);
     }
@@ -293,6 +299,22 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $this->assertSame(InvoiceProofVerificationStatus::FullyApproved, $result->status);
         $this->assertFalse($result->canApproveAsCompany);
         $this->assertFalse($result->canApproveAsBuyer);
+    }
+
+    public function test_financed_at_comes_from_the_financier_attestation_only(): void
+    {
+        $invoice = $this->salesInvoice();
+        $snapshot = $this->snapshotFor($invoice);
+        $onChain = $this->onChain($snapshot->content_hash, InvoiceOnChainStatus::FullyApproved);
+        $auditor = new InvoiceAttestationRecord('0x90f79bf6eb2c4f870365e785982e1f101e93b906', InvoiceVerifierRole::Auditor, null, 1700000000);
+        $bank = new InvoiceAttestationRecord('0x15d34aaf54267db7d7c367839aaf71a00a2c6a65', InvoiceVerifierRole::Financier, null, 1700000500);
+
+        $auditedOnly = $this->service->evaluateSalesInvoice($invoice, $snapshot, $this->company(), $onChain, true, [$auditor]);
+        $financed = $this->service->evaluateSalesInvoice($invoice, $snapshot, $this->company(), $onChain, true, [$auditor, $bank]);
+
+        $this->assertNull($auditedOnly->financedAt());
+        $this->assertSame('2023-11-14T22:21:40+00:00', $financed->financedAt());
+        $this->assertSame('0x15d34aaf54267db7d7c367839aaf71a00a2c6a65', $financed->financedBy());
     }
 
     public function test_missing_chain_hash_is_pending_when_chain_enabled(): void

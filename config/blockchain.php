@@ -73,6 +73,27 @@ return [
 
     'receipt_attempts' => (int) env('BLOCKCHAIN_RECEIPT_ATTEMPTS', 10),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Chain consistency check
+    |--------------------------------------------------------------------------
+    |
+    | invoice-proofs:check-chain compares snapshots and registrations with
+    | InvoiceRegistry. A registration older than stuck_after_minutes that is
+    | still pending/failed is reported. The InvoiceRegistered scan starts at
+    | log_from_block (set it to the deploy block on Sepolia) and reads at most
+    | log_max_chunks ranges of log_chunk_blocks per run; the next run resumes.
+    |
+    */
+
+    'consistency' => [
+        'stuck_after_minutes' => (int) env('BLOCKCHAIN_CHECK_STUCK_AFTER_MINUTES', 30),
+        'log_from_block' => (int) env('BLOCKCHAIN_LOG_FROM_BLOCK', 0),
+        'log_chunk_blocks' => (int) env('BLOCKCHAIN_LOG_CHUNK_BLOCKS', 5000),
+        'log_max_chunks' => (int) env('BLOCKCHAIN_LOG_MAX_CHUNKS', 20),
+        'max_issues' => 200,
+    ],
+
     'proof_portal_secret' => env('PROOF_PORTAL_SECRET'),
 
     'proof_portal_ttl_days' => (int) env('PROOF_PORTAL_TTL_DAYS', 7),

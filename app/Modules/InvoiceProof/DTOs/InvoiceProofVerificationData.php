@@ -60,6 +60,20 @@ readonly class InvoiceProofVerificationData
         return null;
     }
 
+    /**
+     * ISO 8601 time of the financier attestation, or null while the invoice is not financed.
+     */
+    public function financedAt(): ?string
+    {
+        foreach ($this->attestations as $attestation) {
+            if ($attestation->role === InvoiceVerifierRole::Financier) {
+                return $attestation->toArray()['attested_at'];
+            }
+        }
+
+        return null;
+    }
+
     public static function notRegistered(): self
     {
         return new self(

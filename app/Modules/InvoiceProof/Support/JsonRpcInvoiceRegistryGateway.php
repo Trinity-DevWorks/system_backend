@@ -148,6 +148,45 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
         return $attestations;
     }
 
+    public function latestBlockNumber(): int
+    {
+        $result = $this->rpc('eth_blockNumber', []);
+
+        return is_string($result) ? self::hexToInt($result) : 0;
+    }
+
+    public function registeredBySupplier(string $supplierAddress, int $fromBlock, int $toBlock): array
+    {
+        if ($toBlock < $fromBlock) {
+            return [];
+        }
+
+        $logs = $this->rpc('eth_getLogs', [[
+            'address' => InvoiceProofBytes::address($this->contractAddress),
+            'fromBlock' => '0x'.dechex($fromBlock),
+            'toBlock' => '0x'.dechex($toBlock),
+            'topics' => [
+                InvoiceRegistryAbi::INVOICE_REGISTERED_TOPIC,
+                null,
+                InvoiceRegistryAbi::addressTopic($supplierAddress),
+            ],
+        ]]);
+
+        if (! is_array($logs)) {
+            throw new RuntimeException('Blockchain RPC returned invalid logs.');
+        }
+
+        $registered = [];
+        foreach ($logs as $log) {
+            $decoded = is_array($log) ? InvoiceRegistryAbi::decodeInvoiceRegisteredLog($log) : null;
+            if ($decoded !== null) {
+                $registered[] = $decoded;
+            }
+        }
+
+        return $registered;
+    }
+
     private function call(string $data): ?string
     {
         $result = $this->rpc('eth_call', [[

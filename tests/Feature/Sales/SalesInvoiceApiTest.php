@@ -33,6 +33,7 @@ use App\Modules\InvoiceProof\DTOs\InvoiceAttestationRecord;
 use App\Modules\InvoiceProof\DTOs\InvoiceChainReceiptData;
 use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
 use App\Modules\InvoiceProof\DTOs\WalletInspectionData;
+use App\Modules\InvoiceProof\Enums\InvoiceChainCheckStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
@@ -40,6 +41,7 @@ use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\InvoiceProof\Exceptions\CompanySignerWalletException;
 use App\Modules\InvoiceProof\Jobs\RegisterSalesInvoiceOnChainJob;
 use App\Modules\InvoiceProof\Jobs\SyncInvoiceVerifierOnChainJob;
+use App\Modules\InvoiceProof\Models\InvoiceChainCheck;
 use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Models\InvoiceVerifier;
@@ -51,6 +53,7 @@ use App\Modules\InvoiceProof\Support\CanonicalInvoiceMerkle;
 use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
 use App\Modules\InvoiceProof\Support\EmptyCompanySafeOwnerLookup;
 use App\Modules\InvoiceProof\Support\EthereumPersonalSign;
+use App\Modules\InvoiceProof\Support\InvoiceProofBytes;
 use App\Modules\InvoiceProof\Support\ProofPortalLink;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Rbac\Models\Permission;
@@ -404,6 +407,7 @@ class SalesInvoiceApiTest extends TestCase
                 'can_delete' => false,
                 'can_import' => false,
                 'can_export' => false,
+                'can_reverse' => false,
             ];
         }
 
@@ -775,6 +779,215 @@ class SalesInvoiceApiTest extends TestCase
             ->assertJsonPath('data.attestations.0.verifier_name', 'Bank A')
             ->assertJsonPath('data.attestations.0.role', 'financier')
             ->assertJsonPath('data.financed_by', '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc');
+    }
+
+    public function test_chain_check_reports_consistent_when_chain_matches(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $this->tenant->run(fn () => CompanyProfile::singleton()->update([
+            'wallet_address' => '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+        ]));
+        [$proofId, $hash] = $this->confirmedProof($this->postServiceInvoice());
+
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->with($proofId)->willReturn($this->chainRecord($hash));
+        $gateway->method('latestBlockNumber')->willReturn(12);
+        $gateway->expects($this->once())
+            ->method('registeredBySupplier')
+            ->with('0x70997970c51812dc3a010c7d01b50e0d17dc79c8', 0, 12)
+            ->willReturn([[
+                'proof_id' => InvoiceProofBytes::proofIdToBytes32($proofId),
+                'content_hash' => $hash,
+                'block_number' => 5,
+            ]]);
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-proofs/chain-check'))
+            ->assertOk()
+            ->assertJsonPath('data.available', true)
+            ->assertJsonPath('data.check.status', 'consistent')
+            ->assertJsonPath('data.check.checked_count', 1)
+            ->assertJsonPath('data.check.issue_count', 0)
+            ->assertJsonPath('data.check.scanned_from_block', 0)
+            ->assertJsonPath('data.check.scanned_to_block', 12)
+            ->assertJsonCount(0, 'data.check.issues');
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/invoice-proofs/chain-check'))
+            ->assertOk()
+            ->assertJsonPath('data.check.status', 'consistent');
+    }
+
+    public function test_chain_check_command_flags_altered_mismatched_and_unknown_proofs(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $this->tenant->run(fn () => CompanyProfile::singleton()->update([
+            'wallet_address' => '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+        ]));
+        [$alteredId, $alteredHash] = $this->confirmedProof($this->postServiceInvoice());
+        [$mismatchId] = $this->confirmedProof($this->postServiceInvoice());
+        $unknownProof = InvoiceProofBytes::proofIdToBytes32('0b0e8d3c-1b2a-4c5d-8e9f-a0b1c2d3e4f5');
+        $otherHash = '0x'.str_repeat('ab', 32);
+
+        $this->tenant->run(function () use ($alteredId): void {
+            $snapshot = InvoiceSnapshot::query()->findOrFail($alteredId);
+            $canonical = json_decode((string) $snapshot->canonical_json, true);
+            $canonical['invoice_number'] = 'TAMPERED';
+            InvoiceSnapshot::query()->whereKey($alteredId)->toBase()->update([
+                'canonical_json' => json_encode($canonical, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ]);
+        });
+
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->willReturnCallback(
+            fn (string $id): InvoiceOnChainRecord => $this->chainRecord($id === $alteredId ? $alteredHash : $otherHash),
+        );
+        $gateway->method('latestBlockNumber')->willReturn(3);
+        $gateway->method('registeredBySupplier')->willReturn([[
+            'proof_id' => $unknownProof,
+            'content_hash' => $otherHash,
+            'block_number' => 2,
+        ]]);
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->artisan('invoice-proofs:check-chain', ['--tenant' => $this->tenant->id])->assertSuccessful();
+
+        $this->tenant->run(function () use ($alteredId, $mismatchId, $unknownProof): void {
+            $check = InvoiceChainCheck::query()->with('issues')->sole();
+            $this->assertSame(InvoiceChainCheckStatus::Issues, $check->status);
+            $this->assertSame(2, $check->checked_count);
+
+            $kinds = $check->issues->mapWithKeys(
+                fn ($issue): array => [$issue->kind->value => $issue->proof_id ?? $issue->chain_proof_id],
+            )->sortKeys()->all();
+            $this->assertSame([
+                'hash_mismatch' => $mismatchId,
+                'snapshot_altered' => $alteredId,
+                'unknown_on_chain' => $unknownProof,
+            ], $kinds);
+        });
+    }
+
+    public function test_chain_check_requeues_stuck_registration(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $id = $this->postServiceInvoice();
+        $proofId = $this->tenant->run(function () use ($id): string {
+            $proofId = (string) InvoiceSnapshot::query()->where('invoice_id', $id)->firstOrFail()->id;
+            InvoiceChainRegistration::query()->where('proof_id', $proofId)->toBase()->update([
+                'status' => 'failed',
+                'last_error' => 'RPC timeout',
+                'updated_at' => now()->subHour(),
+            ]);
+
+            return $proofId;
+        });
+        Queue::fake();
+
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->willReturn(null);
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-proofs/chain-check'))
+            ->assertOk()
+            ->assertJsonPath('data.check.status', 'issues')
+            ->assertJsonPath('data.check.requeued_count', 1)
+            ->assertJsonPath('data.check.issues.0.kind', 'registration_stuck')
+            ->assertJsonPath('data.check.issues.0.proof_id', $proofId)
+            ->assertJsonPath('data.check.issues.0.actual', 'failed RPC timeout');
+
+        Queue::assertPushed(RegisterSalesInvoiceOnChainJob::class, 1);
+    }
+
+    public function test_sales_invoice_responses_include_latest_chain_issue(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $mismatchInvoice = $this->postServiceInvoice();
+        $stuckInvoice = $this->postServiceInvoice();
+        [$mismatchProof] = $this->confirmedProof($mismatchInvoice);
+
+        $stuckProof = $this->tenant->run(function () use ($stuckInvoice): string {
+            $proofId = (string) InvoiceSnapshot::query()->where('invoice_id', $stuckInvoice)->firstOrFail()->id;
+            InvoiceChainRegistration::query()->where('proof_id', $proofId)->toBase()->update([
+                'updated_at' => now()->subHour(),
+            ]);
+
+            return $proofId;
+        });
+
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->willReturnCallback(
+            fn (string $id): ?InvoiceOnChainRecord => $id === $mismatchProof ? $this->chainRecord('0x'.str_repeat('cd', 32)) : null,
+        );
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-proofs/chain-check'))
+            ->assertOk()
+            ->assertJsonPath('data.check.issue_count', 2);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$mismatchInvoice}"))
+            ->assertOk()
+            ->assertJsonPath('data.chain_issue.kind', 'hash_mismatch');
+
+        $rows = collect($this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/sales-invoices'))
+            ->assertOk()
+            ->json('data.data'))->keyBy('id');
+        $this->assertSame('hash_mismatch', $rows[$mismatchInvoice]['chain_issue']['kind']);
+        $this->assertSame('registration_stuck', $rows[$stuckInvoice]['chain_issue']['kind']);
+
+        $this->tenant->run(fn () => InvoiceChainRegistration::query()->where('proof_id', $stuckProof)->update([
+            'status' => 'confirmed',
+        ]));
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$stuckInvoice}"))
+            ->assertOk()
+            ->assertJsonPath('data.chain_issue', null);
+
+        $clerkToken = $this->clerkTokenWithoutInvoiceProofsView(false);
+        Auth::forgetGuards();
+
+        $this->flushHeaders()
+            ->asTenantRequest($clerkToken)
+            ->getJson($this->tenantUrl("/sales-invoices/{$mismatchInvoice}"))
+            ->assertOk()
+            ->assertJsonPath('data.chain_issue', null);
+    }
+
+    public function test_chain_check_run_requires_invoice_proofs_edit(): void
+    {
+        $clerkToken = $this->clerkTokenWithoutInvoiceProofsEdit();
+
+        $this->flushHeaders()
+            ->asTenantRequest($clerkToken)
+            ->postJson($this->tenantUrl('/invoice-proofs/chain-check'))
+            ->assertForbidden();
+
+        $this->flushHeaders()
+            ->asTenantRequest($clerkToken)
+            ->getJson($this->tenantUrl('/invoice-proofs/chain-check'))
+            ->assertOk()
+            ->assertJsonPath('data.available', false)
+            ->assertJsonPath('data.check', null);
+    }
+
+    public function test_chain_check_forbidden_when_invoice_proofs_disabled(): void
+    {
+        $this->setInvoiceProofsEnabled(false);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/invoice-proofs/chain-check'))
+            ->assertForbidden()
+            ->assertJsonPath('code', 'INVOICE_PROOFS_DISABLED');
     }
 
     public function test_approve_as_company_forbidden_without_invoice_proofs_permission(): void
@@ -1995,6 +2208,34 @@ class SalesInvoiceApiTest extends TestCase
         $this->assertIsArray($payload);
 
         return $payload;
+    }
+
+    /**
+     * @return array{0: string, 1: string} proof id and content hash
+     */
+    private function confirmedProof(string $invoiceId): array
+    {
+        return $this->tenant->run(function () use ($invoiceId): array {
+            $snapshot = InvoiceSnapshot::query()->where('invoice_id', $invoiceId)->firstOrFail();
+            InvoiceChainRegistration::query()->where('proof_id', $snapshot->id)->update([
+                'status' => 'confirmed',
+                'contract_address' => '0x5fbdb2315678afecb367f032d93f642f64180aa3',
+            ]);
+
+            return [(string) $snapshot->id, (string) $snapshot->content_hash];
+        });
+    }
+
+    private function chainRecord(string $hash): InvoiceOnChainRecord
+    {
+        return new InvoiceOnChainRecord(
+            contentHash: $hash,
+            supplierAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+            buyerAddress: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
+            supplierApproved: false,
+            buyerApproved: false,
+            status: InvoiceOnChainStatus::Registered,
+        );
     }
 
     private function enableBlockchainConfig(): void

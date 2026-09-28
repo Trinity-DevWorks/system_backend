@@ -40,4 +40,13 @@ interface InvoiceRegistryGateway
      * @return list<InvoiceAttestationRecord>
      */
     public function attestationsOf(string $proofId): array;
+
+    public function latestBlockNumber(): int;
+
+    /**
+     * `InvoiceRegistered` logs whose indexed supplier is `$supplierAddress`, inclusive block range.
+     *
+     * @return list<array{proof_id: string, content_hash: string, block_number: int}>
+     */
+    public function registeredBySupplier(string $supplierAddress, int $fromBlock, int $toBlock): array;
 }

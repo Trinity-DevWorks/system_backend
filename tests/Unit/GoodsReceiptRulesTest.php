@@ -16,9 +16,9 @@ use Tests\TestCase;
 
 class GoodsReceiptRulesTest extends TestCase
 {
-    public function test_status_values_are_draft_and_posted(): void
+    public function test_status_values_are_draft_posted_and_reversed(): void
     {
-        $this->assertSame(['draft', 'posted'], GoodsReceiptStatus::values());
+        $this->assertSame(['draft', 'posted', 'reversed'], GoodsReceiptStatus::values());
     }
 
     public function test_open_quantity_is_ordered_minus_received(): void

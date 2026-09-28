@@ -21,6 +21,20 @@ final class InvoiceProofBytes
         return '0x'.$hex.str_repeat('0', 32);
     }
 
+    /**
+     * Inverse of proofIdToBytes32. Null when the word was not built from a UUID.
+     */
+    public static function bytes32ToProofId(string $bytes32): ?string
+    {
+        $hex = self::strip0x($bytes32);
+        if (strlen($hex) !== 64 || ! ctype_xdigit($hex) || substr($hex, 32) !== str_repeat('0', 32)) {
+            return null;
+        }
+
+        return substr($hex, 0, 8).'-'.substr($hex, 8, 4).'-'.substr($hex, 12, 4).'-'
+            .substr($hex, 16, 4).'-'.substr($hex, 20, 12);
+    }
+
     public static function contentHashToBytes32(string $sha256Hex): string
     {
         return '0x'.self::normalizedContentHash($sha256Hex);

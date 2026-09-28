@@ -37,6 +37,9 @@ final class InvoiceRegistryAbi
 
     public const PARTY_ALREADY_SET = '8cfb1c1a';
 
+    /** keccak256("InvoiceRegistered(bytes32,bytes32,address,address)") */
+    public const INVOICE_REGISTERED_TOPIC = '0x20c1b4728816be48a6716ede4f3c00aca2675981eb46872a60c0b957685ad840';
+
     public const EIP712_NAME = 'InvoiceRegistry';
 
     public const EIP712_VERSION = '1';
@@ -215,6 +218,44 @@ final class InvoiceRegistryAbi
             referenceHash: self::decodeBytes32('0x'.substr($hex, 128, 64)),
             attestedAt: self::decodeTimestamp(substr($hex, 192, 64)),
         );
+    }
+
+    public static function addressTopic(string $address): string
+    {
+        return '0x'.self::padAddress($address);
+    }
+
+    /**
+     * Decodes one `InvoiceRegistered` log from `eth_getLogs`. Topics: signature, proofId, supplier.
+     * Data: contentHash, buyer.
+     *
+     * @param  array<string, mixed>  $log
+     * @return array{proof_id: string, content_hash: string, block_number: int}|null
+     */
+    public static function decodeInvoiceRegisteredLog(array $log): ?array
+    {
+        $topics = $log['topics'] ?? null;
+        $data = $log['data'] ?? null;
+        $block = $log['blockNumber'] ?? null;
+        if (! is_array($topics) || count($topics) < 3 || ! is_string($data) || ! is_string($block)) {
+            return null;
+        }
+
+        if (strtolower((string) $topics[0]) !== self::INVOICE_REGISTERED_TOPIC) {
+            return null;
+        }
+
+        $proofId = InvoiceProofBytes::strip0x((string) $topics[1]);
+        $contentHash = substr(InvoiceProofBytes::strip0x($data), 0, 64);
+        if (! preg_match('/^[0-9a-f]{64}$/', $proofId) || ! preg_match('/^[0-9a-f]{64}$/', $contentHash)) {
+            return null;
+        }
+
+        return [
+            'proof_id' => '0x'.$proofId,
+            'content_hash' => '0x'.$contentHash,
+            'block_number' => (int) hexdec(InvoiceProofBytes::strip0x($block)),
+        ];
     }
 
     public static function decodeBytes32(string $data): ?string

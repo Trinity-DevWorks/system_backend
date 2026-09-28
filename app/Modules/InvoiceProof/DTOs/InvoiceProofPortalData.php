@@ -68,6 +68,7 @@ readonly class InvoiceProofPortalData
         public ?string $supplierWallet = null,
         public array $otherInvoices = [],
         public ?string $buyerWalletType = null,
+        public ?string $financedAt = null,
     ) {}
 
     /**
@@ -124,6 +125,7 @@ readonly class InvoiceProofPortalData
             supplierApprovedAt: $proof->supplierApprovedAt,
             buyerApprovedAt: $proof->buyerApprovedAt,
             otherInvoices: $otherInvoices,
+            financedAt: $proof->financedAt(),
         );
     }
 
@@ -233,6 +235,7 @@ readonly class InvoiceProofPortalData
      *     registered_at: ?string,
      *     supplier_approved_at: ?string,
      *     buyer_approved_at: ?string,
+     *     financed_at: ?string,
      *     other_invoices: list<array<string, mixed>>
      * }
      */
@@ -268,6 +271,7 @@ readonly class InvoiceProofPortalData
             'registered_at' => $this->registeredAt,
             'supplier_approved_at' => $this->supplierApprovedAt,
             'buyer_approved_at' => $this->buyerApprovedAt,
+            'financed_at' => $this->financedAt,
             'other_invoices' => $this->otherInvoices,
         ];
     }

@@ -45,6 +45,7 @@ use App\Modules\Inventory\Stock\Http\Controllers\StockTransferController;
 use App\Modules\Inventory\Stock\Http\Controllers\SuggestedUnitCostController;
 use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
 use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementController;
+use App\Modules\InvoiceProof\Http\Controllers\InvoiceChainCheckController;
 use App\Modules\InvoiceProof\Http\Controllers\InvoiceProofPortalController;
 use App\Modules\InvoiceProof\Http\Controllers\InvoiceVerifierController;
 use App\Modules\InvoiceProof\Http\Controllers\WalletInspectionController;
@@ -92,6 +93,7 @@ Route::middleware([
     'api',
     InitializeTenancyByDomain::class,
     PreventAccessFromCentralDomains::class,
+    'ensure.tenant.active',
 ])->group(function () {
     Route::get('/', function () {
         return response()->json([
@@ -595,6 +597,11 @@ Route::middleware([
                 ->middleware('check.permission:invoice_proofs,edit');
             Route::post('invoice-verifiers/{invoice_verifier}/sync', [InvoiceVerifierController::class, 'sync'])
                 ->middleware('check.permission:invoice_proofs,edit');
+
+            Route::get('invoice-proofs/chain-check', [InvoiceChainCheckController::class, 'show'])
+                ->middleware('check.permission:invoice_proofs,view');
+            Route::post('invoice-proofs/chain-check', [InvoiceChainCheckController::class, 'run'])
+                ->middleware(['check.permission:invoice_proofs,edit', 'throttle:6,1']);
 
             Route::get('salesmen/{salesman}/attachments/{attachment}/download', [SalesmanAttachmentController::class, 'download'])
                 ->middleware('check.permission:salesmen,view')

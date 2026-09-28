@@ -5,9 +5,12 @@ use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Jobs\BootstrapTenantWalkInCustomer;
+use App\Jobs\SyncCentralRbac;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchService;
+use App\Modules\InvoiceProof\Enums\InvoiceChainCheckStatus;
+use App\Modules\InvoiceProof\Services\InvoiceChainConsistencyService;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
 use Illuminate\Foundation\Inspiring;
@@ -134,6 +137,12 @@ Artisan::command('tenants:sync-rbac', function () {
 
     $this->info("Done. {$count} tenant(s) processed.");
 })->purpose('Sync permission catalog (including audits) for all existing tenants');
+
+Artisan::command('central:sync-rbac', function () {
+    SyncCentralRbac::dispatchSync();
+
+    $this->info('Synced central RBAC catalog and Super Admin role.');
+})->purpose('Sync central permission catalog, Super Admin role, and assign it to central users without a role');
 
 /*
 |--------------------------------------------------------------------------
@@ -263,6 +272,62 @@ Artisan::command('notifications:lot-expiry-digest', function (): void {
 
     $this->info("Done. Sent={$sentTenants}. Skipped={$skipped}.");
 })->purpose('Send lot-expiry digest notifications for each tenant (cooldown-aware)');
+
+/*
+|--------------------------------------------------------------------------
+| invoice-proofs:check-chain
+|--------------------------------------------------------------------------
+|
+| What: Compares each tenant's sealed invoice snapshots and registrations with
+| InvoiceRegistry, stores the result, and re-queues stuck registrations.
+| Where: Manual run or nightly schedule (03:00) in bootstrap/app.php.
+| Why: Makes the ERP verify itself against the chain instead of trusting its own status rows.
+|
+*/
+Artisan::command('invoice-proofs:check-chain {--tenant= : Only this tenant id}', function (): void {
+    $command = $this;
+    $tenantId = $this->option('tenant');
+    $checked = 0;
+    $withIssues = 0;
+
+    Tenant::query()
+        ->when(is_string($tenantId) && $tenantId !== '', fn ($query) => $query->whereKey($tenantId))
+        ->cursor()
+        ->each(function (Tenant $tenant) use ($command, &$checked, &$withIssues): void {
+            $tenant->run(function () use ($tenant, $command, &$checked, &$withIssues): void {
+                if (! Schema::hasTable('invoice_chain_checks')) {
+                    $command->warn("Skipped tenant [{$tenant->id}] — invoice_chain_checks table missing. Run tenant migrations.");
+
+                    return;
+                }
+
+                $check = app(InvoiceChainConsistencyService::class)->run();
+                if ($check === null) {
+                    $command->info("Tenant [{$tenant->id}]: skipped (invoice proofs or chain not configured).");
+
+                    return;
+                }
+
+                $checked++;
+                if ($check->status === InvoiceChainCheckStatus::Failed) {
+                    $command->error("Tenant [{$tenant->id}]: check failed — {$check->error}");
+
+                    return;
+                }
+
+                if ($check->status === InvoiceChainCheckStatus::Issues) {
+                    $withIssues++;
+                    app(DomainNotificationPublisher::class)->invoiceChainIssues($check);
+                }
+
+                $command->info(
+                    "Tenant [{$tenant->id}]: {$check->status->value} ({$check->checked_count} checked, {$check->issue_count} issue(s), {$check->requeued_count} re-queued)."
+                );
+            });
+        });
+
+    $this->info("Done. Checked={$checked}. With issues={$withIssues}.");
+})->purpose('Compare sealed invoices with the blockchain for each tenant');
 
 /*
 |--------------------------------------------------------------------------

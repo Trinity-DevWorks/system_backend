@@ -55,4 +55,14 @@ final class DisabledInvoiceRegistryGateway implements InvoiceRegistryGateway
     {
         return [];
     }
+
+    public function latestBlockNumber(): int
+    {
+        return 0;
+    }
+
+    public function registeredBySupplier(string $supplierAddress, int $fromBlock, int $toBlock): array
+    {
+        return [];
+    }
 }

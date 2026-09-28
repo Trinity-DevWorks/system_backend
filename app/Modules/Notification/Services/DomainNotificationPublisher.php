@@ -11,6 +11,7 @@ use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Services\InventoryLotService;
 use App\Modules\Inventory\Stock\Services\PurchasingAlertService;
+use App\Modules\InvoiceProof\Models\InvoiceChainCheck;
 use App\Modules\Notification\Support\RecipientQuery;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Warehouse\Models\Warehouse;
@@ -337,6 +338,30 @@ class DomainNotificationPublisher
         Cache::put($cacheKey, true, now()->addHours($hours));
 
         return ['sent' => true, 'lot_count' => $lotCount, 'expired_count' => $expiredCount];
+    }
+
+    /**
+     * Chain consistency check found disagreements between the database and InvoiceRegistry.
+     */
+    public function invoiceChainIssues(InvoiceChainCheck $check): void
+    {
+        $this->dispatcher->dispatch(
+            'invoice_proof.chain_issues',
+            [
+                'params' => [
+                    'issue_count' => (int) $check->issue_count,
+                    'checked_count' => (int) $check->checked_count,
+                ],
+                'mail_lines' => [
+                    'The blockchain consistency check found :issue_count issue(s) across :checked_count sealed invoice(s).',
+                    'Open Sales invoices in the app and use Blockchain check to review them.',
+                ],
+                'action_path' => '/main/sales-invoices',
+                'resource_type' => 'invoice_chain_check',
+                'resource_id' => (string) $check->id,
+            ],
+            RecipientQuery::permission('invoice_proofs', 'view'),
+        );
     }
 
     /**

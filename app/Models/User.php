@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\AttachmentViewerCategory;
+use App\Models\Central\CentralRole;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Branch\Models\BranchUser;
 use App\Modules\Rbac\Models\Role;
@@ -27,7 +28,7 @@ use Laravel\Sanctum\HasApiTokens;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name', 'email', 'phone', 'password', 'is_active', 'created_by', 'preferred_branch_id'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'is_active', 'created_by', 'preferred_branch_id', 'central_role_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements AuditableContract, CanResetPasswordContract
 {
@@ -75,6 +76,16 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Platform role (central `users` table only; tenant users have no such column).
+     *
+     * @return BelongsTo<CentralRole, $this>
+     */
+    public function centralRole(): BelongsTo
+    {
+        return $this->belongsTo(CentralRole::class, 'central_role_id');
     }
 
     /**

@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Middleware\CheckCentralPermission;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\EnsureModule;
+use App\Http\Middleware\EnsureTenantActive;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ResolveActiveBranch;
 use App\Http\Responses\ApiResponse;
@@ -37,6 +39,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Daily low-stock / purchasing-alert digest emails + in-app notifications (Phase 1).
         $schedule->command('notifications:low-stock-digest')->dailyAt('07:00')->withoutOverlapping();
         $schedule->command('notifications:lot-expiry-digest')->dailyAt('07:15')->withoutOverlapping();
+        // Compare sealed invoices with InvoiceRegistry (see invoice-proofs:check-chain in routes/console.php).
+        $schedule->command('invoice-proofs:check-chain')->dailyAt('03:00')->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(HandleCors::class);
@@ -45,7 +49,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // statefulApi() only if you add the SPA flow: GET /sanctum/csrf-cookie then POST with X-XSRF-TOKEN.
         $middleware->alias([
             'check.permission' => CheckPermission::class,
+            'check.central.permission' => CheckCentralPermission::class,
             'ensure.module' => EnsureModule::class,
+            'ensure.tenant.active' => EnsureTenantActive::class,
             'ensure.active' => EnsureUserIsActive::class,
             'resolve.branch' => ResolveActiveBranch::class,
         ]);

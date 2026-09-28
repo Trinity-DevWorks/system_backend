@@ -110,21 +110,21 @@ class InvoiceProofVerificationService
             $status = $this->statusFromChain($onChainRecord);
         }
 
+        $supplierWallet = WalletAddress::nonZeroOrNull($onChainRecord?->supplierAddress);
+        $buyerWallet = WalletAddress::nonZeroOrNull($onChainRecord?->buyerAddress);
+
         $canApproveAsCompany = false;
         $canApproveAsBuyer = false;
         $chainId = $chainEnabled ? (int) config('blockchain.chain_id') : null;
         $contractAddress = $chainEnabled ? $this->configuredContractAddress() : null;
         $eip712 = null;
-        if ($status === InvoiceProofVerificationStatus::WaitingCompany) {
+        if ($status === InvoiceProofVerificationStatus::WaitingCompany && $supplierWallet !== null) {
             $eip712 = $this->partyApprovalTypedData('SupplierApproval', $snapshot, $chainId, $contractAddress);
             $canApproveAsCompany = $eip712 !== null;
-        } elseif ($status === InvoiceProofVerificationStatus::WaitingBuyer) {
+        } elseif ($status === InvoiceProofVerificationStatus::WaitingBuyer && $buyerWallet !== null) {
             $eip712 = $this->partyApprovalTypedData('BuyerApproval', $snapshot, $chainId, $contractAddress);
             $canApproveAsBuyer = $eip712 !== null;
         }
-
-        $supplierWallet = WalletAddress::nonZeroOrNull($onChainRecord?->supplierAddress);
-        $buyerWallet = WalletAddress::nonZeroOrNull($onChainRecord?->buyerAddress);
 
         return new InvoiceProofVerificationData(
             status: $status,
@@ -319,16 +319,10 @@ class InvoiceProofVerificationService
             return InvoiceProofVerificationStatus::Verified;
         }
 
-        $supplierSet = ! WalletAddress::isZero($onChain->supplierAddress);
-        $buyerSet = ! WalletAddress::isZero($onChain->buyerAddress);
-
+        // An empty party slot still waits for that party: setParties fills it once the wallet is saved.
         return match ($onChain->status) {
-            InvoiceOnChainStatus::Registered => $supplierSet
-                ? InvoiceProofVerificationStatus::WaitingCompany
-                : InvoiceProofVerificationStatus::Verified,
-            InvoiceOnChainStatus::SupplierApproved => $buyerSet
-                ? InvoiceProofVerificationStatus::WaitingBuyer
-                : InvoiceProofVerificationStatus::Verified,
+            InvoiceOnChainStatus::Registered => InvoiceProofVerificationStatus::WaitingCompany,
+            InvoiceOnChainStatus::SupplierApproved => InvoiceProofVerificationStatus::WaitingBuyer,
             InvoiceOnChainStatus::FullyApproved => InvoiceProofVerificationStatus::FullyApproved,
             default => InvoiceProofVerificationStatus::Verified,
         };

@@ -7,6 +7,8 @@ namespace App\Providers;
 use App\Contracts\VirusScanner;
 use App\Models\Attachment;
 use App\Models\Audit;
+use App\Models\Central\CentralPermission;
+use App\Models\Central\CentralRole;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Branch\Models\Branch;
@@ -198,6 +200,8 @@ class AppServiceProvider extends ServiceProvider
             'supplier_balance' => SupplierBalance::class,
             'supplier_item' => SupplierItem::class,
             'company_setting' => CompanySetting::class,
+            'central_role' => CentralRole::class,
+            'central_permission' => CentralPermission::class,
         ]);
     }
 

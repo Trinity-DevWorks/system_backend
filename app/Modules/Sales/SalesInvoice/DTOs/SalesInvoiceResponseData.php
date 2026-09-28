@@ -18,7 +18,10 @@ use JsonException;
 
 readonly class SalesInvoiceResponseData
 {
-    public static function fromModel(SalesInvoice $invoice, bool $includeLines = true): array
+    /**
+     * @param  array{kind: string, checked_at: string|null}|null  $chainIssue  from InvoiceChainIssueLookup
+     */
+    public static function fromModel(SalesInvoice $invoice, bool $includeLines = true, ?array $chainIssue = null): array
     {
         $invoice->loadMissing([
             'customer:id,customer_code,name,phone,status,is_system,salesman_id,payment_method_id,payment_terms_id',
@@ -67,6 +70,7 @@ readonly class SalesInvoiceResponseData
             'posted_by' => self::userBrief($invoice->postedByUser),
             'posted_at' => $invoice->posted_at?->toIso8601String(),
             'lines_count' => $invoice->lines_count ?? null,
+            'chain_issue' => $chainIssue,
             'created_at' => (string) $invoice->created_at,
             'updated_at' => (string) $invoice->updated_at,
         ];
