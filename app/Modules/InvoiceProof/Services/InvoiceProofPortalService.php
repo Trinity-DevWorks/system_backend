@@ -7,6 +7,7 @@ namespace App\Modules\InvoiceProof\Services;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Customer\Models\Customer;
+use App\Modules\InvoiceProof\Contracts\CompanySafeOwnerLookup;
 use App\Modules\InvoiceProof\DTOs\BuyerInvoiceHistoryItemData;
 use App\Modules\InvoiceProof\DTOs\BuyerPortalLinkData;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofPortalChallengeData;
@@ -20,17 +21,20 @@ use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use JsonException;
+use Throwable;
 
 /**
  * Public buyer-portal lookup. HMAC exp+sig is the capability; UUID alone is not.
  * GET returns a locked personal_sign challenge. Commercial fields come from the
- * sealed snapshot after POST unlock with the customer wallet.
+ * sealed snapshot after POST unlock with the customer wallet (or an owner of the
+ * customer's Safe).
  */
 class InvoiceProofPortalService
 {
     public function __construct(
         private readonly InvoiceSnapshotService $invoiceSnapshotService,
         private readonly InvoiceProofVerificationService $invoiceProofVerificationService,
+        private readonly CompanySafeOwnerLookup $companySafeOwnerLookup,
     ) {}
 
     public function assertValidLink(string $invoiceId, mixed $exp, mixed $sig): void
@@ -78,12 +82,15 @@ class InvoiceProofPortalService
             (string) $invoice->invoice_number,
         );
 
+        $buyerWallet = WalletAddress::normalize($invoice->customer?->wallet_address);
+
         return new InvoiceProofPortalChallengeData(
             locked: true,
             chainId: (int) config('blockchain.chain_id'),
-            buyerWallet: WalletAddress::normalize($invoice->customer?->wallet_address),
+            buyerWallet: $buyerWallet,
             nonce: $issued['nonce'],
             message: $issued['message'],
+            buyerWalletType: $buyerWallet === null ? null : $invoice->customer?->wallet_type?->value,
         );
     }
 
@@ -118,8 +125,8 @@ class InvoiceProofPortalService
         if (
             $submitted === null
             || $recovered === null
-            || ! hash_equals($expected, $submitted)
-            || ! hash_equals($expected, $recovered)
+            || ! hash_equals($submitted, $recovered)
+            || ! $this->canActForBuyer($expected, $recovered)
         ) {
             abort(422, 'The connected wallet does not match this invoice.', [
                 'X-Error-Code' => 'PROOF_WALLET_MISMATCH',
@@ -129,6 +136,26 @@ class InvoiceProofPortalService
         ProofPortalUnlockChallenge::consume($tenantId, $invoiceId, $nonce);
 
         return $this->show($invoice);
+    }
+
+    /**
+     * The buyer wallet itself, or an owner of the buyer Safe (a Safe cannot personal_sign).
+     */
+    private function canActForBuyer(string $buyerWallet, string $signer): bool
+    {
+        if (hash_equals($buyerWallet, $signer)) {
+            return true;
+        }
+
+        try {
+            $owners = $this->companySafeOwnerLookup->ownersOf($buyerWallet);
+        } catch (Throwable) {
+            abort(503, 'Could not read the buyer Safe owners from the chain.', [
+                'X-Error-Code' => 'INVOICE_PROOF_CHAIN_FAILED',
+            ]);
+        }
+
+        return in_array($signer, $owners, true);
     }
 
     public function show(SalesInvoice $invoice): InvoiceProofPortalData

@@ -32,9 +32,12 @@ use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
 use App\Modules\InvoiceProof\DTOs\InvoiceAttestationRecord;
 use App\Modules\InvoiceProof\DTOs\InvoiceChainReceiptData;
 use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
+use App\Modules\InvoiceProof\DTOs\WalletInspectionData;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
+use App\Modules\InvoiceProof\Enums\WalletType;
+use App\Modules\InvoiceProof\Exceptions\CompanySignerWalletException;
 use App\Modules\InvoiceProof\Jobs\RegisterSalesInvoiceOnChainJob;
 use App\Modules\InvoiceProof\Jobs\SyncInvoiceVerifierOnChainJob;
 use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
@@ -45,6 +48,7 @@ use App\Modules\InvoiceProof\Services\InvoiceSnapshotService;
 use App\Modules\InvoiceProof\Services\InvoiceVerifierService;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceHasher;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceMerkle;
+use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
 use App\Modules\InvoiceProof\Support\EmptyCompanySafeOwnerLookup;
 use App\Modules\InvoiceProof\Support\EthereumPersonalSign;
 use App\Modules\InvoiceProof\Support\ProofPortalLink;
@@ -594,6 +598,7 @@ class SalesInvoiceApiTest extends TestCase
                 'name' => 'Bank A',
                 'role' => 'financier',
                 'wallet_address' => '0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc',
+                'wallet_type' => 'wallet',
             ])
             ->assertCreated()
             ->assertJsonPath('data.name', 'Bank A')
@@ -617,6 +622,7 @@ class SalesInvoiceApiTest extends TestCase
                 'name' => 'Self',
                 'role' => 'auditor',
                 'wallet_address' => '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+                'wallet_type' => 'wallet',
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['wallet_address']);
@@ -714,6 +720,7 @@ class SalesInvoiceApiTest extends TestCase
                 'name' => 'Bank A',
                 'role' => 'financier',
                 'wallet_address' => '0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc',
+                'wallet_type' => 'wallet',
             ])
             ->assertForbidden();
 
@@ -1513,6 +1520,140 @@ class SalesInvoiceApiTest extends TestCase
         $this->assertSame($id, $payload['id'] ?? null);
     }
 
+    public function test_proof_portal_unlock_accepts_owner_of_buyer_safe(): void
+    {
+        $buyerSafe = '0x1111111111111111111111111111111111111111';
+        $this->fakeSafeOwners([$buyerSafe => ['0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc']]);
+
+        $id = $this->postServiceInvoice();
+        $this->tenant->run(function () use ($id, $buyerSafe): void {
+            $invoice = SalesInvoice::query()->whereKey($id)->firstOrFail();
+            Customer::query()->whereKey($invoice->customer_id)->update(['wallet_address' => $buyerSafe]);
+        });
+
+        $stamp = $this->proofPortalStamp($id);
+        $challenge = $this->asTenantRequest(null)
+            ->getJson($this->signedProofPortalUrl($id, $stamp['exp'], $stamp['sig']))
+            ->assertOk()
+            ->json('data');
+
+        $strangerKey = '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6';
+        $this->asTenantRequest(null)
+            ->postJson($this->signedProofPortalUnlockUrl($id, $stamp['exp'], $stamp['sig']), [
+                'address' => '0x90F79bf6EB2c4f870365E785982E1f101E93b906',
+                'signature' => EthereumPersonalSign::sign((string) $challenge['message'], $strangerKey),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PROOF_WALLET_MISMATCH');
+
+        $payload = $this->unlockProofPortal($id, $stamp);
+        $this->assertSame($id, $payload['id'] ?? null);
+    }
+
+    public function test_buyer_safe_controlled_by_company_signer_is_rejected(): void
+    {
+        $companyOwner = '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc';
+        $this->fakeSafeOwners([
+            '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' => [$companyOwner],
+            '0x1111111111111111111111111111111111111111' => [$companyOwner],
+            '0x2222222222222222222222222222222222222222' => ['0x15d34aaf54267db7d7c367839aaf71a00a2c6a65'],
+        ]);
+
+        $this->tenant->run(function (): void {
+            $guard = app(CompanySafeSignerGuard::class);
+            $guard->assertCustomerWalletAllowed('0x2222222222222222222222222222222222222222');
+
+            try {
+                $guard->assertCustomerWalletAllowed('0x1111111111111111111111111111111111111111');
+                $this->fail('A buyer Safe owned by a company signer must be rejected.');
+            } catch (CompanySignerWalletException $exception) {
+                $this->assertSame(CompanySafeSignerGuard::CUSTOMER_ERROR_CODE, $exception->errorCode);
+            }
+        });
+    }
+
+    public function test_invoice_verifier_rejects_safe_controlled_by_company_signer(): void
+    {
+        $this->fakeSafeOwners([
+            '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' => ['0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc'],
+            '0x1111111111111111111111111111111111111111' => ['0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc'],
+        ]);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-verifiers'), [
+                'name' => 'Captured bank',
+                'role' => 'financier',
+                'wallet_address' => '0x1111111111111111111111111111111111111111',
+                'wallet_type' => 'safe',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['wallet_address']);
+    }
+
+    public function test_declared_wallet_type_must_match_the_chain(): void
+    {
+        $safe = '0x1111111111111111111111111111111111111111';
+        $wallet = '0x15d34aaf54267db7d7c367839aaf71a00a2c6a65';
+        $this->fakeSafeOwners([$safe => ['0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc']]);
+
+        $this->tenant->run(function () use ($safe, $wallet): void {
+            $guard = app(CompanySafeSignerGuard::class);
+            $guard->assertWalletType($safe, WalletType::Safe);
+            $guard->assertWalletType($wallet, WalletType::Wallet);
+
+            foreach ([
+                [$safe, WalletType::Wallet, CompanySafeSignerGuard::WALLET_IS_CONTRACT_CODE],
+                [$wallet, WalletType::Safe, CompanySafeSignerGuard::SAFE_NOT_FOUND_CODE],
+            ] as [$address, $type, $code]) {
+                try {
+                    $guard->assertWalletType($address, $type);
+                    $this->fail("{$address} declared as {$type->value} must be rejected.");
+                } catch (CompanySignerWalletException $exception) {
+                    $this->assertSame($code, $exception->errorCode);
+                }
+            }
+        });
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-verifiers'), [
+                'name' => 'Bank Safe',
+                'role' => 'financier',
+                'wallet_address' => $wallet,
+                'wallet_type' => 'safe',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('code', CompanySafeSignerGuard::SAFE_NOT_FOUND_CODE);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-verifiers'), [
+                'name' => 'Bank Safe',
+                'role' => 'financier',
+                'wallet_address' => $safe,
+                'wallet_type' => 'safe',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.wallet_type', 'safe');
+    }
+
+    public function test_wallet_inspection_reports_kind_and_owners(): void
+    {
+        $safe = '0x1111111111111111111111111111111111111111';
+        $this->fakeSafeOwners([$safe => ['0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc']]);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/wallet-inspection?address={$safe}"))
+            ->assertOk()
+            ->assertJsonPath('data.available', true)
+            ->assertJsonPath('data.kind', 'safe')
+            ->assertJsonPath('data.owners.0', '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc')
+            ->assertJsonPath('data.threshold', 1);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/wallet-inspection?address=0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65'))
+            ->assertOk()
+            ->assertJsonPath('data.kind', 'wallet');
+    }
+
     public function test_proof_portal_unlock_nonce_is_one_use(): void
     {
         $id = $this->postServiceInvoice();
@@ -1789,6 +1930,34 @@ class SalesInvoiceApiTest extends TestCase
             'exp' => $exp,
             'sig' => ProofPortalLink::sign($tenantId, $invoiceId, $exp),
         ];
+    }
+
+    /**
+     * @param  array<string, list<string>>  $ownersBySafe  Lowercase addresses; anything else reads as a plain wallet.
+     */
+    private function fakeSafeOwners(array $ownersBySafe): void
+    {
+        $this->app->instance(CompanySafeOwnerLookup::class, new class($ownersBySafe) implements CompanySafeOwnerLookup
+        {
+            /**
+             * @param  array<string, list<string>>  $ownersBySafe
+             */
+            public function __construct(private readonly array $ownersBySafe) {}
+
+            public function ownersOf(string $safeAddress): array
+            {
+                return $this->ownersBySafe[strtolower($safeAddress)] ?? [];
+            }
+
+            public function inspect(string $address): WalletInspectionData
+            {
+                $owners = $this->ownersOf($address);
+
+                return $owners === []
+                    ? WalletInspectionData::wallet(strtolower($address))
+                    : WalletInspectionData::safe(strtolower($address), $owners, 1);
+            }
+        });
     }
 
     private function signedProofPortalUnlockUrl(string $invoiceId, int $exp, string $sig): string

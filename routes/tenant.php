@@ -47,6 +47,7 @@ use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
 use App\Modules\Inventory\UnitOfMeasurement\Http\Controllers\UnitOfMeasurementController;
 use App\Modules\InvoiceProof\Http\Controllers\InvoiceProofPortalController;
 use App\Modules\InvoiceProof\Http\Controllers\InvoiceVerifierController;
+use App\Modules\InvoiceProof\Http\Controllers\WalletInspectionController;
 use App\Modules\Notification\Http\Controllers\NotificationController;
 use App\Modules\PaymentMethod\Http\Controllers\PaymentMethodController;
 use App\Modules\PaymentTerm\Http\Controllers\PaymentTermController;
@@ -186,6 +187,8 @@ Route::middleware([
             Route::put('company-settings', [CompanySettingController::class, 'update'])
                 ->middleware('check.permission:company_settings,edit');
             Route::get('countries', [CountryController::class, 'index']);
+            Route::get('wallet-inspection', [WalletInspectionController::class, 'show'])
+                ->middleware('throttle:60,1');
 
             /*
             | In-app notification inbox + preferences (Phase 1).

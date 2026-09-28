@@ -42,6 +42,8 @@ readonly class InvoiceProofVerificationData
         public ?string $supplierApprovedAt = null,
         public ?string $buyerApprovedAt = null,
         public array $attestations = [],
+        public ?string $supplierWalletType = null,
+        public ?string $buyerWalletType = null,
     ) {}
 
     /**
@@ -77,7 +79,9 @@ readonly class InvoiceProofVerificationData
      *     chain_id: ?int,
      *     contract_address: ?string,
      *     supplier_wallet: ?string,
+     *     supplier_wallet_type: ?string,
      *     buyer_wallet: ?string,
+     *     buyer_wallet_type: ?string,
      *     proof_id: ?string,
      *     eip712: ?array<string, mixed>,
      *     can_approve_as_company: bool,
@@ -102,7 +106,9 @@ readonly class InvoiceProofVerificationData
             'chain_id' => $this->chainId,
             'contract_address' => $this->contractAddress,
             'supplier_wallet' => $this->supplierWallet,
+            'supplier_wallet_type' => $this->supplierWalletType,
             'buyer_wallet' => $this->buyerWallet,
+            'buyer_wallet_type' => $this->buyerWalletType,
             'proof_id' => $this->proofId,
             'eip712' => $this->eip712,
             'can_approve_as_company' => $this->canApproveAsCompany,

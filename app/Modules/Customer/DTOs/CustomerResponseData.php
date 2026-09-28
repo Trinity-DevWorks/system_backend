@@ -51,6 +51,7 @@ readonly class CustomerResponseData
         public ?string $vatNumber,
         public ?string $notes,
         public ?string $walletAddress,
+        public ?string $walletType,
         /** Ledger balance in primary currency. */
         public string $balance,
         public array $currencyBalances,
@@ -166,6 +167,7 @@ readonly class CustomerResponseData
             vatNumber: $customer->vat_number,
             notes: $customer->notes,
             walletAddress: $customer->wallet_address,
+            walletType: $customer->wallet_type?->value,
             balance: $primaryBalance,
             currencyBalances: $currencyBalances,
             createdAt: (string) $customer->created_at,
@@ -227,6 +229,7 @@ readonly class CustomerResponseData
             'vat_number' => $this->vatNumber,
             'notes' => $this->notes,
             'wallet_address' => $this->walletAddress,
+            'wallet_type' => $this->walletType,
             'balance' => $this->balance,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,

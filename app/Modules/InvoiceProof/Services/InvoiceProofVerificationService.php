@@ -11,6 +11,7 @@ use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofVerificationData;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
+use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Models\InvoiceVerifier;
 use App\Modules\InvoiceProof\Serializers\SalesInvoiceCanonicalSerializer;
@@ -122,6 +123,9 @@ class InvoiceProofVerificationService
             $canApproveAsBuyer = $eip712 !== null;
         }
 
+        $supplierWallet = WalletAddress::nonZeroOrNull($onChainRecord?->supplierAddress);
+        $buyerWallet = WalletAddress::nonZeroOrNull($onChainRecord?->buyerAddress);
+
         return new InvoiceProofVerificationData(
             status: $status,
             snapshotIntact: $snapshotIntact,
@@ -129,8 +133,8 @@ class InvoiceProofVerificationService
             chainMatches: $chainMatches,
             chainId: $chainId,
             contractAddress: $contractAddress,
-            supplierWallet: WalletAddress::nonZeroOrNull($onChainRecord?->supplierAddress),
-            buyerWallet: WalletAddress::nonZeroOrNull($onChainRecord?->buyerAddress),
+            supplierWallet: $supplierWallet,
+            buyerWallet: $buyerWallet,
             proofId: (string) $snapshot->id,
             eip712: $eip712,
             canApproveAsCompany: $canApproveAsCompany,
@@ -142,7 +146,25 @@ class InvoiceProofVerificationService
             supplierApprovedAt: self::chainInstant($onChainRecord?->supplierApprovedAt),
             buyerApprovedAt: self::chainInstant($onChainRecord?->buyerApprovedAt),
             attestations: $onChainRecord !== null ? $attestations : [],
+            supplierWalletType: self::declaredWalletType($supplierWallet, $company?->wallet_address, $company?->wallet_type),
+            buyerWalletType: self::declaredWalletType(
+                $buyerWallet,
+                $invoice->customer?->wallet_address,
+                $invoice->customer?->wallet_type,
+            ),
         );
+    }
+
+    /**
+     * The ERP-declared type, only when the on-chain party is still the stored address.
+     */
+    private static function declaredWalletType(?string $onChain, ?string $stored, ?WalletType $type): ?string
+    {
+        if ($onChain === null || $type === null || WalletAddress::normalize($stored) !== $onChain) {
+            return null;
+        }
+
+        return $type->value;
     }
 
     /**

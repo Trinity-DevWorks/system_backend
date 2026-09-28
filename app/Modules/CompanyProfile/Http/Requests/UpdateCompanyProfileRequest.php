@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\CompanyProfile\Http\Requests;
 
+use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\InvoiceProof\Support\WalletAddress;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rules\Enum;
 
 class UpdateCompanyProfileRequest extends FormRequest
 {
@@ -16,14 +18,19 @@ class UpdateCompanyProfileRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        foreach (['wallet_address', 'wallet_address_anvil', 'wallet_address_sepolia'] as $field) {
+        $typeFields = [
+            'wallet_address' => 'wallet_type',
+            'wallet_address_anvil' => 'wallet_type_anvil',
+            'wallet_address_sepolia' => 'wallet_type_sepolia',
+        ];
+        foreach ($typeFields as $field => $typeField) {
             if (! $this->exists($field)) {
                 continue;
             }
 
             $raw = $this->input($field);
             if ($raw === null || (is_string($raw) && trim($raw) === '')) {
-                $this->merge([$field => null]);
+                $this->merge([$field => null, $typeField => null]);
             }
         }
     }
@@ -45,6 +52,9 @@ class UpdateCompanyProfileRequest extends FormRequest
             'wallet_address' => ['sometimes', ...WalletAddress::optionalRule()],
             'wallet_address_anvil' => ['sometimes', ...WalletAddress::optionalRule()],
             'wallet_address_sepolia' => ['sometimes', ...WalletAddress::optionalRule()],
+            'wallet_type' => ['sometimes', 'nullable', 'required_with:wallet_address', new Enum(WalletType::class)],
+            'wallet_type_anvil' => ['sometimes', 'nullable', 'required_with:wallet_address_anvil', new Enum(WalletType::class)],
+            'wallet_type_sepolia' => ['sometimes', 'nullable', 'required_with:wallet_address_sepolia', new Enum(WalletType::class)],
         ];
     }
 }

@@ -6,6 +6,7 @@ namespace App\Modules\InvoiceProof\Models;
 
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
+use App\Modules\InvoiceProof\Enums\WalletType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -18,11 +19,13 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  *
  * @property InvoiceVerifierRole $role
  * @property InvoiceVerifierChainStatus $chain_status
+ * @property WalletType $wallet_type
  */
 #[Fillable([
     'name',
     'role',
     'wallet_address',
+    'wallet_type',
     'notes',
     'chain_status',
     'chain_company_wallet',
@@ -43,6 +46,7 @@ class InvoiceVerifier extends Model implements AuditableContract
         return [
             'role' => InvoiceVerifierRole::class,
             'chain_status' => InvoiceVerifierChainStatus::class,
+            'wallet_type' => WalletType::class,
             'chain_synced_at' => 'datetime',
         ];
     }

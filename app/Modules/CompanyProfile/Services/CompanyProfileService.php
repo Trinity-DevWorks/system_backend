@@ -36,6 +36,7 @@ class CompanyProfileService
     public function update(CompanyProfileData $data): CompanyProfile
     {
         $payload = $data->toArray();
+        $this->companySafeSignerGuard->abortIfWalletTypeInvalid($data->activeWalletAddress(), $data->activeWalletType());
         $this->companySafeSignerGuard->abortIfCompanySafeForbidden($payload['wallet_address_anvil'] ?? null);
         $this->companySafeSignerGuard->abortIfCompanySafeForbidden($payload['wallet_address_sepolia'] ?? null);
 

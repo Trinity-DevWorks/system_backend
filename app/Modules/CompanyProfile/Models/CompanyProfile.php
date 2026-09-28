@@ -6,6 +6,7 @@ namespace App\Modules\CompanyProfile\Models;
 
 use App\Enums\AttachmentViewerCategory;
 use App\Models\Attachment;
+use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\InvoiceProof\Support\BlockchainNetwork;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -28,6 +29,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'wallet_address',
     'wallet_address_anvil',
     'wallet_address_sepolia',
+    'wallet_type_anvil',
+    'wallet_type_sepolia',
 ])]
 class CompanyProfile extends Model implements AuditableContract
 {
@@ -35,6 +38,29 @@ class CompanyProfile extends Model implements AuditableContract
     use HasUuids;
 
     protected $table = 'company_profiles';
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'wallet_type_anvil' => WalletType::class,
+            'wallet_type_sepolia' => WalletType::class,
+        ];
+    }
+
+    /**
+     * Declared type of the active-network company wallet.
+     *
+     * @return Attribute<WalletType|null, never>
+     */
+    protected function walletType(): Attribute
+    {
+        return Attribute::get(
+            fn (): ?WalletType => BlockchainNetwork::isSepolia() ? $this->wallet_type_sepolia : $this->wallet_type_anvil
+        );
+    }
 
     /**
      * Active-network company Safe. Writes land on the Anvil or Sepolia column.

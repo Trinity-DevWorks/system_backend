@@ -67,6 +67,7 @@ readonly class InvoiceProofPortalData
         public ?string $buyerApprovedAt = null,
         public ?string $supplierWallet = null,
         public array $otherInvoices = [],
+        public ?string $buyerWalletType = null,
     ) {}
 
     /**
@@ -114,6 +115,7 @@ readonly class InvoiceProofPortalData
             chainId: $proof->chainId,
             contractAddress: $proof->contractAddress,
             buyerWallet: $proof->buyerWallet,
+            buyerWalletType: $proof->buyerWalletType,
             supplierWallet: $proof->supplierWallet,
             proofId: $proof->proofId,
             eip712: $proof->canApproveAsBuyer ? $proof->eip712 : null,
@@ -222,6 +224,7 @@ readonly class InvoiceProofPortalData
      *     chain_id: ?int,
      *     contract_address: ?string,
      *     buyer_wallet: ?string,
+     *     buyer_wallet_type: ?string,
      *     supplier_wallet: ?string,
      *     proof_id: ?string,
      *     eip712: ?array<string, mixed>,
@@ -256,6 +259,7 @@ readonly class InvoiceProofPortalData
             'chain_id' => $this->chainId,
             'contract_address' => $this->contractAddress,
             'buyer_wallet' => $this->buyerWallet,
+            'buyer_wallet_type' => $this->buyerWalletType,
             'supplier_wallet' => $this->supplierWallet,
             'proof_id' => $this->proofId,
             'eip712' => $this->eip712,

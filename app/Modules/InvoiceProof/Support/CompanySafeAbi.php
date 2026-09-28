@@ -15,6 +15,20 @@ final class CompanySafeAbi
 
     public const OWNER = '0x8da5cb5b';
 
+    public const GET_THRESHOLD = '0xe75235b8';
+
+    public static function decodeUint(string $data): ?int
+    {
+        $hex = InvoiceProofBytes::strip0x($data);
+        if (strlen($hex) < 64 || ! ctype_xdigit(substr($hex, 0, 64))) {
+            return null;
+        }
+
+        $value = hexdec(ltrim(substr($hex, 0, 64), '0') ?: '0');
+
+        return is_int($value) ? $value : null;
+    }
+
     /**
      * @return list<string>|null
      */

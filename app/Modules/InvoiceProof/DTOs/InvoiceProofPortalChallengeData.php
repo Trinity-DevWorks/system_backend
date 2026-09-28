@@ -15,6 +15,7 @@ readonly class InvoiceProofPortalChallengeData
         public ?string $buyerWallet,
         public string $nonce,
         public string $message,
+        public ?string $buyerWalletType = null,
     ) {}
 
     /**
@@ -22,6 +23,7 @@ readonly class InvoiceProofPortalChallengeData
      *     locked: true,
      *     chain_id: int,
      *     buyer_wallet: ?string,
+     *     buyer_wallet_type: ?string,
      *     nonce: string,
      *     message: string
      * }
@@ -32,6 +34,7 @@ readonly class InvoiceProofPortalChallengeData
             'locked' => true,
             'chain_id' => $this->chainId,
             'buyer_wallet' => $this->buyerWallet,
+            'buyer_wallet_type' => $this->buyerWalletType,
             'nonce' => $this->nonce,
             'message' => $this->message,
         ];

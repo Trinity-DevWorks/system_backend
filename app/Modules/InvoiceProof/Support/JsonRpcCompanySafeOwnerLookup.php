@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace App\Modules\InvoiceProof\Support;
 
 use App\Modules\InvoiceProof\Contracts\CompanySafeOwnerLookup;
+use App\Modules\InvoiceProof\DTOs\WalletInspectionData;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Throwable;
 
 /**
- * Reads Safe owners over JSON-RPC. Prefers getOwners() (Safe{Wallet});
- * falls back to owner() (OneOwnerSafe).
+ * Reads Safe owners (and whether an address is a wallet, Safe, or other contract)
+ * over JSON-RPC. Prefers getOwners() (Safe{Wallet}); falls back to owner() (OneOwnerSafe).
  */
 final class JsonRpcCompanySafeOwnerLookup implements CompanySafeOwnerLookup
 {
@@ -24,11 +25,57 @@ final class JsonRpcCompanySafeOwnerLookup implements CompanySafeOwnerLookup
     public function ownersOf(string $safeAddress): array
     {
         $to = InvoiceProofBytes::address($safeAddress);
-        $code = $this->rpc('eth_getCode', [$to, 'latest']);
-        if (! is_string($code) || $code === '' || $code === '0x' || $code === '0x0') {
-            return [];
+
+        return $this->hasCode($to) ? ($this->readOwners($to) ?? []) : [];
+    }
+
+    public function inspect(string $address): WalletInspectionData
+    {
+        $to = InvoiceProofBytes::address($address);
+        if (! $this->hasCode($to)) {
+            return WalletInspectionData::wallet($to);
         }
 
+        $owners = $this->readOwners($to);
+        if ($owners === null || $owners === []) {
+            return WalletInspectionData::contract($to);
+        }
+
+        return WalletInspectionData::safe($to, $owners, $this->readThreshold($to, $owners));
+    }
+
+    private function hasCode(string $address): bool
+    {
+        $code = $this->rpc('eth_getCode', [$address, 'latest']);
+
+        return is_string($code) && $code !== '' && $code !== '0x' && $code !== '0x0';
+    }
+
+    /**
+     * OneOwnerSafe has no getThreshold(); a single owner means 1.
+     *
+     * @param  list<string>  $owners
+     */
+    private function readThreshold(string $to, array $owners): ?int
+    {
+        try {
+            $raw = $this->rpc('eth_call', [['to' => $to, 'data' => CompanySafeAbi::GET_THRESHOLD], 'latest']);
+            $threshold = is_string($raw) ? CompanySafeAbi::decodeUint($raw) : null;
+            if ($threshold !== null && $threshold > 0) {
+                return $threshold;
+            }
+        } catch (Throwable) {
+            // Fall through to the single-owner default.
+        }
+
+        return count($owners) === 1 ? 1 : null;
+    }
+
+    /**
+     * @return list<string>|null Null when the contract is not a Safe we can read.
+     */
+    private function readOwners(string $to): ?array
+    {
         try {
             $ownersRaw = $this->rpc('eth_call', [[
                 'to' => $to,
@@ -59,7 +106,7 @@ final class JsonRpcCompanySafeOwnerLookup implements CompanySafeOwnerLookup
             // Not a Safe we can read.
         }
 
-        return [];
+        return null;
     }
 
     /**

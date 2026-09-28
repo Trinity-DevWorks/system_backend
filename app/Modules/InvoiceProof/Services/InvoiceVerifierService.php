@@ -13,6 +13,7 @@ use App\Modules\InvoiceProof\Enums\InvoiceVerifierChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use App\Modules\InvoiceProof\Jobs\SyncInvoiceVerifierOnChainJob;
 use App\Modules\InvoiceProof\Models\InvoiceVerifier;
+use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
 use App\Modules\InvoiceProof\Support\WalletAddress;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
@@ -22,7 +23,7 @@ use Throwable;
 /**
  * Company-managed verifiers (banks, auditors, tax authorities). The ERP row is the
  * address book; the registrar writes the permission on InvoiceRegistry for the
- * company Safe so the verifier can attest from its own wallet.
+ * company Safe so the verifier can attest from its own wallet or Safe.
  */
 class InvoiceVerifierService
 {
@@ -30,6 +31,7 @@ class InvoiceVerifierService
         private readonly InvoiceRegistryGateway $invoiceRegistryGateway,
         private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
         private readonly CompanySafeOwnerLookup $companySafeOwnerLookup,
+        private readonly CompanySafeSignerGuard $companySafeSignerGuard,
     ) {}
 
     /**
@@ -45,12 +47,14 @@ class InvoiceVerifierService
     public function create(InvoiceVerifierData $data): InvoiceVerifier
     {
         $this->ensureEnabled();
+        $this->companySafeSignerGuard->abortIfWalletTypeInvalid($data->walletAddress, $data->walletType);
         $this->assertWalletAllowed((string) $data->walletAddress);
 
         $verifier = InvoiceVerifier::query()->create([
             'name' => $data->name,
             'role' => $data->role,
             'wallet_address' => $data->walletAddress,
+            'wallet_type' => $data->walletType,
             'notes' => $data->notes,
             'chain_status' => InvoiceVerifierChainStatus::Pending,
         ]);
@@ -241,6 +245,7 @@ class InvoiceVerifierService
 
         try {
             $owners = $this->companySafeOwnerLookup->ownersOf($activeSafe);
+            $verifierOwners = $this->companySafeOwnerLookup->ownersOf($wallet);
         } catch (Throwable) {
             return;
         }
@@ -249,6 +254,15 @@ class InvoiceVerifierService
             if (hash_equals(strtolower($owner), $wallet)) {
                 throw ValidationException::withMessages([
                     'wallet_address' => 'This wallet is a company Safe owner. Use the verifier\'s own wallet.',
+                ]);
+            }
+        }
+
+        $companySigners = [...$safes, $activeSafe, ...array_map('strtolower', $owners)];
+        foreach ($verifierOwners as $verifierOwner) {
+            if (in_array(strtolower($verifierOwner), $companySigners, true)) {
+                throw ValidationException::withMessages([
+                    'wallet_address' => 'This verifier Safe is controlled by a company signer. Use the verifier\'s own wallet or Safe.',
                 ]);
             }
         }

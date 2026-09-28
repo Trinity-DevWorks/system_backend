@@ -10,6 +10,7 @@ use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
 use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerContact;
+use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
 use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
 use App\Modules\InvoiceProof\Support\WalletAddress;
@@ -106,6 +107,8 @@ class CustomerService
     {
         $customer = DB::transaction(function () use ($validated): Customer {
             $walletAddress = WalletAddress::normalize($validated['wallet_address'] ?? null);
+            $walletType = $walletAddress === null ? null : WalletType::tryFrom((string) ($validated['wallet_type'] ?? ''));
+            $this->companySafeSignerGuard->abortIfWalletTypeInvalid($walletAddress, $walletType);
             $this->companySafeSignerGuard->abortIfCustomerWalletForbidden($walletAddress);
 
             $customer = Customer::query()->create([
@@ -130,6 +133,7 @@ class CustomerService
                 'vat_number' => $validated['vat_number'] ?? null,
                 'notes' => $validated['notes'] ?? null,
                 'wallet_address' => $walletAddress,
+                'wallet_type' => $walletType,
             ]);
 
             $addresses = $validated['addresses'] ?? [];
@@ -217,9 +221,17 @@ class CustomerService
             $addresses = array_key_exists('addresses', $patch) ? $patch['addresses'] : null;
             $scalar = collect($patch)->except(['currency_balances', 'is_system', 'addresses'])->all();
 
-            if (array_key_exists('wallet_address', $scalar)) {
-                $scalar['wallet_address'] = WalletAddress::normalize($scalar['wallet_address']);
-                $this->companySafeSignerGuard->abortIfCustomerWalletForbidden($scalar['wallet_address']);
+            if (array_key_exists('wallet_address', $scalar) || array_key_exists('wallet_type', $scalar)) {
+                $wallet = array_key_exists('wallet_address', $scalar)
+                    ? WalletAddress::normalize($scalar['wallet_address'])
+                    : WalletAddress::normalize($customer->wallet_address);
+                $walletType = array_key_exists('wallet_type', $scalar)
+                    ? WalletType::tryFrom((string) ($scalar['wallet_type'] ?? ''))
+                    : $customer->wallet_type;
+                $scalar['wallet_address'] = $wallet;
+                $scalar['wallet_type'] = $wallet === null ? null : $walletType;
+                $this->companySafeSignerGuard->abortIfWalletTypeInvalid($wallet, $scalar['wallet_type']);
+                $this->companySafeSignerGuard->abortIfCustomerWalletForbidden($wallet);
             }
 
             if ($customer->is_system && array_key_exists('status', $scalar)) {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\InvoiceProof\Http\Requests;
 
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
+use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\InvoiceProof\Support\WalletAddress;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Enum;
@@ -38,6 +39,7 @@ class StoreInvoiceVerifierRequest extends FormRequest
                 'not_in:'.WalletAddress::ZERO,
                 'unique:invoice_verifiers,wallet_address',
             ],
+            'wallet_type' => ['required', new Enum(WalletType::class)],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }

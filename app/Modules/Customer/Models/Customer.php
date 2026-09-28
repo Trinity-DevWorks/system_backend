@@ -7,6 +7,7 @@ namespace App\Modules\Customer\Models;
 use App\Models\Attachment;
 use App\Modules\Customer\Enums\CustomerStatus;
 use App\Modules\Customer\Enums\CustomerType;
+use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Salesman\Models\Salesman;
@@ -49,6 +50,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'vat_number',
     'notes',
     'wallet_address',
+    'wallet_type',
     'is_system',
 ])]
 class Customer extends Model implements AuditableContract
@@ -71,6 +73,7 @@ class Customer extends Model implements AuditableContract
             'is_system' => 'boolean',
             'exempted_from' => 'date',
             'exempted_to' => 'date',
+            'wallet_type' => WalletType::class,
         ];
     }
 

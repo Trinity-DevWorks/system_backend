@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\InvoiceProof\DTOs;
 
+use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\InvoiceProof\Models\InvoiceVerifier;
 use Illuminate\Support\Collection;
 
@@ -14,6 +15,7 @@ readonly class InvoiceVerifierResponseData
         public string $name,
         public string $role,
         public string $walletAddress,
+        public string $walletType,
         public ?string $notes,
         public string $chainStatus,
         public ?string $chainCompanyWallet,
@@ -31,6 +33,7 @@ readonly class InvoiceVerifierResponseData
             name: (string) $verifier->name,
             role: $verifier->role->value,
             walletAddress: (string) $verifier->wallet_address,
+            walletType: ($verifier->wallet_type ?? WalletType::Wallet)->value,
             notes: $verifier->notes,
             chainStatus: $verifier->chain_status->value,
             chainCompanyWallet: $verifier->chain_company_wallet,
@@ -64,6 +67,7 @@ readonly class InvoiceVerifierResponseData
             'name' => $this->name,
             'role' => $this->role,
             'wallet_address' => $this->walletAddress,
+            'wallet_type' => $this->walletType,
             'notes' => $this->notes,
             'chain_status' => $this->chainStatus,
             'chain_company_wallet' => $this->chainCompanyWallet,
