@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace App\Services\Central;
 
 use App\Enums\TenantStatus;
+use App\Models\Attachment;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\AuditWriter;
 use App\Services\ModuleEntitlementService;
 use App\Support\ListPagination;
+use App\Support\TenantReferenceCache;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
- * Central tenant administration: list, detail, rename, suspend/activate, modules.
+ * Central tenant administration: list, detail, rename, suspend/activate, modules, delete.
  */
 final class TenantAdminService
 {
@@ -130,6 +134,71 @@ final class TenantAdminService
         CentralOverviewService::forget();
 
         return $after;
+    }
+
+    /**
+     * Permanently delete a suspended tenant: its stored files, schema, domains, and module rows.
+     */
+    public function delete(Tenant $tenant): void
+    {
+        if (! $tenant->isSuspended()) {
+            abort(409, 'Suspend the tenant before deleting it.', ['X-Error-Code' => 'TENANT_DELETE_REQUIRES_SUSPENSION']);
+        }
+
+        $tenantId = (string) $tenant->id;
+        $snapshot = [
+            'id' => $tenantId,
+            'name' => $tenant->name,
+            'domains' => $tenant->domains->pluck('domain')->values()->all(),
+            'modules' => $this->modules->codesForTenant($tenantId),
+            'suspended_at' => $tenant->suspended_at !== null ? (string) $tenant->suspended_at : null,
+            'suspension_reason' => $tenant->suspension_reason,
+        ];
+
+        $this->deleteTenantFiles($tenant);
+
+        // The explicit audit below carries domains and modules, which the model audit would miss.
+        Tenant::withoutAuditing(fn () => $tenant->delete());
+
+        $this->auditWriter->write(
+            event: 'deleted',
+            auditable: $tenant,
+            oldValues: $snapshot,
+            tags: 'central,tenants',
+        );
+
+        TenantReferenceCache::forgetForTenant($tenantId, ModuleEntitlementService::CACHE_KEY);
+        CentralOverviewService::forget();
+    }
+
+    /**
+     * Local disks share one root across tenants, so remove each attachment file
+     * instead of a per-tenant directory.
+     */
+    private function deleteTenantFiles(Tenant $tenant): void
+    {
+        try {
+            $tenant->run(function (): void {
+                Attachment::withTrashed()
+                    ->select(['id', 'disk', 'file_path'])
+                    ->chunkById(200, function (Collection $attachments): void {
+                        foreach ($attachments as $attachment) {
+                            $path = (string) $attachment->file_path;
+                            if ($path === '') {
+                                continue;
+                            }
+
+                            try {
+                                Storage::disk((string) $attachment->disk)->delete($path);
+                            } catch (\Throwable) {
+                                // Missing disk or file: nothing left to remove.
+                            }
+                        }
+                    });
+            });
+        } catch (\Throwable) {
+            // Missing schema: no attachment rows to clean up.
+        }
     }
 
     private function revokeTenantTokens(Tenant $tenant): void

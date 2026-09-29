@@ -39,6 +39,7 @@ class InvoiceProofVerificationService
         private readonly InvoiceSnapshotService $invoiceSnapshotService,
         private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
         private readonly InvoiceRegistryGateway $invoiceRegistryGateway,
+        private readonly InvoiceChainStatusRecorder $invoiceChainStatusRecorder,
     ) {}
 
     public function verifySalesInvoice(SalesInvoice $invoice, ?CompanyProfile $company = null): InvoiceProofVerificationData
@@ -47,12 +48,15 @@ class InvoiceProofVerificationService
         $invoice->loadMissing('customer');
         $snapshot = $this->invoiceSnapshotService->findForSalesInvoice((string) $invoice->id);
         $onChain = null;
+        $chainRead = false;
         $attestations = [];
+        $attestationsRead = true;
         $chainEnabled = $this->invoiceChainRegistrationService->isConfigured();
 
         if ($snapshot !== null && $chainEnabled) {
             try {
                 $onChain = $this->invoiceRegistryGateway->invoiceOf((string) $snapshot->id);
+                $chainRead = true;
             } catch (Throwable) {
                 $onChain = null;
             }
@@ -65,10 +69,21 @@ class InvoiceProofVerificationService
                 );
             } catch (Throwable) {
                 $attestations = [];
+                $attestationsRead = false;
             }
         }
 
-        return $this->evaluateSalesInvoice($invoice, $snapshot, $company, $onChain, $chainEnabled, $attestations);
+        $proof = $this->evaluateSalesInvoice($invoice, $snapshot, $company, $onChain, $chainEnabled, $attestations);
+
+        if ($snapshot !== null && $chainRead) {
+            $this->invoiceChainStatusRecorder->record(
+                (string) $snapshot->id,
+                $proof->status,
+                $attestationsRead ? $attestations : null,
+            );
+        }
+
+        return $proof;
     }
 
     /**
@@ -107,7 +122,7 @@ class InvoiceProofVerificationService
         } elseif ($chainEnabled && $chainMatches !== true) {
             $status = InvoiceProofVerificationStatus::PendingChain;
         } else {
-            $status = $this->statusFromChain($onChainRecord);
+            $status = self::statusFromChain($onChainRecord);
         }
 
         $supplierWallet = WalletAddress::nonZeroOrNull($onChainRecord?->supplierAddress);
@@ -313,7 +328,7 @@ class InvoiceProofVerificationService
         ];
     }
 
-    private function statusFromChain(?InvoiceOnChainRecord $onChain): InvoiceProofVerificationStatus
+    public static function statusFromChain(?InvoiceOnChainRecord $onChain): InvoiceProofVerificationStatus
     {
         if ($onChain === null) {
             return InvoiceProofVerificationStatus::Verified;

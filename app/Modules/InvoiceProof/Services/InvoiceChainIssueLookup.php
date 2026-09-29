@@ -77,7 +77,10 @@ class InvoiceChainIssueLookup
         return $result;
     }
 
-    private function visible(): bool
+    /**
+     * Invoice proofs are enabled and the current user may read them.
+     */
+    public function visible(): bool
     {
         $user = Auth::user();
         if (! $user instanceof User || ! CompanySetting::current()->invoiceProofsEnabled()) {

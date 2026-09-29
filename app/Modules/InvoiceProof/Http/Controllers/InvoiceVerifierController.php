@@ -28,6 +28,14 @@ class InvoiceVerifierController extends Controller
         );
     }
 
+    public function show(InvoiceVerifier $invoiceVerifier): JsonResponse
+    {
+        return ApiResponse::success(
+            InvoiceVerifierResponseData::fromModel($this->invoiceVerifierService->show($invoiceVerifier))->toArray(),
+            'Invoice verifier fetched successfully.'
+        );
+    }
+
     public function store(StoreInvoiceVerifierRequest $request): JsonResponse
     {
         $verifier = $this->invoiceVerifierService->create(InvoiceVerifierData::fromStoreRequest($request));

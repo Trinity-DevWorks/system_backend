@@ -20,11 +20,16 @@ readonly class SalesInvoiceResponseData
 {
     /**
      * @param  array{kind: string, checked_at: string|null}|null  $chainIssue  from InvoiceChainIssueLookup
+     * @param  array{status: string, financed: bool, checked_at: string|null}|null  $chainStatus  from InvoiceChainStatusLookup
      */
-    public static function fromModel(SalesInvoice $invoice, bool $includeLines = true, ?array $chainIssue = null): array
-    {
+    public static function fromModel(
+        SalesInvoice $invoice,
+        bool $includeLines = true,
+        ?array $chainIssue = null,
+        ?array $chainStatus = null,
+    ): array {
         $invoice->loadMissing([
-            'customer:id,customer_code,name,phone,status,is_system,salesman_id,payment_method_id,payment_terms_id',
+            'customer:id,customer_code,name,phone,status,is_system,salesman_id,payment_method_id,payment_terms_id,wallet_address,wallet_type',
             'warehouse:id,name,shortcut_name,is_active',
             'currency:id,code,name,symbol',
             'salesman:id,full_name,salesman_code',
@@ -71,6 +76,7 @@ readonly class SalesInvoiceResponseData
             'posted_at' => $invoice->posted_at?->toIso8601String(),
             'lines_count' => $invoice->lines_count ?? null,
             'chain_issue' => $chainIssue,
+            'chain_status' => $chainStatus,
             'created_at' => (string) $invoice->created_at,
             'updated_at' => (string) $invoice->updated_at,
         ];
@@ -248,6 +254,8 @@ readonly class SalesInvoiceResponseData
             'phone' => $customer->phone,
             'status' => $customer->status instanceof \BackedEnum ? $customer->status->value : (string) $customer->status,
             'is_system' => (bool) $customer->is_system,
+            'wallet_address' => $customer->wallet_address,
+            'wallet_type' => $customer->wallet_type?->value,
         ];
     }
 

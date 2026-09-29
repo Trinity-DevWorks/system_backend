@@ -44,6 +44,13 @@ class InvoiceVerifierService
         return InvoiceVerifier::query()->orderBy('name')->get();
     }
 
+    public function show(InvoiceVerifier $verifier): InvoiceVerifier
+    {
+        $this->ensureEnabled();
+
+        return $verifier;
+    }
+
     public function create(InvoiceVerifierData $data): InvoiceVerifier
     {
         $this->ensureEnabled();
@@ -55,6 +62,8 @@ class InvoiceVerifierService
             'role' => $data->role,
             'wallet_address' => $data->walletAddress,
             'wallet_type' => $data->walletType,
+            'email' => $data->email,
+            'phone' => $data->phone,
             'notes' => $data->notes,
             'chain_status' => InvoiceVerifierChainStatus::Pending,
         ]);
@@ -73,6 +82,8 @@ class InvoiceVerifierService
         $verifier->update([
             'name' => $data->name,
             'role' => $data->role,
+            'email' => $data->email,
+            'phone' => $data->phone,
             'notes' => $data->notes,
             ...($roleChanged ? ['chain_status' => InvoiceVerifierChainStatus::Pending, 'chain_error' => null] : []),
         ]);

@@ -26,6 +26,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'role',
     'wallet_address',
     'wallet_type',
+    'email',
+    'phone',
     'notes',
     'chain_status',
     'chain_company_wallet',

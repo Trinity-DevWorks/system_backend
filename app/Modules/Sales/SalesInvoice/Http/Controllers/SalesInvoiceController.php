@@ -10,6 +10,7 @@ use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\InvoiceProof\Http\Requests\DiscloseInvoiceProofRequest;
 use App\Modules\InvoiceProof\Services\InvoiceChainIssueLookup;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
+use App\Modules\InvoiceProof\Services\InvoiceChainStatusLookup;
 use App\Modules\InvoiceProof\Services\InvoiceProofDisclosureService;
 use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
 use App\Modules\InvoiceProof\Services\InvoiceProofVerificationService;
@@ -35,6 +36,7 @@ class SalesInvoiceController extends Controller
         private readonly InvoiceProofDisclosureService $invoiceProofDisclosureService,
         private readonly PermissionService $permissionService,
         private readonly InvoiceChainIssueLookup $invoiceChainIssueLookup,
+        private readonly InvoiceChainStatusLookup $invoiceChainStatusLookup,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -51,9 +53,15 @@ class SalesInvoiceController extends Controller
             $this->salesInvoiceService->list($filters, ListPagination::perPage($request, 50)),
             function ($invoices): array {
                 $chainIssues = $this->invoiceChainIssueLookup->forInvoices($invoices->pluck('id'));
+                $chainStatuses = $this->invoiceChainStatusLookup->forSalesInvoices($invoices->pluck('id'));
 
                 return $invoices->map(
-                    fn (SalesInvoice $invoice): array => SalesInvoiceResponseData::fromModel($invoice, false, $chainIssues[(string) $invoice->id] ?? null),
+                    fn (SalesInvoice $invoice): array => SalesInvoiceResponseData::fromModel(
+                        $invoice,
+                        false,
+                        $chainIssues[(string) $invoice->id] ?? null,
+                        $chainStatuses[(string) $invoice->id] ?? null,
+                    ),
                 )->values()->all();
             },
             'Sales invoices fetched successfully.'
@@ -83,6 +91,7 @@ class SalesInvoiceController extends Controller
                 $invoice,
                 true,
                 $this->invoiceChainIssueLookup->forInvoices([$invoice->id])[(string) $invoice->id] ?? null,
+                $this->invoiceChainStatusLookup->forSalesInvoices([$invoice->id])[(string) $invoice->id] ?? null,
             ),
             'Sales invoice fetched successfully.'
         );

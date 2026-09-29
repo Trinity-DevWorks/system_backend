@@ -4,15 +4,20 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Central;
 
+use App\Models\Attachment;
 use App\Models\Audit;
+use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Concerns\InteractsWithCentral;
 use Tests\Concerns\InteractsWithTenant;
 use Tests\TestCase;
 
 /**
- * Central tenant administration against a real tenant schema: list, detail, modules, suspend.
+ * Central tenant administration against a real tenant schema: list, detail, modules, suspend, delete.
  */
 #[Group('central')]
 #[Group('tenant-db')]
@@ -118,5 +123,66 @@ class CentralTenantApiTest extends TestCase
         $this->asTenantRequest($this->tenantBearerToken())
             ->getJson($this->tenantUrl('auth/me'))
             ->assertOk();
+    }
+
+    public function test_delete_requires_suspension_and_typed_confirmation(): void
+    {
+        $filePath = 'attachments/central-delete-test/'.Str::uuid()->toString().'.txt';
+        $this->tenant->run(function () use ($filePath): void {
+            Storage::disk('local')->put($filePath, 'tenant file');
+            (new Attachment)->forceFill([
+                'attachable_type' => 'user',
+                'attachable_id' => (string) $this->tenantUser->id,
+                'disk' => 'local',
+                'file_path' => $filePath,
+                'file_name' => 'note.txt',
+                'mime_type' => 'text/plain',
+                'file_size' => 11,
+                'viewer_category' => 'text',
+            ])->save();
+            $this->assertTrue(Storage::disk('local')->exists($filePath));
+        });
+        $absoluteFilePath = $this->tenant->run(fn (): string => Storage::disk('local')->path($filePath));
+
+        $this->asCentralRequest($this->token)
+            ->deleteJson($this->centralUrl('tenants/central_admin_tenant'), ['confirmation' => 'central_admin_tenant'])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'TENANT_DELETE_REQUIRES_SUSPENSION');
+
+        $this->asCentralRequest($this->token)
+            ->patchJson($this->centralUrl('tenants/central_admin_tenant/status'), ['status' => 'suspended'])
+            ->assertOk();
+
+        $this->asCentralRequest($this->token)
+            ->deleteJson($this->centralUrl('tenants/central_admin_tenant'), ['confirmation' => 'wrong'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('confirmation', 'errors');
+
+        $this->asCentralRequest($this->token)
+            ->deleteJson($this->centralUrl('tenants/central_admin_tenant'), ['confirmation' => 'central_admin_tenant'])
+            ->assertOk();
+
+        $this->assertNull(Tenant::query()->find('central_admin_tenant'));
+        $this->assertSame(0, DB::table('domains')->where('tenant_id', 'central_admin_tenant')->count());
+        $this->assertSame(0, DB::table('tenant_modules')->where('tenant_id', 'central_admin_tenant')->count());
+        $this->assertSame(
+            [],
+            DB::select('select 1 from information_schema.schemata where schema_name = ?', ['central_admin_tenant'])
+        );
+        $this->assertFileDoesNotExist($absoluteFilePath);
+
+        $audit = Audit::query()
+            ->where('user_id', (string) $this->centralAdmin->id)
+            ->where('event', 'deleted')
+            ->where('auditable_type', 'tenant')
+            ->where('auditable_id', 'central_admin_tenant')
+            ->first();
+        $this->assertNotNull($audit);
+        $this->assertSame([$this->tenantDomain], $audit->old_values['domains'] ?? null);
+
+        $this->asCentralRequest($this->token)
+            ->deleteJson($this->centralUrl('tenants/central_admin_tenant'), ['confirmation' => 'central_admin_tenant'])
+            ->assertStatus(404)
+            ->assertJsonPath('code', 'TENANT_NOT_FOUND');
     }
 }

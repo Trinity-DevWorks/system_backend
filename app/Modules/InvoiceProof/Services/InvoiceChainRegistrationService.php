@@ -363,6 +363,9 @@ class InvoiceChainRegistrationService
             'block_number' => $receipt->blockNumber,
             'contract_address' => $receipt->contractAddress,
             'last_error' => null,
+            'chain_status' => InvoiceProofVerificationStatus::WaitingCompany,
+            'financed_at' => null,
+            'status_checked_at' => now(),
         ]);
     }
 

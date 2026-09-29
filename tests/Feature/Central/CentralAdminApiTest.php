@@ -163,7 +163,7 @@ class CentralAdminApiTest extends TestCase
             ->assertJsonPath('data.is_system', false)
             ->json('data.id');
 
-        $permission = CentralPermission::query()->where('resource_key', 'tenants')->firstOrFail();
+        $permission = CentralPermission::query()->where('resource_key', 'tenant_modules')->firstOrFail();
 
         $this->asCentralRequest($token)
             ->putJson($this->centralUrl("roles/{$roleId}/permissions"), [

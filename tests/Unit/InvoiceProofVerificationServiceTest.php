@@ -20,6 +20,7 @@ use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Serializers\SalesInvoiceCanonicalSerializer;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
+use App\Modules\InvoiceProof\Services\InvoiceChainStatusRecorder;
 use App\Modules\InvoiceProof\Services\InvoiceProofVerificationService;
 use App\Modules\InvoiceProof\Services\InvoiceSnapshotService;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceHasher;
@@ -49,6 +50,7 @@ class InvoiceProofVerificationServiceTest extends TestCase
             $this->createMock(InvoiceSnapshotService::class),
             $this->createMock(InvoiceChainRegistrationService::class),
             $this->createMock(InvoiceRegistryGateway::class),
+            $this->createMock(InvoiceChainStatusRecorder::class),
         );
     }
 

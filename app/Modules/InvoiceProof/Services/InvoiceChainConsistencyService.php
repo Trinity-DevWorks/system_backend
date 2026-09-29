@@ -7,9 +7,11 @@ namespace App\Modules\InvoiceProof\Services;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
+use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
 use App\Modules\InvoiceProof\Enums\InvoiceChainCheckStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceChainIssueKind;
 use App\Modules\InvoiceProof\Enums\InvoiceChainRegistrationStatus;
+use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
 use App\Modules\InvoiceProof\Models\InvoiceChainCheck;
 use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
@@ -38,6 +40,7 @@ class InvoiceChainConsistencyService
     public function __construct(
         private readonly InvoiceRegistryGateway $invoiceRegistryGateway,
         private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
+        private readonly InvoiceChainStatusRecorder $invoiceChainStatusRecorder,
     ) {}
 
     public function isAvailable(): bool
@@ -134,7 +137,8 @@ class InvoiceChainConsistencyService
                 $sealedHash = InvoiceProofBytes::normalizedContentHash((string) $snapshot->content_hash);
 
                 $recomputed = self::recomputedHash($snapshot);
-                if ($recomputed === null || ! hash_equals($sealedHash, $recomputed)) {
+                $altered = $recomputed === null || ! hash_equals($sealedHash, $recomputed);
+                if ($altered) {
                     $this->addIssue(InvoiceChainIssueKind::SnapshotAltered, $snapshot, $invoiceNumber, $sealedHash, $recomputed);
                 }
 
@@ -165,6 +169,7 @@ class InvoiceChainConsistencyService
 
                 if ($chainHash !== null && ! hash_equals($sealedHash, $chainHash)) {
                     $this->addIssue(InvoiceChainIssueKind::HashMismatch, $snapshot, $invoiceNumber, $sealedHash, $chainHash);
+                    $this->recordChainStatus((string) $snapshot->id, $onChain, true);
 
                     return;
                 }
@@ -173,6 +178,7 @@ class InvoiceChainConsistencyService
                     if ($chainHash === null) {
                         $this->addIssue(InvoiceChainIssueKind::MissingOnChain, $snapshot, $invoiceNumber, $sealedHash, null);
                     }
+                    $this->recordChainStatus((string) $snapshot->id, $onChain, $altered);
 
                     return;
                 }
@@ -262,6 +268,31 @@ class InvoiceChainConsistencyService
         }
 
         return ['supplier' => $supplier, 'from' => $from, 'to' => $to];
+    }
+
+    /**
+     * Attestations are read only for fully approved invoices: a financier can attest nothing earlier.
+     */
+    private function recordChainStatus(string $proofId, ?InvoiceOnChainRecord $onChain, bool $tampered): void
+    {
+        $status = match (true) {
+            $tampered => InvoiceProofVerificationStatus::Tampered,
+            $onChain === null => InvoiceProofVerificationStatus::PendingChain,
+            default => InvoiceProofVerificationService::statusFromChain($onChain),
+        };
+
+        $attestations = null;
+        if ($status === InvoiceProofVerificationStatus::FullyApproved) {
+            try {
+                $attestations = $this->invoiceRegistryGateway->attestationsOf($proofId);
+            } catch (Throwable) {
+                $attestations = null;
+            }
+        } elseif (! $tampered) {
+            $attestations = [];
+        }
+
+        $this->invoiceChainStatusRecorder->record($proofId, $status, $attestations);
     }
 
     private function addIssue(

@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Central;
 use App\DTOs\Central\TenantResponseData;
 use App\Enums\TenantStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Central\DeleteTenantRequest;
 use App\Http\Requests\Central\StoreTenantRequest;
 use App\Http\Requests\Central\UpdateTenantRequest;
 use App\Http\Requests\Central\UpdateTenantStatusRequest;
@@ -120,5 +121,12 @@ class TenantController extends Controller
             TenantResponseData::fromModel($model, $this->tenants->modules($model))->toArray(),
             'Tenant status updated successfully.'
         );
+    }
+
+    public function destroy(DeleteTenantRequest $request, string $tenant): JsonResponse
+    {
+        $this->tenants->delete($this->tenants->find($tenant));
+
+        return ApiResponse::success(null, 'Tenant deleted successfully.');
     }
 }

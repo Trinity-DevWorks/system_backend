@@ -16,6 +16,8 @@ readonly class InvoiceVerifierData
         public InvoiceVerifierRole $role,
         public ?string $walletAddress,
         public ?WalletType $walletType,
+        public ?string $email,
+        public ?string $phone,
         public ?string $notes,
     ) {}
 
@@ -28,7 +30,9 @@ readonly class InvoiceVerifierData
             role: InvoiceVerifierRole::from((string) $data['role']),
             walletAddress: strtolower((string) $data['wallet_address']),
             walletType: WalletType::from((string) $data['wallet_type']),
-            notes: self::notes($data),
+            email: self::optional($data, 'email'),
+            phone: self::optional($data, 'phone'),
+            notes: self::optional($data, 'notes'),
         );
     }
 
@@ -41,17 +45,19 @@ readonly class InvoiceVerifierData
             role: InvoiceVerifierRole::from((string) $data['role']),
             walletAddress: null,
             walletType: null,
-            notes: self::notes($data),
+            email: self::optional($data, 'email'),
+            phone: self::optional($data, 'phone'),
+            notes: self::optional($data, 'notes'),
         );
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    private static function notes(array $data): ?string
+    private static function optional(array $data, string $key): ?string
     {
-        $notes = isset($data['notes']) ? trim((string) $data['notes']) : '';
+        $value = isset($data[$key]) ? trim((string) $data[$key]) : '';
 
-        return $notes === '' ? null : $notes;
+        return $value === '' ? null : $value;
     }
 }

@@ -589,6 +589,8 @@ Route::middleware([
 
             Route::get('invoice-verifiers', [InvoiceVerifierController::class, 'index'])
                 ->middleware('check.permission:invoice_proofs,view');
+            Route::get('invoice-verifiers/{invoice_verifier}', [InvoiceVerifierController::class, 'show'])
+                ->middleware('check.permission:invoice_proofs,view');
             Route::post('invoice-verifiers', [InvoiceVerifierController::class, 'store'])
                 ->middleware('check.permission:invoice_proofs,edit');
             Route::put('invoice-verifiers/{invoice_verifier}', [InvoiceVerifierController::class, 'update'])

@@ -287,7 +287,11 @@ class SalesInvoiceApiTest extends TestCase
 
         $this->tenant->run(function (): void {
             Item::query()->whereKey($this->catalog['service_item_id'])->update(['name' => 'Renamed Item']);
-            Customer::query()->whereKey($this->catalog['customer_id'])->update(['name' => 'Renamed Customer']);
+            Customer::query()->whereKey($this->catalog['customer_id'])->update([
+                'name' => 'Renamed Customer',
+                'wallet_address' => '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
+                'wallet_type' => 'wallet',
+            ]);
         });
 
         $data = $this->asTenantRequest($this->token)
@@ -297,6 +301,8 @@ class SalesInvoiceApiTest extends TestCase
 
         $this->assertIsArray($data);
         $this->assertSame('Invoice Customer', $data['customer']['name'] ?? null);
+        $this->assertSame('0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc', $data['customer']['wallet_address'] ?? null);
+        $this->assertSame('wallet', $data['customer']['wallet_type'] ?? null);
         $this->assertSame('Service item', $data['lines'][0]['item']['name'] ?? null);
         $this->assertArrayHasKey('paid_total', $data);
         $this->assertArrayHasKey('net_to_pay', $data);
@@ -597,18 +603,23 @@ class SalesInvoiceApiTest extends TestCase
         $this->enableBlockchainConfig();
         $this->app->instance(CompanySafeOwnerLookup::class, new EmptyCompanySafeOwnerLookup);
 
-        $this->asTenantRequest($this->token)
+        $verifierId = $this->asTenantRequest($this->token)
             ->postJson($this->tenantUrl('/invoice-verifiers'), [
                 'name' => 'Bank A',
                 'role' => 'financier',
                 'wallet_address' => '0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc',
                 'wallet_type' => 'wallet',
+                'email' => 'proofs@bank-a.test',
+                'phone' => '+964 770 000 0000',
             ])
             ->assertCreated()
             ->assertJsonPath('data.name', 'Bank A')
             ->assertJsonPath('data.role', 'financier')
             ->assertJsonPath('data.wallet_address', '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc')
-            ->assertJsonPath('data.chain_status', 'pending');
+            ->assertJsonPath('data.email', 'proofs@bank-a.test')
+            ->assertJsonPath('data.phone', '+964 770 000 0000')
+            ->assertJsonPath('data.chain_status', 'pending')
+            ->json('data.id');
 
         Queue::assertPushed(SyncInvoiceVerifierOnChainJob::class);
 
@@ -617,6 +628,12 @@ class SalesInvoiceApiTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'Bank A');
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/invoice-verifiers/{$verifierId}"))
+            ->assertOk()
+            ->assertJsonPath('data.id', $verifierId)
+            ->assertJsonPath('data.email', 'proofs@bank-a.test');
     }
 
     public function test_invoice_verifier_rejects_company_safe_wallet(): void
@@ -961,6 +978,76 @@ class SalesInvoiceApiTest extends TestCase
             ->getJson($this->tenantUrl("/sales-invoices/{$mismatchInvoice}"))
             ->assertOk()
             ->assertJsonPath('data.chain_issue', null);
+    }
+
+    public function test_sales_invoice_responses_include_last_read_chain_status(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $sealedInvoice = $this->postServiceInvoice();
+        $pendingInvoice = $this->postServiceInvoice();
+        [$sealedProof, $hash] = $this->confirmedProof($sealedInvoice);
+
+        $rows = collect($this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/sales-invoices'))
+            ->assertOk()
+            ->json('data.data'))->keyBy('id');
+        $this->assertSame('waiting_company', $rows[$sealedInvoice]['chain_status']['status']);
+        $this->assertSame('pending_chain', $rows[$pendingInvoice]['chain_status']['status']);
+
+        $onChain = new InvoiceOnChainRecord(
+            contentHash: $hash,
+            supplierAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+            buyerAddress: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
+            supplierApproved: true,
+            buyerApproved: true,
+            status: InvoiceOnChainStatus::FullyApproved,
+        );
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->willReturnCallback(
+            function (string $id) use (&$onChain, $sealedProof): ?InvoiceOnChainRecord {
+                return $id === $sealedProof ? $onChain : null;
+            },
+        );
+        $gateway->method('attestationsOf')->willReturn([
+            new InvoiceAttestationRecord('0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc', InvoiceVerifierRole::Financier, null, 1700000000),
+        ]);
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$sealedInvoice}/verify"))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'fully_approved');
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$sealedInvoice}"))
+            ->assertOk()
+            ->assertJsonPath('data.chain_status.status', 'fully_approved')
+            ->assertJsonPath('data.chain_status.financed', true);
+
+        $onChain = $this->chainRecord($hash);
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-proofs/chain-check'))
+            ->assertOk();
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$sealedInvoice}"))
+            ->assertOk()
+            ->assertJsonPath('data.chain_status.status', 'waiting_company')
+            ->assertJsonPath('data.chain_status.financed', false);
+
+        $this->tenant->run(function () use ($pendingInvoice): void {
+            $this->assertNull(InvoiceChainRegistration::query()->where('invoice_id', $pendingInvoice)->sole()->chain_status);
+        });
+
+        $clerkToken = $this->clerkTokenWithoutInvoiceProofsView(false);
+        Auth::forgetGuards();
+
+        $this->flushHeaders()
+            ->asTenantRequest($clerkToken)
+            ->getJson($this->tenantUrl("/sales-invoices/{$sealedInvoice}"))
+            ->assertOk()
+            ->assertJsonPath('data.chain_status', null);
     }
 
     public function test_chain_check_run_requires_invoice_proofs_edit(): void

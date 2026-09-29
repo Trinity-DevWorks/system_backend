@@ -15,6 +15,8 @@ return new class extends Migration
             $table->string('name');
             $table->string('role', 16);
             $table->string('wallet_address', 42)->unique();
+            $table->string('email')->nullable();
+            $table->string('phone', 32)->nullable();
             $table->text('notes')->nullable();
             $table->string('chain_status', 16);
             $table->string('chain_company_wallet', 42)->nullable();

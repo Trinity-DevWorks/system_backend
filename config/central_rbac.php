@@ -21,7 +21,7 @@ return [
 
     'resources' => [
         'overview' => ['label' => 'Overview', 'actions' => ['view']],
-        'tenants' => ['label' => 'Tenants', 'actions' => ['view', 'add', 'edit']],
+        'tenants' => ['label' => 'Tenants', 'actions' => $crud],
         'tenant_modules' => ['label' => 'Tenant Modules', 'actions' => ['view', 'edit']],
         'modules' => ['label' => 'Modules Catalog', 'actions' => ['view']],
         'users' => ['label' => 'Central Users', 'actions' => $crud],

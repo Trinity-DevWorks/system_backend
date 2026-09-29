@@ -26,6 +26,8 @@ class UpdateInvoiceVerifierRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'role' => ['required', new Enum(InvoiceVerifierRole::class)],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:32'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }

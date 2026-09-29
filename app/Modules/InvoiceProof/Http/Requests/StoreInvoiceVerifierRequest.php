@@ -40,6 +40,8 @@ class StoreInvoiceVerifierRequest extends FormRequest
                 'unique:invoice_verifiers,wallet_address',
             ],
             'wallet_type' => ['required', new Enum(WalletType::class)],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:32'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }

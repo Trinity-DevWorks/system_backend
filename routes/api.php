@@ -56,6 +56,8 @@ foreach (config('tenancy.central_domains') as $domain) {
                 ->middleware('check.central.permission:tenants,edit');
             Route::patch('/tenants/{tenant}/status', [TenantController::class, 'updateStatus'])
                 ->middleware('check.central.permission:tenants,edit');
+            Route::delete('/tenants/{tenant}', [TenantController::class, 'destroy'])
+                ->middleware('check.central.permission:tenants,delete');
             Route::get('/tenants/{tenant}/modules', [TenantModuleController::class, 'show'])
                 ->middleware('check.central.permission:tenant_modules,view');
             Route::put('/tenants/{tenant}/modules', [TenantModuleController::class, 'update'])

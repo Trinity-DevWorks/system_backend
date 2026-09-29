@@ -20,6 +20,9 @@ return new class extends Migration
             $table->unsignedBigInteger('block_number')->nullable();
             $table->string('contract_address', 42)->nullable();
             $table->text('last_error')->nullable();
+            $table->string('chain_status', 24)->nullable();
+            $table->timestamp('financed_at')->nullable();
+            $table->timestamp('status_checked_at')->nullable();
             $table->timestamps();
 
             $table->unique('proof_id');
