@@ -46,17 +46,17 @@ return [
         ],
         'sales' => [
             'name' => 'Sales / CRM',
-            'description' => 'Customers, customer groups, salesmen, and sales invoices.',
+            'description' => 'Customers, customer groups, salesmen, sales invoices, and customer receipts.',
             'is_core' => false,
             'sort_order' => 40,
-            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_invoices'],
+            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_invoices', 'customer_receipts'],
         ],
         'purchasing' => [
             'name' => 'Purchasing',
-            'description' => 'Suppliers, supplier groups, and purchase invoices.',
+            'description' => 'Suppliers, supplier groups, purchase invoices, and supplier payments.',
             'is_core' => false,
             'sort_order' => 50,
-            'resources' => ['supplier_groups', 'suppliers', 'purchase_invoices'],
+            'resources' => ['supplier_groups', 'suppliers', 'purchase_invoices', 'supplier_payments'],
         ],
     ],
 

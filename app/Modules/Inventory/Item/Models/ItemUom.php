@@ -2,7 +2,6 @@
 
 namespace App\Modules\Inventory\Item\Models;
 
-use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -12,7 +11,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'item_id',
     'uom_id',
-    'currency_id',
     'conversion_factor',
     'barcode',
     'selling_price',
@@ -58,14 +56,6 @@ class ItemUom extends Model
     public function uom(): BelongsTo
     {
         return $this->belongsTo(UnitOfMeasurement::class, 'uom_id');
-    }
-
-    /**
-     * @return BelongsTo<Currency, $this>
-     */
-    public function currency(): BelongsTo
-    {
-        return $this->belongsTo(Currency::class);
     }
 
     /**

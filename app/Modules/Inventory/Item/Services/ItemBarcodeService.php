@@ -21,7 +21,6 @@ class ItemBarcodeService
             ->where('item_id', $item->id)
             ->with([
                 'itemUom.uom:id,code,name',
-                'itemUom.currency:id,code,symbol',
             ])
             ->orderByDesc('is_primary')
             ->orderBy('id')
@@ -48,7 +47,6 @@ class ItemBarcodeService
                 'item.brand:id,code,name',
                 'item.baseUom:id,code,name,unit_group_id',
                 'itemUom.uom:id,code,name,unit_group_id',
-                'itemUom.currency:id,code,name,symbol,iso_code',
             ])
             ->first();
 
@@ -80,7 +78,6 @@ class ItemBarcodeService
                 'item.brand:id,code,name',
                 'item.baseUom:id,code,name,unit_group_id',
                 'uom:id,code,name,unit_group_id',
-                'currency:id,code,name,symbol,iso_code',
             ])
             ->first();
 
@@ -158,12 +155,12 @@ class ItemBarcodeService
     {
         return ItemUom::query()
             ->where('item_id', $item->id)
-            ->with(['uom:id,code,name,unit_group_id', 'currency:id,code,name,symbol,iso_code'])
+            ->with(['uom:id,code,name,unit_group_id'])
             ->where('is_default_sale', true)
             ->first()
             ?? ItemUom::query()
                 ->where('item_id', $item->id)
-                ->with(['uom:id,code,name,unit_group_id', 'currency:id,code,name,symbol,iso_code'])
+                ->with(['uom:id,code,name,unit_group_id'])
                 ->where('is_base', true)
                 ->first();
     }

@@ -120,6 +120,10 @@ return [
             'label' => 'Sales Invoice Management',
             'actions' => [...$crud, 'reverse'],
         ],
+        'customer_receipts' => [
+            'label' => 'Customer Receipt Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
 
         'supplier_groups' => [
             'label' => 'Supplier Group Management',
@@ -131,6 +135,10 @@ return [
         ],
         'purchase_invoices' => [
             'label' => 'Purchase Invoice Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'supplier_payments' => [
+            'label' => 'Supplier Payment Management',
             'actions' => [...$crud, 'reverse'],
         ],
     ],

@@ -70,7 +70,7 @@ class SalesInvoice extends Model implements AuditableContract
             'status' => SalesInvoiceStatus::class,
             'invoice_date' => 'date',
             'due_on' => 'date',
-            'exchange_rate' => 'decimal:6',
+            'exchange_rate' => 'decimal:12',
             'billing_address' => 'array',
             'shipping_address' => 'array',
             'subtotal' => 'decimal:4',

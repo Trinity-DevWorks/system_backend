@@ -25,7 +25,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('from_currency_id')->constrained('currencies')->cascadeOnDelete();
             $table->foreignId('to_currency_id')->constrained('currencies')->cascadeOnDelete();
-            $table->decimal('rate', 20, 6);
+            $table->decimal('rate', 24, 12);
             $table->timestamp('effective_from');
             $table->timestamp('effective_to');
             $table->string('updated_by')->nullable();

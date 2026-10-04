@@ -110,7 +110,8 @@ class SalesInvoiceApiTest extends TestCase
             ]))
             ->assertCreated();
 
-        $this->assertEqualsWithDelta(3.5, (float) $fx->json('data.exchange_rate'), 0.000001);
+        // Only EUR→USD = 3.5 exists, so 1 USD = 1/3.5 EUR.
+        $this->assertEqualsWithDelta(1 / 3.5, (float) $fx->json('data.exchange_rate'), 0.000000000001);
 
         $override = $this->asTenantRequest($this->token)
             ->postJson($this->tenantUrl('/sales-invoices'), $this->baseInvoicePayload([
@@ -401,10 +402,10 @@ class SalesInvoiceApiTest extends TestCase
         $inventoryType = ItemType::query()->where('code', 'INVENTORY')->firstOrFail();
         $bundleType = ItemType::query()->where('code', 'BUNDLE')->firstOrFail();
 
-        $service = $this->makeItem('Service item', 'SVC-1', $serviceType->id, $unitGroup->id, $uom->id, $vat->id, false, (int) $usd->id);
-        $stock = $this->makeItem('Stock item', 'STK-1', $inventoryType->id, $unitGroup->id, $uom->id, $vat->id, true, (int) $usd->id);
-        $child = $this->makeItem('Bundle child', 'BND-C', $inventoryType->id, $unitGroup->id, $uom->id, $vat->id, true, (int) $usd->id);
-        $bundle = $this->makeItem('Bundle parent', 'BND-P', $bundleType->id, $unitGroup->id, $uom->id, $vat->id, false, (int) $usd->id);
+        $service = $this->makeItem('Service item', 'SVC-1', $serviceType->id, $unitGroup->id, $uom->id, $vat->id, false);
+        $stock = $this->makeItem('Stock item', 'STK-1', $inventoryType->id, $unitGroup->id, $uom->id, $vat->id, true);
+        $child = $this->makeItem('Bundle child', 'BND-C', $inventoryType->id, $unitGroup->id, $uom->id, $vat->id, true);
+        $bundle = $this->makeItem('Bundle parent', 'BND-P', $bundleType->id, $unitGroup->id, $uom->id, $vat->id, false);
 
         BundleItem::query()->create([
             'bundle_item_id' => $bundle->id,
@@ -447,7 +448,6 @@ class SalesInvoiceApiTest extends TestCase
         int $uomId,
         int $vatId,
         bool $trackInventory,
-        int $currencyId,
     ): Item {
         $item = Item::query()->create([
             'name' => $name,
@@ -466,7 +466,6 @@ class SalesInvoiceApiTest extends TestCase
         ItemUom::query()->create([
             'item_id' => $item->id,
             'uom_id' => $uomId,
-            'currency_id' => $currencyId,
             'conversion_factor' => 1,
             'selling_price' => 10,
             'cost_price' => 5,

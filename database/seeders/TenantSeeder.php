@@ -379,13 +379,6 @@ class TenantSeeder extends Seeder
         $each = $this->ensureUom($unitGroup->id, 'EA', 'Each', 'ea');
         $box = $this->ensureUom($unitGroup->id, 'BX', 'Box', 'bx');
 
-        $currencyId = CompanySetting::singleton()->primary_currency_id
-            ?? Currency::query()->where('code', 'USD')->value('id');
-
-        if ($currencyId === null) {
-            throw new \RuntimeException('Cannot seed item UOMs without a currency.');
-        }
-
         $this->seedInventoryItemWithUoms(
             sku: 'DEMO-ITEM-001',
             itemCode: 'DEMO-001',
@@ -397,7 +390,6 @@ class TenantSeeder extends Seeder
             baseUomId: $each->id,
             altUomId: $box->id,
             altFactor: '12',
-            currencyId: (int) $currencyId,
             salePrice: '1.5000',
             costPrice: '0.9000',
             altSalePrice: '16.0000',
@@ -415,7 +407,6 @@ class TenantSeeder extends Seeder
             baseUomId: $each->id,
             altUomId: $box->id,
             altFactor: '24',
-            currencyId: (int) $currencyId,
             salePrice: '2.2500',
             costPrice: '1.2000',
             altSalePrice: '48.0000',
@@ -450,7 +441,6 @@ class TenantSeeder extends Seeder
         int $baseUomId,
         int $altUomId,
         string $altFactor,
-        int $currencyId,
         string $salePrice,
         string $costPrice,
         string $altSalePrice,
@@ -483,7 +473,6 @@ class TenantSeeder extends Seeder
                 'uom_id' => $baseUomId,
             ],
             [
-                'currency_id' => $currencyId,
                 'conversion_factor' => '1',
                 'selling_price' => $salePrice,
                 'cost_price' => $costPrice,
@@ -499,7 +488,6 @@ class TenantSeeder extends Seeder
                 'uom_id' => $altUomId,
             ],
             [
-                'currency_id' => $currencyId,
                 'conversion_factor' => $altFactor,
                 'selling_price' => $altSalePrice,
                 'cost_price' => $altCostPrice,

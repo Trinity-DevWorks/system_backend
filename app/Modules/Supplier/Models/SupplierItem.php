@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Models;
 
-use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\Item;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -17,7 +16,6 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'item_id',
     'supplier_item_code',
     'last_purchase_price',
-    'currency_id',
     'lead_time_days',
     'is_preferred',
 ])]
@@ -45,10 +43,5 @@ class SupplierItem extends Model implements AuditableContract
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);
-    }
-
-    public function currency(): BelongsTo
-    {
-        return $this->belongsTo(Currency::class);
     }
 }

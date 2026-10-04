@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\DTOs;
 
+use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoiceLine;
+use App\Support\ExchangeRateSnapshot;
 use Illuminate\Support\Collection;
 
 readonly class PurchaseInvoiceLineResponseData
@@ -23,7 +25,7 @@ readonly class PurchaseInvoiceLineResponseData
      */
     public static function fromModel(PurchaseInvoiceLine $line): array
     {
-        $line->loadMissing(['item', 'itemUom.uom', 'warehouse', 'lot', 'goodsReceiptLine', 'purchaseOrderLine']);
+        $line->loadMissing(['item', 'itemUom.uom', 'warehouse', 'lot', 'goodsReceiptLine', 'purchaseOrderLine', 'invoice:id,exchange_rate']);
         $grn = $line->goodsReceiptLine;
         $poLine = $line->purchaseOrderLine;
         $sourceQty = $grn !== null
@@ -33,7 +35,13 @@ readonly class PurchaseInvoiceLineResponseData
             ? ($grn->unit_cost !== null ? (string) $grn->unit_cost : null)
             : ($poLine !== null && $poLine->unit_price !== null ? (string) $poLine->unit_price : null);
         $qtyMismatch = $sourceQty !== null && bccomp((string) $line->quantity, $sourceQty, 6) !== 0;
-        $priceMismatch = $sourcePrice !== null && bccomp((string) $line->unit_price, $sourcePrice, 4) !== 0;
+        $priceMismatch = false;
+        if ($sourcePrice !== null) {
+            // GRN/PO prices are in the primary currency; the line is in the invoice currency.
+            $rate = (string) ($line->invoice?->exchange_rate ?? '1');
+            $expected = PriceMath::normalize(bcmul($sourcePrice, $rate, ExchangeRateSnapshot::SCALE));
+            $priceMismatch = bccomp(PriceMath::normalize((string) $line->unit_price), $expected, PriceMath::scale()) !== 0;
+        }
 
         return [
             'id' => $line->id,

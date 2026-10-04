@@ -22,7 +22,7 @@ return new class extends Migration
             $table->string('status', 24)->default('draft');
             $table->date('invoice_date');
             $table->date('due_on');
-            $table->decimal('exchange_rate', 20, 6)->default(1);
+            $table->decimal('exchange_rate', 24, 12)->default(1);
             $table->string('reference_2', 128)->nullable();
             $table->json('billing_address')->nullable();
             $table->json('shipping_address')->nullable();
