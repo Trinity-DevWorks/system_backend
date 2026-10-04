@@ -8,6 +8,8 @@ use App\Http\Responses\ApiResponse;
 use App\Jobs\BootstrapTenantRbac;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\CompanySetting\Models\CompanySetting;
+use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Services\ModuleEntitlementService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Validation\ValidationException;
@@ -15,7 +17,7 @@ use Stancl\Tenancy\Database\Models\Domain;
 
 /**
  * Creates a tenant: schema + migrations (TenantCreated pipeline), domain, owner user,
- * RBAC bootstrap and default modules.
+ * regional company settings from the platform defaults, RBAC bootstrap and default modules.
  */
 final class TenantProvisioningService
 {
@@ -24,6 +26,7 @@ final class TenantProvisioningService
 
     public function __construct(
         private readonly ModuleEntitlementService $modules,
+        private readonly PlatformSettingService $platformSettings,
     ) {}
 
     public static function isValidSlug(string $slug): bool
@@ -82,8 +85,9 @@ final class TenantProvisioningService
 
         $ownerName = "{$data['name']}_owner";
         $ownerUserId = null;
+        $regionalDefaults = $this->regionalDefaults();
 
-        $tenant->run(function () use ($data, $ownerName, &$ownerUserId): void {
+        $tenant->run(function () use ($data, $ownerName, $regionalDefaults, &$ownerUserId): void {
             $user = User::query()->create([
                 'name' => $ownerName,
                 'email' => $data['email'],
@@ -91,6 +95,9 @@ final class TenantProvisioningService
                 'is_active' => true,
             ]);
             $ownerUserId = $user->id;
+
+            CompanySetting::singleton()->update($regionalDefaults);
+            app(CompanySettingService::class)->forgetCache();
         });
 
         if ($ownerUserId === null) {
@@ -110,6 +117,24 @@ final class TenantProvisioningService
                 'name' => $ownerName,
                 'email' => $data['email'],
             ],
+        ];
+    }
+
+    /**
+     * Platform regional settings seed the new tenant's company settings.
+     * Read before entering tenant context so the central cache key is used.
+     *
+     * @return array{preferred_language: string, timezone: string, date_format: string, number_format: string}
+     */
+    private function regionalDefaults(): array
+    {
+        $settings = $this->platformSettings->get();
+
+        return [
+            'preferred_language' => $settings->preferred_language->value,
+            'timezone' => (string) $settings->timezone,
+            'date_format' => $settings->date_format->value,
+            'number_format' => $settings->number_format->value,
         ];
     }
 

@@ -28,5 +28,7 @@ return [
         'roles' => ['label' => 'Central Roles', 'actions' => $crud],
         'permissions' => ['label' => 'Central Permissions', 'actions' => ['view', 'edit']],
         'audits' => ['label' => 'Central Audit Log', 'actions' => ['view', 'export']],
+        'platform_profile' => ['label' => 'Company Profile', 'actions' => ['view', 'edit']],
+        'platform_settings' => ['label' => 'Company Settings', 'actions' => ['view', 'edit']],
     ],
 ];
