@@ -11,6 +11,9 @@ use App\Http\Controllers\Central\CentralRoleController;
 use App\Http\Controllers\Central\CentralRolePermissionController;
 use App\Http\Controllers\Central\CentralUserController;
 use App\Http\Controllers\Central\ModuleController;
+use App\Http\Controllers\Central\PlatformBrandingController;
+use App\Http\Controllers\Central\PlatformProfileController;
+use App\Http\Controllers\Central\PlatformSettingController;
 use App\Http\Controllers\Central\TenantController;
 use App\Http\Controllers\Central\TenantModuleController;
 use App\Http\Responses\ApiResponse;
@@ -35,6 +38,12 @@ foreach (config('tenancy.central_domains') as $domain) {
         // Public: used by the frontend proxy to check that a tenant host exists.
         Route::get('/tenant/get-tenant-by-name/{name}', [TenantController::class, 'lookupByName'])
             ->where('name', '[A-Za-z0-9][A-Za-z0-9_-]*');
+
+        // Public: product name and logo for login pages, shells, titles, and favicons on every host.
+        Route::middleware('throttle:120,1')->group(function () {
+            Route::get('/branding', [PlatformBrandingController::class, 'show']);
+            Route::get('/branding/logo', [PlatformBrandingController::class, 'logo']);
+        });
 
         Route::middleware(['auth:sanctum', 'ensure.active', 'throttle:60,1'])->group(function () {
             Route::post('/logout', [CentralAuthController::class, 'logout']);
@@ -103,6 +112,20 @@ foreach (config('tenancy.central_domains') as $domain) {
                 ->middleware('check.central.permission:audits,export');
             Route::get('/audits/{audit}', [CentralAuditController::class, 'show'])
                 ->middleware('check.central.permission:audits,view');
+
+            Route::get('/platform-profile', [PlatformProfileController::class, 'show'])
+                ->middleware('check.central.permission:platform_profile,view');
+            Route::put('/platform-profile', [PlatformProfileController::class, 'update'])
+                ->middleware('check.central.permission:platform_profile,edit');
+            Route::post('/platform-profile/logo', [PlatformProfileController::class, 'storeLogo'])
+                ->middleware('check.central.permission:platform_profile,edit');
+            Route::delete('/platform-profile/logo', [PlatformProfileController::class, 'destroyLogo'])
+                ->middleware('check.central.permission:platform_profile,edit');
+
+            Route::get('/platform-settings', [PlatformSettingController::class, 'show'])
+                ->middleware('check.central.permission:platform_settings,view');
+            Route::put('/platform-settings', [PlatformSettingController::class, 'update'])
+                ->middleware('check.central.permission:platform_settings,edit');
         });
     });
 }
