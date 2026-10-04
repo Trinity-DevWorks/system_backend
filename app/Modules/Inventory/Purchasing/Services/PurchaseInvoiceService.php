@@ -30,6 +30,8 @@ use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\DocumentTaxContext;
 use App\Support\DocumentTaxMath;
+use App\Support\ExchangeRateSnapshot;
+use App\Support\PaymentAllocation;
 use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -274,7 +276,7 @@ class PurchaseInvoiceService
                     ]);
                 }
                 $item = $line->item ?? Item::query()->findOrFail($line->item_id);
-                $unitCost = $this->baseUnitCost((string) $line->unit_price, (string) $line->conversion_factor);
+                $unitCost = $this->baseUnitCost($locked, $line);
                 if ($unitCost !== null) {
                     $lastPurchasePrices[(string) $item->id] = $unitCost;
                 }
@@ -438,7 +440,13 @@ class PurchaseInvoiceService
             'payment_terms_id' => $paymentTermsId,
             'invoice_date' => $invoiceDate,
             'due_on' => $dueOn,
-            'exchange_rate' => $this->resolveExchangeRate($currencyId, $data['exchange_rate'] ?? $existing?->exchange_rate),
+            'exchange_rate' => ExchangeRateSnapshot::resolve(
+                $this->exchangeRateService,
+                $currencyId,
+                $data['exchange_rate']
+                    ?? ($existing !== null && (int) $existing->currency_id === $currencyId ? $existing->exchange_rate : null),
+                'PURCHASE_INVOICE',
+            ),
             'reference_2' => $this->nullableString($data['reference_2'] ?? $existing?->reference_2),
             'adjustment' => array_key_exists('adjustment', $data)
                 ? PriceMath::normalize($data['adjustment'] ?? 0)
@@ -456,39 +464,6 @@ class PurchaseInvoiceService
         }
 
         return Carbon::parse($invoiceDate)->addDays($days)->toDateString();
-    }
-
-    private function resolveExchangeRate(int $currencyId, mixed $provided): string
-    {
-        $primary = Currency::getPrimary();
-        if ($primary === null) {
-            abort(422, 'A primary currency is required.', ['X-Error-Code' => 'PURCHASE_INVOICE_PRIMARY_CURRENCY_REQUIRED']);
-        }
-
-        if ($currencyId === (int) $primary->id) {
-            return number_format(1, 6, '.', '');
-        }
-
-        if ($provided !== null && $provided !== '') {
-            $rate = (float) $provided;
-            if ($rate <= 0) {
-                abort(422, 'Exchange rate must be greater than zero.', ['X-Error-Code' => 'PURCHASE_INVOICE_EXCHANGE_RATE_INVALID']);
-            }
-
-            return number_format($rate, 6, '.', '');
-        }
-
-        try {
-            $rate = $this->exchangeRateService->getRateById($currencyId, (int) $primary->id);
-        } catch (\InvalidArgumentException) {
-            abort(422, 'Enter an exchange rate for this currency.', ['X-Error-Code' => 'PURCHASE_INVOICE_EXCHANGE_RATE_REQUIRED']);
-        }
-
-        if ($rate <= 0) {
-            abort(422, 'Exchange rate must be greater than zero.', ['X-Error-Code' => 'PURCHASE_INVOICE_EXCHANGE_RATE_INVALID']);
-        }
-
-        return number_format($rate, 6, '.', '');
     }
 
     /**
@@ -647,7 +622,7 @@ class PurchaseInvoiceService
             'tax_total' => $totals['tax_total'],
             'grand_total' => $totals['grand_total'],
             'paid_total' => PriceMath::normalize($invoice->paid_total ?? 0),
-            'net_to_pay' => $totals['net_to_pay'],
+            'net_to_pay' => PaymentAllocation::netToPay($totals['grand_total'], $invoice->paid_total ?? 0),
         ]);
     }
 
@@ -664,7 +639,7 @@ class PurchaseInvoiceService
             warehouseId: (int) ($line->warehouse_id ?? $invoice->warehouse_id),
             quantityDelta: (string) $line->base_quantity,
             purchaseInvoiceId: (string) $invoice->id,
-            unitCost: $this->baseUnitCost((string) $line->unit_price, (string) $line->conversion_factor),
+            unitCost: $this->baseUnitCost($invoice, $line),
             itemUomId: $line->item_uom_id ? (int) $line->item_uom_id : null,
             notes: $line->notes ? $note.' — '.$line->notes : $note,
             userId: $userId,
@@ -689,13 +664,23 @@ class PurchaseInvoiceService
         return true;
     }
 
-    private function baseUnitCost(string $unitPrice, string $conversionFactor): ?string
+    /**
+     * Cost per base unit in the primary currency (stock and supplier prices are primary-only).
+     */
+    private function baseUnitCost(PurchaseInvoice $invoice, PurchaseInvoiceLine $line): ?string
     {
+        $conversionFactor = (string) $line->conversion_factor;
         if (bccomp($conversionFactor, '0', 6) <= 0) {
             return null;
         }
 
-        return bcdiv($unitPrice, $conversionFactor, 4);
+        $primaryUnitPrice = ExchangeRateSnapshot::toPrimary(
+            (string) $line->unit_price,
+            (string) $invoice->exchange_rate,
+            ExchangeRateSnapshot::SCALE,
+        );
+
+        return bcdiv($primaryUnitPrice, $conversionFactor, 4);
     }
 
     private function nullableString(mixed $value): ?string

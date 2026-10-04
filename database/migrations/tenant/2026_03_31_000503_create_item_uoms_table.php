@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Sellable/pricing UOM rows: conversion to item base UOM, prices per currency.
+     * Sellable/pricing UOM rows: conversion to item base UOM, prices in the primary currency.
      */
     public function up(): void
     {
@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->foreignUuid('item_id')->constrained('items')->cascadeOnDelete();
             $table->foreignId('uom_id')->constrained('unit_of_measurements')->restrictOnDelete();
-            $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             $table->decimal('conversion_factor', 24, 12)->default(1);
             $table->string('barcode', 128)->nullable();
             $table->decimal('selling_price', 14, 4)->nullable();
@@ -28,10 +27,9 @@ return new class extends Migration
             $table->boolean('is_default_purchase')->default(false);
             $table->timestamps();
 
-            $table->unique(['item_id', 'uom_id', 'currency_id']);
+            $table->unique(['item_id', 'uom_id']);
             $table->unique('barcode');
             $table->index('item_id');
-            $table->index(['item_id', 'currency_id']);
         });
     }
 

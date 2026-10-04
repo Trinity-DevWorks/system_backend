@@ -30,6 +30,7 @@ use App\Modules\Inventory\ItemType\Http\Controllers\ItemTypeController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseInvoiceController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseOrderController;
+use App\Modules\Inventory\Purchasing\SupplierPayment\Http\Controllers\SupplierPaymentController;
 use App\Modules\Inventory\Stock\Http\Controllers\BundleExplosionController;
 use App\Modules\Inventory\Stock\Http\Controllers\InventoryLotController;
 use App\Modules\Inventory\Stock\Http\Controllers\ItemWarehouseReplenishmentController;
@@ -63,6 +64,7 @@ use App\Modules\Rbac\Http\Controllers\RolePermissionController;
 use App\Modules\Rbac\Http\Controllers\UserAttachmentController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
+use App\Modules\Sales\CustomerReceipt\Http\Controllers\CustomerReceiptController;
 use App\Modules\Sales\SalesInvoice\Http\Controllers\SalesInvoiceController;
 use App\Modules\Salesman\Http\Controllers\SalesmanAttachmentController;
 use App\Modules\Salesman\Http\Controllers\SalesmanController;
@@ -558,6 +560,25 @@ Route::middleware([
         });
 
         Route::middleware(['ensure.module:sales'])->group(function () {
+            Route::get('customer-receipts/open-invoices', [CustomerReceiptController::class, 'openInvoices'])
+                ->middleware('check.permission:customer_receipts,view');
+            Route::get('customer-receipts', [CustomerReceiptController::class, 'index'])
+                ->middleware('check.permission:customer_receipts,view');
+            Route::post('customer-receipts', [CustomerReceiptController::class, 'store'])
+                ->middleware('check.permission:customer_receipts,add');
+            Route::get('customer-receipts/{customer_receipt}', [CustomerReceiptController::class, 'show'])
+                ->middleware('check.permission:customer_receipts,view');
+            Route::put('customer-receipts/{customer_receipt}', [CustomerReceiptController::class, 'update'])
+                ->middleware('check.permission:customer_receipts,edit');
+            Route::delete('customer-receipts/{customer_receipt}', [CustomerReceiptController::class, 'destroy'])
+                ->middleware('check.permission:customer_receipts,delete');
+            Route::put('customer-receipts/{customer_receipt}/allocations', [CustomerReceiptController::class, 'syncAllocations'])
+                ->middleware('check.permission:customer_receipts,edit');
+            Route::post('customer-receipts/{customer_receipt}/post', [CustomerReceiptController::class, 'post'])
+                ->middleware('check.permission:customer_receipts,edit');
+            Route::post('customer-receipts/{customer_receipt}/reverse', [CustomerReceiptController::class, 'reverse'])
+                ->middleware('check.permission:customer_receipts,reverse');
+
             Route::get('sales-invoices/item-availability', [SalesInvoiceController::class, 'itemAvailability'])
                 ->middleware('check.permission:sales_invoices,view');
             Route::get('sales-invoices', [SalesInvoiceController::class, 'index'])
@@ -664,6 +685,25 @@ Route::middleware([
         });
 
         Route::middleware(['ensure.module:purchasing'])->group(function () {
+            Route::get('supplier-payments/open-invoices', [SupplierPaymentController::class, 'openInvoices'])
+                ->middleware('check.permission:supplier_payments,view');
+            Route::get('supplier-payments', [SupplierPaymentController::class, 'index'])
+                ->middleware('check.permission:supplier_payments,view');
+            Route::post('supplier-payments', [SupplierPaymentController::class, 'store'])
+                ->middleware('check.permission:supplier_payments,add');
+            Route::get('supplier-payments/{supplier_payment}', [SupplierPaymentController::class, 'show'])
+                ->middleware('check.permission:supplier_payments,view');
+            Route::put('supplier-payments/{supplier_payment}', [SupplierPaymentController::class, 'update'])
+                ->middleware('check.permission:supplier_payments,edit');
+            Route::delete('supplier-payments/{supplier_payment}', [SupplierPaymentController::class, 'destroy'])
+                ->middleware('check.permission:supplier_payments,delete');
+            Route::put('supplier-payments/{supplier_payment}/allocations', [SupplierPaymentController::class, 'syncAllocations'])
+                ->middleware('check.permission:supplier_payments,edit');
+            Route::post('supplier-payments/{supplier_payment}/post', [SupplierPaymentController::class, 'post'])
+                ->middleware('check.permission:supplier_payments,edit');
+            Route::post('supplier-payments/{supplier_payment}/reverse', [SupplierPaymentController::class, 'reverse'])
+                ->middleware('check.permission:supplier_payments,reverse');
+
             Route::get('purchase-invoices', [PurchaseInvoiceController::class, 'index'])
                 ->middleware('check.permission:purchase_invoices,view');
             Route::post('purchase-invoices', [PurchaseInvoiceController::class, 'store'])

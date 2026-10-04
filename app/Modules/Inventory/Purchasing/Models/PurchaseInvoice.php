@@ -68,7 +68,7 @@ class PurchaseInvoice extends Model implements AuditableContract
             'status' => PurchaseInvoiceStatus::class,
             'invoice_date' => 'date',
             'due_on' => 'date',
-            'exchange_rate' => 'decimal:6',
+            'exchange_rate' => 'decimal:12',
             'subtotal' => 'decimal:4',
             'discount_total' => 'decimal:4',
             'tax_total' => 'decimal:4',

@@ -89,6 +89,7 @@ VAT / lookup groups:
 Currency:
 
 - `CURRENCY_PRIMARY_DELETE_FORBIDDEN` (HTTP 422)
+- `CURRENCY_PRIMARY_LOCKED` (HTTP 422) — primary currency cannot change once item prices, supplier prices, stock or documents exist
 
 Branches:
 

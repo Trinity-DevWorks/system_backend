@@ -31,16 +31,18 @@ class ItemUomService
         return DB::transaction(function () use ($item, $data): ItemUom {
             $item->refresh();
             $uom = UnitOfMeasurement::query()->findOrFail((int) $data['uom_id']);
-            $currencyId = $this->resolveCurrencyId($data['currency_id'] ?? null);
+
+            if (Currency::getPrimary() === null) {
+                abort(422, 'Set a primary currency before adding item unit prices.', ['X-Error-Code' => 'PRIMARY_CURRENCY_REQUIRED']);
+            }
 
             $this->assertUomInItemUnitGroup($item, $uom);
 
             if (ItemUom::query()
                 ->where('item_id', $item->id)
                 ->where('uom_id', $uom->id)
-                ->where('currency_id', $currencyId)
                 ->exists()) {
-                abort(422, 'This unit and currency combination already exists for the item.', ['X-Error-Code' => 'ITEM_UOM_ALREADY_EXISTS']);
+                abort(422, 'This unit already exists for the item.', ['X-Error-Code' => 'ITEM_UOM_ALREADY_EXISTS']);
             }
 
             $hasBase = $this->itemHasBase($item);
@@ -65,7 +67,6 @@ class ItemUomService
             $row = ItemUom::query()->create([
                 'item_id' => $item->id,
                 'uom_id' => $uom->id,
-                'currency_id' => $currencyId,
                 'conversion_factor' => $conversionFactor,
                 'barcode' => $this->normalizeBarcode($data['barcode'] ?? null),
                 'selling_price' => $this->normalizeOptionalPrice($data['selling_price'] ?? null),
@@ -83,13 +84,13 @@ class ItemUomService
                 $this->clearOtherBaseFlags($item->id, $row->id);
             }
             if ($row->is_default_sale) {
-                $this->clearOtherDefaultSaleFlags($item->id, $currencyId, $row->id);
+                $this->clearOtherDefaultSaleFlags($item->id, $row->id);
             }
             if ($row->is_default_purchase) {
-                $this->clearOtherDefaultPurchaseFlags($item->id, $currencyId, $row->id);
+                $this->clearOtherDefaultPurchaseFlags($item->id, $row->id);
             }
 
-            return $row->load(['uom', 'currency']);
+            return $row->load(['uom']);
         });
     }
 
@@ -104,20 +105,6 @@ class ItemUomService
 
         return DB::transaction(function () use ($item, $itemUom, $data): ItemUom {
             $item->refresh();
-            $currencyId = array_key_exists('currency_id', $data)
-                ? $this->resolveCurrencyId($data['currency_id'])
-                : (int) $itemUom->currency_id;
-
-            if ($currencyId !== (int) $itemUom->currency_id) {
-                if (ItemUom::query()
-                    ->where('item_id', $item->id)
-                    ->where('uom_id', $itemUom->uom_id)
-                    ->where('currency_id', $currencyId)
-                    ->where('id', '!=', $itemUom->id)
-                    ->exists()) {
-                    abort(422, 'This unit and currency combination already exists for the item.', ['X-Error-Code' => 'ITEM_UOM_ALREADY_EXISTS']);
-                }
-            }
 
             $isBase = array_key_exists('is_base', $data) ? (bool) $data['is_base'] : (bool) $itemUom->is_base;
             $conversionFactor = array_key_exists('conversion_factor', $data)
@@ -146,7 +133,6 @@ class ItemUomService
             }
 
             $itemUom->update([
-                'currency_id' => $currencyId,
                 'conversion_factor' => $conversionFactor,
                 'barcode' => array_key_exists('barcode', $data)
                     ? $this->normalizeBarcode($data['barcode'])
@@ -181,13 +167,13 @@ class ItemUomService
                 $this->clearOtherBaseFlags($item->id, $itemUom->id);
             }
             if ($itemUom->is_default_sale) {
-                $this->clearOtherDefaultSaleFlags($item->id, $currencyId, $itemUom->id);
+                $this->clearOtherDefaultSaleFlags($item->id, $itemUom->id);
             }
             if ($itemUom->is_default_purchase) {
-                $this->clearOtherDefaultPurchaseFlags($item->id, $currencyId, $itemUom->id);
+                $this->clearOtherDefaultPurchaseFlags($item->id, $itemUom->id);
             }
 
-            return $itemUom->load(['uom', 'currency']);
+            return $itemUom->load(['uom']);
         });
     }
 
@@ -211,7 +197,7 @@ class ItemUomService
     {
         return ItemUom::query()
             ->where('item_id', $item->id)
-            ->with(['uom:id,code,name,unit_group_id', 'currency:id,code,name,symbol,iso_code'])
+            ->with(['uom:id,code,name,unit_group_id'])
             ->orderByDesc('is_base')
             ->orderBy('id')
             ->get();
@@ -370,20 +356,6 @@ class ItemUomService
             : $value;
     }
 
-    private function resolveCurrencyId(mixed $currencyId): int
-    {
-        if ($currencyId !== null && $currencyId !== '') {
-            return (int) $currencyId;
-        }
-
-        $primary = Currency::getPrimary();
-        if (! $primary) {
-            abort(422, 'Set a primary currency before adding item unit prices.', ['X-Error-Code' => 'PRIMARY_CURRENCY_REQUIRED']);
-        }
-
-        return (int) $primary->id;
-    }
-
     private function assertBaseConversionFactor(string $conversionFactor): void
     {
         if (bccomp($conversionFactor, '1', self::CONVERSION_SCALE) !== 0) {
@@ -410,20 +382,18 @@ class ItemUomService
             ->update(['is_base' => false]);
     }
 
-    private function clearOtherDefaultSaleFlags(string $itemId, int $currencyId, int $exceptId): void
+    private function clearOtherDefaultSaleFlags(string $itemId, int $exceptId): void
     {
         ItemUom::query()
             ->where('item_id', $itemId)
-            ->where('currency_id', $currencyId)
             ->where('id', '!=', $exceptId)
             ->update(['is_default_sale' => false]);
     }
 
-    private function clearOtherDefaultPurchaseFlags(string $itemId, int $currencyId, int $exceptId): void
+    private function clearOtherDefaultPurchaseFlags(string $itemId, int $exceptId): void
     {
         ItemUom::query()
             ->where('item_id', $itemId)
-            ->where('currency_id', $currencyId)
             ->where('id', '!=', $exceptId)
             ->update(['is_default_purchase' => false]);
     }

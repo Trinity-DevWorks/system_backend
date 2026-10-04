@@ -33,7 +33,6 @@ class StoreSupplierItemRequest extends FormRequest
             ],
             'supplier_item_code' => ['nullable', 'string', 'max:100'],
             'last_purchase_price' => ['nullable', 'numeric', 'min:0'],
-            'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
             'lead_time_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'is_preferred' => ['nullable', 'boolean'],
         ];

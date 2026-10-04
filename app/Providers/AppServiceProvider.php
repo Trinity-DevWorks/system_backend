@@ -34,6 +34,7 @@ use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoiceLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
+use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
 use App\Modules\Inventory\Stock\Models\BundleExplosion;
 use App\Modules\Inventory\Stock\Models\BundleExplosionLine;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
@@ -66,6 +67,7 @@ use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
+use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
 use App\Modules\Salesman\Models\Salesman;
@@ -155,6 +157,7 @@ class AppServiceProvider extends ServiceProvider
             'customer_balance' => CustomerBalance::class,
             'salesman' => Salesman::class,
             'sales_invoice' => SalesInvoice::class,
+            'customer_receipt' => CustomerReceipt::class,
             'sales_invoice_line' => SalesInvoiceLine::class,
             'invoice_verifier' => InvoiceVerifier::class,
             'supplier' => Supplier::class,
@@ -184,6 +187,7 @@ class AppServiceProvider extends ServiceProvider
             'goods_receipt' => GoodsReceipt::class,
             'goods_receipt_line' => GoodsReceiptLine::class,
             'purchase_invoice' => PurchaseInvoice::class,
+            'supplier_payment' => SupplierPayment::class,
             'purchase_invoice_line' => PurchaseInvoiceLine::class,
             'opening_stock' => OpeningStock::class,
             'opening_stock_line' => OpeningStockLine::class,

@@ -22,7 +22,6 @@ class UpdateItemUomRequest extends FormRequest
         $itemUom = $this->route('item_uom');
 
         return [
-            'currency_id' => ['sometimes', 'integer', 'exists:currencies,id'],
             'conversion_factor' => ['sometimes', 'numeric', 'gt:0', 'max:999999999.999999999999'],
             'barcode' => [
                 'sometimes',

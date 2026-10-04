@@ -20,6 +20,18 @@ class CurrencyService
 {
     private const CACHE_LIST = 'currencies.list';
 
+    private const PRIMARY_DEPENDENT_TABLES = [
+        'item_uoms',
+        'supplier_items',
+        'stock_movements',
+        'purchase_orders',
+        'goods_receipts',
+        'purchase_invoices',
+        'sales_invoices',
+        'customer_receipts',
+        'supplier_payments',
+    ];
+
     public function __construct(
         private readonly ExchangeRateService $exchangeRateService
     ) {}
@@ -76,6 +88,7 @@ class CurrencyService
             $currency = Currency::query()->create($data->toModelArray());
 
             if ($data->isPrimary) {
+                $this->assertPrimaryCanChange((int) $currency->id);
                 CompanySetting::singleton()->update(['primary_currency_id' => $currency->id]);
                 TenantReferenceCache::forget(CompanySettingService::CACHE_KEY);
             } elseif ($data->rate !== null && $data->rate > 0 && $data->fromCurrencyId !== null && $data->fromCurrencyId !== $currency->id) {
@@ -110,6 +123,7 @@ class CurrencyService
             }
 
             if (array_key_exists('is_primary', $patch) && $patch['is_primary']) {
+                $this->assertPrimaryCanChange((int) $currency->id);
                 CompanySetting::singleton()->update(['primary_currency_id' => $currency->id]);
                 TenantReferenceCache::forget(CompanySettingService::CACHE_KEY);
             }
@@ -131,6 +145,26 @@ class CurrencyService
 
             return $currency->refresh();
         });
+    }
+
+    /**
+     * Prices, costs and document rates are stored relative to the primary currency,
+     * so it cannot move once any of them exist.
+     */
+    private function assertPrimaryCanChange(int $newPrimaryId): void
+    {
+        $current = Currency::getPrimary();
+        if ($current === null || (int) $current->id === $newPrimaryId) {
+            return;
+        }
+
+        foreach (self::PRIMARY_DEPENDENT_TABLES as $table) {
+            if (DB::table($table)->exists()) {
+                abort(422, 'The primary currency cannot be changed once prices, stock or documents exist.', [
+                    'X-Error-Code' => 'CURRENCY_PRIMARY_LOCKED',
+                ]);
+            }
+        }
     }
 
     public function delete(Currency $currency): void

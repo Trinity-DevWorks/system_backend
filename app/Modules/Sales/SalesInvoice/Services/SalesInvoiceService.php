@@ -29,6 +29,8 @@ use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\DocumentTaxContext;
 use App\Support\DocumentTaxMath;
+use App\Support\ExchangeRateSnapshot;
+use App\Support\PaymentAllocation;
 use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -357,9 +359,12 @@ class SalesInvoiceService
             abort(422, 'A currency is required.', ['X-Error-Code' => 'SALES_INVOICE_CURRENCY_REQUIRED']);
         }
 
-        $exchangeRate = $this->resolveExchangeRate(
+        $exchangeRate = ExchangeRateSnapshot::resolve(
+            $this->exchangeRateService,
             $currencyId,
-            $data['exchange_rate'] ?? $existing?->exchange_rate,
+            $data['exchange_rate']
+                ?? ($existing !== null && (int) $existing->currency_id === $currencyId ? $existing->exchange_rate : null),
+            'SALES_INVOICE',
         );
 
         $salesmanId = array_key_exists('salesman_id', $data)
@@ -425,39 +430,6 @@ class SalesInvoiceService
         }
 
         return Carbon::parse($invoiceDate)->addDays($days)->toDateString();
-    }
-
-    private function resolveExchangeRate(int $currencyId, mixed $provided): string
-    {
-        $primary = Currency::getPrimary();
-        if ($primary === null) {
-            abort(422, 'A primary currency is required.', ['X-Error-Code' => 'SALES_INVOICE_PRIMARY_CURRENCY_REQUIRED']);
-        }
-
-        if ($currencyId === (int) $primary->id) {
-            return number_format(1, 6, '.', '');
-        }
-
-        if ($provided !== null && $provided !== '') {
-            $rate = (float) $provided;
-            if ($rate <= 0) {
-                abort(422, 'Exchange rate must be greater than zero.', ['X-Error-Code' => 'SALES_INVOICE_EXCHANGE_RATE_INVALID']);
-            }
-
-            return number_format($rate, 6, '.', '');
-        }
-
-        try {
-            $rate = $this->exchangeRateService->getRateById($currencyId, (int) $primary->id);
-        } catch (\InvalidArgumentException $e) {
-            abort(422, 'Enter an exchange rate for this currency.', ['X-Error-Code' => 'SALES_INVOICE_EXCHANGE_RATE_REQUIRED']);
-        }
-
-        if ($rate <= 0) {
-            abort(422, 'Exchange rate must be greater than zero.', ['X-Error-Code' => 'SALES_INVOICE_EXCHANGE_RATE_INVALID']);
-        }
-
-        return number_format($rate, 6, '.', '');
     }
 
     /**
@@ -663,7 +635,7 @@ class SalesInvoiceService
             'tax_total' => $totals['tax_total'],
             'grand_total' => $totals['grand_total'],
             'paid_total' => PriceMath::normalize($invoice->paid_total ?? 0),
-            'net_to_pay' => $totals['net_to_pay'],
+            'net_to_pay' => PaymentAllocation::netToPay($totals['grand_total'], $invoice->paid_total ?? 0),
         ]);
     }
 

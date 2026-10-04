@@ -9,9 +9,11 @@ use App\Http\Responses\ApiResponse;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Supplier\DTOs\SupplierLedgerEntryResponseData;
 use App\Modules\Supplier\Models\Supplier;
+use App\Modules\Supplier\Models\SupplierLedgerEntry;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class SupplierLedgerController extends Controller
 {
@@ -21,14 +23,39 @@ class SupplierLedgerController extends Controller
 
     public function index(Request $request, Supplier $supplier): JsonResponse
     {
-        $perPage = min(100, max(1, (int) $request->query('per_page', 25)));
-        $paginator = $this->ledgerService->paginateForSupplier($supplier, $perPage);
-        $paginator->through(
-            fn ($entry) => SupplierLedgerEntryResponseData::fromModel($entry)->toArray()
+        $validated = $request->validate([
+            'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', Rule::when($request->filled('date_from'), 'after_or_equal:date_from')],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $statement = $this->ledgerService->statement(
+            $supplier,
+            isset($validated['currency_id']) ? (int) $validated['currency_id'] : null,
+            isset($validated['date_from']) ? (string) $validated['date_from'] : null,
+            isset($validated['date_to']) ? (string) $validated['date_to'] : null,
+            (int) ($validated['per_page'] ?? 25),
         );
 
+        $statement['paginator']->through(function (SupplierLedgerEntry $entry) use ($statement): array {
+            $type = $entry->reference_type instanceof \BackedEnum ? $entry->reference_type->value : (string) $entry->reference_type;
+            $key = $entry->reference_id !== null ? $type.'|'.$entry->reference_id : null;
+
+            return SupplierLedgerEntryResponseData::fromModel(
+                $entry,
+                $key !== null ? ($statement['document_numbers'][$key] ?? null) : null,
+                $statement['running_balances'][(int) $entry->id] ?? null,
+                isset($statement['reversed'][(int) $entry->id]),
+            )->toArray();
+        });
+
+        $payload = $statement['paginator']->toArray();
+        $payload['summary'] = $statement['summary'];
+        $payload['summaries'] = $statement['summaries'];
+
         return ApiResponse::success(
-            $paginator->toArray(),
+            $payload,
             'Ledger entries fetched successfully.'
         );
     }
