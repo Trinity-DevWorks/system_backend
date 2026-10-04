@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\InvoiceProof\Enums;
 
 /**
- * Clerk-facing proof result: missing, intact, pending on chain, waiting for approval, or no longer matching.
+ * Clerk-facing proof result: missing, intact, pending on chain, waiting for approval,
+ * cancelled on chain, or no longer matching.
  */
 enum InvoiceProofVerificationStatus: string
 {
@@ -16,6 +17,7 @@ enum InvoiceProofVerificationStatus: string
     case WaitingCompany = 'waiting_company';
     case WaitingBuyer = 'waiting_buyer';
     case FullyApproved = 'fully_approved';
+    case Revoked = 'revoked';
 
     /**
      * @return list<string>

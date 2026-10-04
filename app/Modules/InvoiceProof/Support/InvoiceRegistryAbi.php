@@ -33,9 +33,13 @@ final class InvoiceRegistryAbi
 
     public const SET_VERIFIER = '0x2b70a025';
 
+    public const REVOKE_INVOICE = '0x3b1da35c';
+
     public const ALREADY_REGISTERED = '3a81d6fc';
 
     public const PARTY_ALREADY_SET = '8cfb1c1a';
+
+    public const INVOICE_IS_REVOKED = '049eeccb';
 
     /** keccak256("InvoiceRegistered(bytes32,bytes32,address,address)") */
     public const INVOICE_REGISTERED_TOPIC = '0x20c1b4728816be48a6716ede4f3c00aca2675981eb46872a60c0b957685ad840';
@@ -63,6 +67,14 @@ final class InvoiceRegistryAbi
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
             .self::padAddress($supplier)
             .self::padAddress($buyer);
+    }
+
+    public static function encodeRevokeInvoice(string $proofId, ?string $replacementProofId): string
+    {
+        return self::encodeProofIdCall(self::REVOKE_INVOICE, $proofId)
+            .($replacementProofId !== null
+                ? InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($replacementProofId))
+                : str_repeat('0', 64));
     }
 
     public static function encodeContentHashOf(string $proofId): string
@@ -283,6 +295,11 @@ final class InvoiceRegistryAbi
         return str_contains(strtolower($message), self::PARTY_ALREADY_SET);
     }
 
+    public static function isInvoiceRevokedRevert(string $message): bool
+    {
+        return str_contains(strtolower($message), self::INVOICE_IS_REVOKED);
+    }
+
     public static function decodeInvoice(string $data): ?InvoiceOnChainRecord
     {
         $hex = InvoiceProofBytes::strip0x($data);
@@ -297,9 +314,14 @@ final class InvoiceRegistryAbi
 
         $supplierApproved = self::wordIsTrue(substr($hex, 192, 64));
         $buyerApproved = self::wordIsTrue(substr($hex, 256, 64));
-        $status = $buyerApproved
-            ? InvoiceOnChainStatus::FullyApproved
-            : ($supplierApproved ? InvoiceOnChainStatus::SupplierApproved : InvoiceOnChainStatus::Registered);
+        $revokedAt = self::decodeTimestamp(substr($hex, 512, 64));
+        $replacedBy = self::decodeBytes32('0x'.substr($hex, 576, 64));
+        $status = match (true) {
+            $revokedAt !== null => InvoiceOnChainStatus::Revoked,
+            $buyerApproved => InvoiceOnChainStatus::FullyApproved,
+            $supplierApproved => InvoiceOnChainStatus::SupplierApproved,
+            default => InvoiceOnChainStatus::Registered,
+        };
 
         return new InvoiceOnChainRecord(
             contentHash: $contentHash,
@@ -311,6 +333,8 @@ final class InvoiceRegistryAbi
             registeredAt: self::decodeTimestamp(substr($hex, 320, 64)),
             supplierApprovedAt: self::decodeTimestamp(substr($hex, 384, 64)),
             buyerApprovedAt: self::decodeTimestamp(substr($hex, 448, 64)),
+            revokedAt: $revokedAt,
+            replacedBy: $replacedBy !== null ? InvoiceProofBytes::bytes32ToProofId($replacedBy) : null,
         );
     }
 

@@ -44,6 +44,7 @@ readonly class InvoiceProofVerificationData
         public array $attestations = [],
         public ?string $supplierWalletType = null,
         public ?string $buyerWalletType = null,
+        public ?string $revokedAt = null,
     ) {}
 
     /**
@@ -106,6 +107,7 @@ readonly class InvoiceProofVerificationData
      *     registered_at: ?string,
      *     supplier_approved_at: ?string,
      *     buyer_approved_at: ?string,
+     *     revoked_at: ?string,
      *     attestations: list<array{verifier: string, verifier_name: ?string, role: string, reference_hash: ?string, attested_at: ?string}>,
      *     financed_by: ?string
      * }
@@ -133,6 +135,7 @@ readonly class InvoiceProofVerificationData
             'registered_at' => $this->registeredAt,
             'supplier_approved_at' => $this->supplierApprovedAt,
             'buyer_approved_at' => $this->buyerApprovedAt,
+            'revoked_at' => $this->revokedAt,
             'attestations' => array_map(
                 static fn (InvoiceAttestationRecord $attestation): array => $attestation->toArray(),
                 $this->attestations,

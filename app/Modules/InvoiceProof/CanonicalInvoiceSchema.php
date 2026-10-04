@@ -13,17 +13,18 @@ namespace App\Modules\InvoiceProof;
  *
  * v1 sealed SHA-256 of the whole JSON string. v2 seals the salted Merkle root
  * of the document leaves (CanonicalInvoiceMerkle) so single fields can be
- * disclosed and verified without revealing the rest of the invoice.
+ * disclosed and verified without revealing the rest of the invoice. v3 keeps
+ * the v2 layout and seals exchange_rate with 12 decimals, matching the stored rate.
  */
 final class CanonicalInvoiceSchema
 {
-    public const VERSION = 2;
+    public const VERSION = 3;
 
     public const MONEY_SCALE = 4;
 
     public const QUANTITY_SCALE = 6;
 
-    public const RATE_SCALE = 6;
+    public const RATE_SCALE = 12;
 
     public const PERCENT_SCALE = 4;
 

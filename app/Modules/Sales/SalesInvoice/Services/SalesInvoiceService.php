@@ -248,7 +248,7 @@ class SalesInvoiceService
 
     public function reverse(SalesInvoice $invoice, ?string $userId): SalesInvoice
     {
-        return DB::transaction(function () use ($invoice, $userId): SalesInvoice {
+        $reversed = DB::transaction(function () use ($invoice, $userId): SalesInvoice {
             $locked = SalesInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== SalesInvoiceStatus::Posted) {
                 abort(422, 'Only a posted sales invoice can be reversed.', [
@@ -281,6 +281,10 @@ class SalesInvoiceService
 
             return $this->find($locked->id);
         });
+
+        $this->invoiceChainRegistrationService->requestRevocation($reversed);
+
+        return $reversed;
     }
 
     /**

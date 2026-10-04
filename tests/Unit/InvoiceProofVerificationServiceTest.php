@@ -422,6 +422,84 @@ class InvoiceProofVerificationServiceTest extends TestCase
         );
     }
 
+    public function test_revoked_chain_record_is_revoked_without_approve_action(): void
+    {
+        config(['blockchain.contract_address' => '0x5FbDB2315678afecb367f032d93F642f64180aa3']);
+
+        $invoice = $this->salesInvoice();
+        $invoice->status = SalesInvoiceStatus::Reversed;
+        $snapshot = $this->snapshotFor($invoice);
+        $onChain = new InvoiceOnChainRecord(
+            contentHash: $snapshot->content_hash,
+            supplierAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+            buyerAddress: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
+            supplierApproved: true,
+            buyerApproved: false,
+            status: InvoiceOnChainStatus::Revoked,
+            revokedAt: 1700000900,
+        );
+
+        $result = $this->service->evaluateSalesInvoice($invoice, $snapshot, $this->company(), $onChain, true);
+
+        $this->assertSame(InvoiceProofVerificationStatus::Revoked, $result->status);
+        $this->assertTrue($result->chainMatches);
+        $this->assertFalse($result->canApproveAsBuyer);
+        $this->assertNull($result->eip712);
+        $this->assertSame('2023-11-14T22:28:20+00:00', $result->toArray()['revoked_at']);
+    }
+
+    public function test_reversed_invoice_offers_no_approval_before_the_revoke_lands(): void
+    {
+        config(['blockchain.contract_address' => '0x5FbDB2315678afecb367f032d93F642f64180aa3']);
+
+        $invoice = $this->salesInvoice();
+        $invoice->status = SalesInvoiceStatus::Reversed;
+        $snapshot = $this->snapshotFor($invoice);
+        $onChain = $this->onChain($snapshot->content_hash, InvoiceOnChainStatus::SupplierApproved);
+
+        $result = $this->service->evaluateSalesInvoice($invoice, $snapshot, $this->company(), $onChain, true);
+
+        $this->assertSame(InvoiceProofVerificationStatus::WaitingBuyer, $result->status);
+        $this->assertFalse($result->canApproveAsBuyer);
+        $this->assertNull($result->eip712);
+    }
+
+    public function test_revoke_abi_round_trip(): void
+    {
+        $proof = '11111111111141118111111111111111'.str_repeat('0', 32);
+        $replacement = '33333333333343338333333333333333'.str_repeat('0', 32);
+
+        $this->assertSame(
+            '0x3b1da35c'.$proof.str_repeat('0', 64),
+            InvoiceRegistryAbi::encodeRevokeInvoice(self::PROOF_ID, null),
+        );
+        $this->assertSame(
+            '0x3b1da35c'.$proof.$replacement,
+            InvoiceRegistryAbi::encodeRevokeInvoice(self::PROOF_ID, '33333333-3333-4333-8333-333333333333'),
+        );
+
+        $word = static fn (int $value): string => str_pad(dechex($value), 64, '0', STR_PAD_LEFT);
+        $data = '0x'.str_repeat('ab', 32)
+            .str_repeat('0', 24).'70997970c51812dc3a010c7d01b50e0d17dc79c8'
+            .str_repeat('0', 24).'3c44cdddb6a900fa2b585dd299e03d12fa4293bc'
+            .$word(1).$word(0).$word(1700000000).$word(1700000100).$word(0)
+            .$word(1700000900).$replacement;
+
+        $record = InvoiceRegistryAbi::decodeInvoice($data);
+
+        $this->assertNotNull($record);
+        $this->assertSame(InvoiceOnChainStatus::Revoked, $record->status);
+        $this->assertTrue($record->supplierApproved);
+        $this->assertSame(1700000900, $record->revokedAt);
+        $this->assertSame('33333333-3333-4333-8333-333333333333', $record->replacedBy);
+
+        $live = InvoiceRegistryAbi::decodeInvoice(substr($data, 0, -128).$word(0).str_repeat('0', 64));
+        $this->assertSame(InvoiceOnChainStatus::SupplierApproved, $live?->status);
+        $this->assertNull($live?->revokedAt);
+        $this->assertNull($live?->replacedBy);
+        $this->assertTrue(InvoiceRegistryAbi::isInvoiceRevokedRevert('execution reverted: custom error 0x049eeccb'));
+    }
+
     private function onChain(string $contentHash, InvoiceOnChainStatus $status, ?int $registeredAt = null): InvoiceOnChainRecord
     {
         return new InvoiceOnChainRecord(

@@ -30,6 +30,12 @@ interface InvoiceRegistryGateway
     public function approveBySupplier(string $proofId, string $supplierAddress): InvoiceChainReceiptData;
 
     /**
+     * Registrar cancels a sealed invoice, optionally naming the proof that replaces it.
+     * Succeeds without a transaction when the proof is already revoked.
+     */
+    public function revokeInvoice(string $proofId, ?string $replacementProofId): InvoiceChainReceiptData;
+
+    /**
      * Registrar lists (role > 0) or removes (role 0) a verifier for one company Safe.
      */
     public function setVerifier(string $companyAddress, string $verifierAddress, int $role): InvoiceChainReceiptData;

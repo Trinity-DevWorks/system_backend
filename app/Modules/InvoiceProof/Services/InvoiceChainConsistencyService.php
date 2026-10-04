@@ -19,6 +19,8 @@ use App\Modules\InvoiceProof\Support\BlockchainNetwork;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceHasher;
 use App\Modules\InvoiceProof\Support\InvoiceProofBytes;
 use App\Modules\InvoiceProof\Support\WalletAddress;
+use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -31,6 +33,7 @@ use Throwable;
  * Event pass: InvoiceRegistered logs for the company wallet reveal proofs the ERP
  * never sealed. Stuck or out-of-sync registrations are re-queued; the register
  * job is idempotent when the proof is already on chain with the same hash.
+ * Reversed invoices whose proof is still live on chain get their revoke re-queued.
  */
 class InvoiceChainConsistencyService
 {
@@ -68,11 +71,12 @@ class InvoiceChainConsistencyService
         $network = BlockchainNetwork::key();
         $checked = 0;
         $requeue = [];
+        $revoke = [];
         $scan = ['supplier' => null, 'from' => null, 'to' => null];
         $error = null;
 
         try {
-            [$checked, $requeue, $knownProofIds] = $this->checkSnapshots($contract);
+            [$checked, $requeue, $knownProofIds, $revoke] = $this->checkSnapshots($contract);
             $scan = $this->scanRegisteredEvents($network, $contract, $knownProofIds);
         } catch (Throwable $exception) {
             $error = Str::limit($exception->getMessage(), 500);
@@ -84,14 +88,14 @@ class InvoiceChainConsistencyService
             default => InvoiceChainCheckStatus::Consistent,
         };
 
-        $check = DB::transaction(function () use ($status, $network, $contract, $checked, $requeue, $scan, $error, $startedAt): InvoiceChainCheck {
+        $check = DB::transaction(function () use ($status, $network, $contract, $checked, $requeue, $revoke, $scan, $error, $startedAt): InvoiceChainCheck {
             $check = InvoiceChainCheck::query()->create([
                 'status' => $status,
                 'blockchain_network' => $network,
                 'contract_address' => $contract,
                 'checked_count' => $checked,
                 'issue_count' => count($this->issues),
-                'requeued_count' => $error === null ? count($requeue) : 0,
+                'requeued_count' => $error === null ? count($requeue) + count($revoke) : 0,
                 'scanned_supplier' => $scan['supplier'],
                 'scanned_from_block' => $scan['from'],
                 'scanned_to_block' => $scan['to'],
@@ -112,24 +116,33 @@ class InvoiceChainConsistencyService
             foreach ($requeue as $proofId) {
                 $this->invoiceChainRegistrationService->dispatchRegistration($proofId);
             }
+            foreach ($revoke as $proofId) {
+                $this->invoiceChainRegistrationService->requeueRevocation($proofId);
+            }
         }
 
         return $check->load('issues');
     }
 
     /**
-     * @return array{0: int, 1: list<string>, 2: array<string, true>}
+     * @return array{0: int, 1: list<string>, 2: array<string, true>, 3: list<string>}
      */
     private function checkSnapshots(string $contract): array
     {
         $stuckBefore = now()->subMinutes(max(1, (int) config('blockchain.consistency.stuck_after_minutes', 30)));
         $registrations = InvoiceChainRegistration::query()->get()->keyBy('proof_id');
+        $reversedInvoiceIds = SalesInvoice::query()
+            ->where('status', SalesInvoiceStatus::Reversed)
+            ->pluck('id')
+            ->map(fn (mixed $id): string => (string) $id)
+            ->flip();
         $checked = 0;
         $requeue = [];
+        $revoke = [];
         $known = [];
 
         InvoiceSnapshot::query()->orderBy('created_at')->orderBy('id')->each(
-            function (InvoiceSnapshot $snapshot) use ($contract, $stuckBefore, $registrations, &$checked, &$requeue, &$known): void {
+            function (InvoiceSnapshot $snapshot) use ($contract, $stuckBefore, $registrations, $reversedInvoiceIds, &$checked, &$requeue, &$known, &$revoke): void {
                 $checked++;
                 $proofId = strtolower((string) $snapshot->id);
                 $known[$proofId] = true;
@@ -177,6 +190,20 @@ class InvoiceChainConsistencyService
                 if ($registration->status === InvoiceChainRegistrationStatus::Confirmed) {
                     if ($chainHash === null) {
                         $this->addIssue(InvoiceChainIssueKind::MissingOnChain, $snapshot, $invoiceNumber, $sealedHash, null);
+                    } elseif (
+                        $onChain !== null
+                        && $onChain->revokedAt === null
+                        && $reversedInvoiceIds->has((string) $snapshot->invoice_id)
+                        && ($registration->revoke_requested_at === null || $registration->revoke_requested_at->lt($stuckBefore))
+                    ) {
+                        $this->addIssue(
+                            InvoiceChainIssueKind::NotRevoked,
+                            $snapshot,
+                            $invoiceNumber,
+                            InvoiceProofVerificationStatus::Revoked->value,
+                            trim(InvoiceProofVerificationService::statusFromChain($onChain)->value.' '.($registration->revoke_error ?? '')),
+                        );
+                        $revoke[] = (string) $snapshot->id;
                     }
                     $this->recordChainStatus((string) $snapshot->id, $onChain, $altered);
 
@@ -212,7 +239,7 @@ class InvoiceChainConsistencyService
             }
         );
 
-        return [$checked, $requeue, $known];
+        return [$checked, $requeue, $known, $revoke];
     }
 
     /**
@@ -271,7 +298,8 @@ class InvoiceChainConsistencyService
     }
 
     /**
-     * Attestations are read only for fully approved invoices: a financier can attest nothing earlier.
+     * Attestations are read only for fully approved invoices, where a financier can attest, and
+     * for revoked ones, which keep any financing recorded before the revoke.
      */
     private function recordChainStatus(string $proofId, ?InvoiceOnChainRecord $onChain, bool $tampered): void
     {
@@ -282,7 +310,7 @@ class InvoiceChainConsistencyService
         };
 
         $attestations = null;
-        if ($status === InvoiceProofVerificationStatus::FullyApproved) {
+        if (in_array($status, [InvoiceProofVerificationStatus::FullyApproved, InvoiceProofVerificationStatus::Revoked], true)) {
             try {
                 $attestations = $this->invoiceRegistryGateway->attestationsOf($proofId);
             } catch (Throwable) {

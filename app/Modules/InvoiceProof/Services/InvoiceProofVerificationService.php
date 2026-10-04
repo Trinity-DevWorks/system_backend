@@ -21,6 +21,7 @@ use App\Modules\InvoiceProof\Support\InvoiceApprovalStatement;
 use App\Modules\InvoiceProof\Support\InvoiceProofBytes;
 use App\Modules\InvoiceProof\Support\InvoiceRegistryAbi;
 use App\Modules\InvoiceProof\Support\WalletAddress;
+use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use Carbon\Carbon;
 use InvalidArgumentException;
@@ -133,10 +134,12 @@ class InvoiceProofVerificationService
         $chainId = $chainEnabled ? (int) config('blockchain.chain_id') : null;
         $contractAddress = $chainEnabled ? $this->configuredContractAddress() : null;
         $eip712 = null;
-        if ($status === InvoiceProofVerificationStatus::WaitingCompany && $supplierWallet !== null) {
+        // A reversed invoice is revoked by a queued job; until it lands nobody may approve it.
+        $posted = $invoice->status === SalesInvoiceStatus::Posted;
+        if ($posted && $status === InvoiceProofVerificationStatus::WaitingCompany && $supplierWallet !== null) {
             $eip712 = $this->partyApprovalTypedData('SupplierApproval', $snapshot, $chainId, $contractAddress);
             $canApproveAsCompany = $eip712 !== null;
-        } elseif ($status === InvoiceProofVerificationStatus::WaitingBuyer && $buyerWallet !== null) {
+        } elseif ($posted && $status === InvoiceProofVerificationStatus::WaitingBuyer && $buyerWallet !== null) {
             $eip712 = $this->partyApprovalTypedData('BuyerApproval', $snapshot, $chainId, $contractAddress);
             $canApproveAsBuyer = $eip712 !== null;
         }
@@ -160,6 +163,7 @@ class InvoiceProofVerificationService
             registeredAt: self::chainInstant($onChainRecord?->registeredAt),
             supplierApprovedAt: self::chainInstant($onChainRecord?->supplierApprovedAt),
             buyerApprovedAt: self::chainInstant($onChainRecord?->buyerApprovedAt),
+            revokedAt: self::chainInstant($onChainRecord?->revokedAt),
             attestations: $onChainRecord !== null ? $attestations : [],
             supplierWalletType: self::declaredWalletType($supplierWallet, $company?->wallet_address, $company?->wallet_type),
             buyerWalletType: self::declaredWalletType(
@@ -339,7 +343,7 @@ class InvoiceProofVerificationService
             InvoiceOnChainStatus::Registered => InvoiceProofVerificationStatus::WaitingCompany,
             InvoiceOnChainStatus::SupplierApproved => InvoiceProofVerificationStatus::WaitingBuyer,
             InvoiceOnChainStatus::FullyApproved => InvoiceProofVerificationStatus::FullyApproved,
-            default => InvoiceProofVerificationStatus::Verified,
+            InvoiceOnChainStatus::Revoked => InvoiceProofVerificationStatus::Revoked,
         };
     }
 

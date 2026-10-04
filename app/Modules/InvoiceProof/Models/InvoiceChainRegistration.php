@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * Mutable on-chain registration record for an immutable invoice snapshot.
@@ -18,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property InvoiceProofType $invoice_type
  * @property InvoiceChainRegistrationStatus $status
  * @property InvoiceProofVerificationStatus|null $chain_status last status read from the contract
+ * @property Carbon|null $revoke_requested_at set when the ERP cancelled the invoice
+ * @property Carbon|null $revoked_at set once revokeInvoice is confirmed on chain
  */
 #[Fillable([
     'id',
@@ -32,6 +35,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'chain_status',
     'financed_at',
     'status_checked_at',
+    'revoke_requested_at',
+    'revoked_at',
+    'revoke_tx_hash',
+    'revoke_error',
 ])]
 class InvoiceChainRegistration extends Model
 {
@@ -49,6 +56,8 @@ class InvoiceChainRegistration extends Model
             'chain_status' => InvoiceProofVerificationStatus::class,
             'financed_at' => 'datetime',
             'status_checked_at' => 'datetime',
+            'revoke_requested_at' => 'datetime',
+            'revoked_at' => 'datetime',
         ];
     }
 

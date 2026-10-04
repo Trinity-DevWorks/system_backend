@@ -14,6 +14,7 @@ use App\Modules\InvoiceProof\Enums\InvoiceProofType;
 use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
 use App\Modules\InvoiceProof\Exceptions\CompanySignerWalletException;
 use App\Modules\InvoiceProof\Jobs\RegisterSalesInvoiceOnChainJob;
+use App\Modules\InvoiceProof\Jobs\RevokeSalesInvoiceOnChainJob;
 use App\Modules\InvoiceProof\Jobs\SyncInvoiceRegistryPartiesJob;
 use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
@@ -172,6 +173,90 @@ class InvoiceChainRegistrationService
 
             throw $exception;
         }
+
+        if ($invoice?->status === SalesInvoiceStatus::Reversed) {
+            $this->requestRevocation($invoice);
+        }
+    }
+
+    /**
+     * Marks the invoice proof for revocation. The chain call runs once the registration is
+     * confirmed: now if it already is, otherwise right after submitProof confirms it.
+     */
+    public function requestRevocation(SalesInvoice $invoice): void
+    {
+        $registration = $this->findForSalesInvoice((string) $invoice->id);
+        if ($registration === null || $registration->revoked_at !== null) {
+            return;
+        }
+
+        $registration->update([
+            'revoke_requested_at' => $registration->revoke_requested_at ?? now(),
+            'revoke_error' => null,
+        ]);
+
+        if ($registration->status === InvoiceChainRegistrationStatus::Confirmed) {
+            $this->dispatchRevocation((string) $registration->proof_id);
+        }
+    }
+
+    public function dispatchRevocation(string $proofId): void
+    {
+        if (! $this->isConfigured()) {
+            return;
+        }
+
+        $tenantId = tenant('id');
+        RevokeSalesInvoiceOnChainJob::dispatch(
+            is_string($tenantId) ? $tenantId : null,
+            $proofId,
+        );
+    }
+
+    /**
+     * Consistency-check retry for a reversed invoice whose proof is still live on chain.
+     */
+    public function requeueRevocation(string $proofId): void
+    {
+        InvoiceChainRegistration::query()
+            ->where('proof_id', $proofId)
+            ->whereNull('revoke_requested_at')
+            ->update(['revoke_requested_at' => now()]);
+
+        $this->dispatchRevocation($proofId);
+    }
+
+    public function submitRevocation(string $proofId): void
+    {
+        if (! $this->isConfigured()) {
+            return;
+        }
+
+        $registration = InvoiceChainRegistration::query()->where('proof_id', $proofId)->first();
+        if (
+            $registration === null
+            || $registration->status !== InvoiceChainRegistrationStatus::Confirmed
+            || $registration->revoke_requested_at === null
+            || $registration->revoked_at !== null
+        ) {
+            return;
+        }
+
+        try {
+            $receipt = $this->invoiceRegistryGateway->revokeInvoice($proofId, null);
+        } catch (Throwable $exception) {
+            $registration->update(['revoke_error' => $this->safeError($exception)]);
+
+            throw $exception;
+        }
+
+        $registration->update([
+            'revoked_at' => now(),
+            'revoke_tx_hash' => $receipt->txHash,
+            'revoke_error' => null,
+            'chain_status' => InvoiceProofVerificationStatus::Revoked,
+            'status_checked_at' => now(),
+        ]);
     }
 
     /**
@@ -194,7 +279,7 @@ class InvoiceChainRegistrationService
             return;
         }
 
-        if ($onChain === null) {
+        if ($onChain === null || $onChain->revokedAt !== null) {
             return;
         }
 

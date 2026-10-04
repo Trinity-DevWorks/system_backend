@@ -239,7 +239,7 @@ class InvoiceProofPortalService
 
         $invoices = SalesInvoice::query()
             ->where('customer_id', $customerId)
-            ->where('status', SalesInvoiceStatus::Posted)
+            ->whereIn('status', [SalesInvoiceStatus::Posted, SalesInvoiceStatus::Reversed])
             ->orderByDesc('invoice_date')
             ->orderByDesc('posted_at')
             ->get();
@@ -314,9 +314,12 @@ class InvoiceProofPortalService
         ]);
     }
 
+    /**
+     * Reversed invoices stay readable so an issued link shows the buyer that it was cancelled.
+     */
     private function assertPortalInvoice(SalesInvoice $invoice): void
     {
-        if ($invoice->status !== SalesInvoiceStatus::Posted) {
+        if (! in_array($invoice->status, [SalesInvoiceStatus::Posted, SalesInvoiceStatus::Reversed], true)) {
             abort(404);
         }
 

@@ -29,7 +29,8 @@ class CanonicalInvoiceFormatterTest extends TestCase
 
     public function test_rate_and_percent_use_fixed_scales(): void
     {
-        $this->assertSame('1.000000', CanonicalInvoiceFormatter::rate('1'));
+        $this->assertSame('1.000000000000', CanonicalInvoiceFormatter::rate('1'));
+        $this->assertSame('0.000011123457', CanonicalInvoiceFormatter::rate('0.000011123457'));
         $this->assertSame('10.0000', CanonicalInvoiceFormatter::percent('10'));
     }
 
@@ -65,6 +66,6 @@ class CanonicalInvoiceFormatterTest extends TestCase
             'name' => 'Acme',
         ]);
 
-        $this->assertSame('{"schema_version":2,"notes":null,"name":"Acme"}', $json);
+        $this->assertSame('{"schema_version":3,"notes":null,"name":"Acme"}', $json);
     }
 }

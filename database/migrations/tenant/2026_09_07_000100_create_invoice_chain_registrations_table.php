@@ -23,6 +23,10 @@ return new class extends Migration
             $table->string('chain_status', 24)->nullable();
             $table->timestamp('financed_at')->nullable();
             $table->timestamp('status_checked_at')->nullable();
+            $table->timestamp('revoke_requested_at')->nullable();
+            $table->timestamp('revoked_at')->nullable();
+            $table->string('revoke_tx_hash', 66)->nullable();
+            $table->text('revoke_error')->nullable();
             $table->timestamps();
 
             $table->unique('proof_id');

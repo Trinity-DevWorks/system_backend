@@ -58,12 +58,22 @@ class InvoiceChainIssueLookup
             ->map(fn (mixed $id): string => (string) $id)
             ->flip();
 
+        $revokedProofIds = InvoiceChainRegistration::query()
+            ->whereIn('proof_id', $issues->filter(fn (InvoiceChainCheckIssue $issue): bool => $issue->kind->resolvedByRevocation())->pluck('proof_id'))
+            ->whereNotNull('revoked_at')
+            ->pluck('proof_id')
+            ->map(fn (mixed $id): string => (string) $id)
+            ->flip();
+
         $severity = array_flip(array_map(fn (InvoiceChainIssueKind $kind): string => $kind->value, InvoiceChainIssueKind::cases()));
         $checkedAt = $check->finished_at?->toIso8601String();
         $result = [];
 
         foreach ($issues as $issue) {
             if ($issue->kind->resolvedByRegistration() && $fixedProofIds->has((string) $issue->proof_id)) {
+                continue;
+            }
+            if ($issue->kind->resolvedByRevocation() && $revokedProofIds->has((string) $issue->proof_id)) {
                 continue;
             }
 

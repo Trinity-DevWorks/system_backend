@@ -123,6 +123,35 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
         throw new RuntimeException('Company approval must be signed in the wallet.');
     }
 
+    public function revokeInvoice(string $proofId, ?string $replacementProofId): InvoiceChainReceiptData
+    {
+        $alreadyRevoked = new InvoiceChainReceiptData(
+            txHash: 'already-revoked',
+            blockNumber: null,
+            contractAddress: InvoiceProofBytes::address($this->contractAddress),
+        );
+
+        if ($this->invoiceOf($proofId)?->revokedAt !== null) {
+            return $alreadyRevoked;
+        }
+
+        try {
+            return $this->sendFrom(
+                $this->registrarAddress,
+                InvoiceRegistryAbi::encodeRevokeInvoice($proofId, $replacementProofId),
+            );
+        } catch (RuntimeException $exception) {
+            if (
+                InvoiceRegistryAbi::isInvoiceRevokedRevert($exception->getMessage())
+                && $this->invoiceOf($proofId)?->revokedAt !== null
+            ) {
+                return $alreadyRevoked;
+            }
+
+            throw $exception;
+        }
+    }
+
     public function setVerifier(string $companyAddress, string $verifierAddress, int $role): InvoiceChainReceiptData
     {
         return $this->sendFrom(

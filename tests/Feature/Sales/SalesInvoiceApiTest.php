@@ -40,6 +40,7 @@ use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\InvoiceProof\Exceptions\CompanySignerWalletException;
 use App\Modules\InvoiceProof\Jobs\RegisterSalesInvoiceOnChainJob;
+use App\Modules\InvoiceProof\Jobs\RevokeSalesInvoiceOnChainJob;
 use App\Modules\InvoiceProof\Jobs\SyncInvoiceVerifierOnChainJob;
 use App\Modules\InvoiceProof\Models\InvoiceChainCheck;
 use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
@@ -920,6 +921,134 @@ class SalesInvoiceApiTest extends TestCase
             ->assertJsonPath('data.check.issues.0.actual', 'failed RPC timeout');
 
         Queue::assertPushed(RegisterSalesInvoiceOnChainJob::class, 1);
+    }
+
+    public function test_reverse_queues_chain_revocation_and_job_revokes_proof(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $id = $this->postServiceInvoice();
+        [$proofId, $hash] = $this->confirmedProof($id);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/reverse"))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'reversed');
+
+        Queue::assertPushed(RevokeSalesInvoiceOnChainJob::class, fn (RevokeSalesInvoiceOnChainJob $job): bool => $job->proofId === $proofId);
+        $this->tenant->run(function () use ($proofId): void {
+            $registration = InvoiceChainRegistration::query()->where('proof_id', $proofId)->sole();
+            $this->assertNotNull($registration->revoke_requested_at);
+            $this->assertNull($registration->revoked_at);
+        });
+
+        $revoked = new InvoiceOnChainRecord(
+            contentHash: $hash,
+            supplierAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+            buyerAddress: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
+            supplierApproved: false,
+            buyerApproved: false,
+            status: InvoiceOnChainStatus::Revoked,
+            revokedAt: 1700000900,
+        );
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->expects($this->once())->method('revokeInvoice')->with($proofId, null)->willReturn(
+            new InvoiceChainReceiptData('0x'.str_repeat('ef', 32), 7, '0x5fbdb2315678afecb367f032d93f642f64180aa3'),
+        );
+        $gateway->method('invoiceOf')->willReturn($revoked);
+        $gateway->method('attestationsOf')->willReturn([]);
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->tenant->run(function () use ($proofId): void {
+            $service = app(InvoiceChainRegistrationService::class);
+            $service->submitRevocation($proofId);
+            $service->submitRevocation($proofId);
+
+            $registration = InvoiceChainRegistration::query()->where('proof_id', $proofId)->sole();
+            $this->assertNotNull($registration->revoked_at);
+            $this->assertSame('0x'.str_repeat('ef', 32), $registration->revoke_tx_hash);
+            $this->assertSame('revoked', $registration->chain_status?->value);
+        });
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}/verify"))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'revoked')
+            ->assertJsonPath('data.revoked_at', '2023-11-14T22:28:20+00:00')
+            ->assertJsonPath('data.can_approve_as_company', false);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}"))
+            ->assertOk()
+            ->assertJsonPath('data.chain_status.status', 'revoked');
+    }
+
+    public function test_reverse_of_unregistered_invoice_revokes_after_late_registration(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $id = $this->postServiceInvoice();
+        $proofId = $this->tenant->run(fn (): string => (string) InvoiceSnapshot::query()->where('invoice_id', $id)->firstOrFail()->id);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/reverse"))
+            ->assertOk();
+        Queue::assertNotPushed(RevokeSalesInvoiceOnChainJob::class);
+
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('registerInvoice')->willReturn(
+            new InvoiceChainReceiptData('0x'.str_repeat('aa', 32), 5, '0x5fbdb2315678afecb367f032d93f642f64180aa3'),
+        );
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->tenant->run(fn () => app(InvoiceChainRegistrationService::class)->submitProof($proofId));
+
+        Queue::assertPushed(RevokeSalesInvoiceOnChainJob::class, fn (RevokeSalesInvoiceOnChainJob $job): bool => $job->proofId === $proofId);
+    }
+
+    public function test_chain_check_requeues_revocation_for_reversed_invoice(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $id = $this->postServiceInvoice();
+        [$proofId, $hash] = $this->confirmedProof($id);
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/reverse"))
+            ->assertOk();
+        $this->tenant->run(fn () => InvoiceChainRegistration::query()->where('proof_id', $proofId)->update([
+            'revoke_requested_at' => now()->subHour(),
+            'revoke_error' => 'RPC timeout',
+        ]));
+        Queue::fake();
+
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->willReturn($this->chainRecord($hash));
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/invoice-proofs/chain-check'))
+            ->assertOk()
+            ->assertJsonPath('data.check.status', 'issues')
+            ->assertJsonPath('data.check.requeued_count', 1)
+            ->assertJsonPath('data.check.issues.0.kind', 'not_revoked')
+            ->assertJsonPath('data.check.issues.0.expected', 'revoked')
+            ->assertJsonPath('data.check.issues.0.actual', 'waiting_company RPC timeout');
+
+        Queue::assertPushed(RevokeSalesInvoiceOnChainJob::class, 1);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}"))
+            ->assertOk()
+            ->assertJsonPath('data.chain_issue.kind', 'not_revoked');
+
+        $this->tenant->run(fn () => InvoiceChainRegistration::query()->where('proof_id', $proofId)->update([
+            'revoked_at' => now(),
+        ]));
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}"))
+            ->assertOk()
+            ->assertJsonPath('data.chain_issue', null);
     }
 
     public function test_sales_invoice_responses_include_latest_chain_issue(): void

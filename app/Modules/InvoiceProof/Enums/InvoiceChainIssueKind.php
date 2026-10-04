@@ -30,6 +30,9 @@ enum InvoiceChainIssueKind: string
     /** Snapshot has no registration row although the chain is configured. */
     case NotSubmitted = 'not_submitted';
 
+    /** The invoice is reversed in the ERP, but its proof is not revoked on chain. */
+    case NotRevoked = 'not_revoked';
+
     /** InvoiceRegistered for the company wallet with no matching snapshot. */
     case UnknownOnChain = 'unknown_on_chain';
 
@@ -39,5 +42,13 @@ enum InvoiceChainIssueKind: string
     public function resolvedByRegistration(): bool
     {
         return in_array($this, [self::StatusOutOfSync, self::RegistrationStuck, self::NotSubmitted], true);
+    }
+
+    /**
+     * The check re-queued revocation, so a confirmed revoke afterwards means it is fixed.
+     */
+    public function resolvedByRevocation(): bool
+    {
+        return $this === self::NotRevoked;
     }
 }
