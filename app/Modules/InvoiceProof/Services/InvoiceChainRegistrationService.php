@@ -16,6 +16,7 @@ use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
 use App\Modules\InvoiceProof\Exceptions\CompanySignerWalletException;
 use App\Modules\InvoiceProof\Jobs\RegisterSalesInvoiceOnChainJob;
 use App\Modules\InvoiceProof\Jobs\RevokeSalesInvoiceOnChainJob;
+use App\Modules\InvoiceProof\Jobs\SetInvoiceReplacementOnChainJob;
 use App\Modules\InvoiceProof\Jobs\SyncInvoiceRegistryPartiesJob;
 use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
@@ -180,6 +181,8 @@ class InvoiceChainRegistrationService
         if ($invoice?->status === SalesInvoiceStatus::Reversed) {
             $this->requestRevocation($invoice);
         }
+
+        $this->onSuccessorRegistered($snapshot);
     }
 
     /**
@@ -229,6 +232,47 @@ class InvoiceChainRegistrationService
         $this->dispatchRevocation($proofId);
     }
 
+    /**
+     * Remember that `$originInvoiceId` is superseded by `$replacementProofId`, then
+     * revoke-with-replacement or `setReplacement` depending on whether the old proof
+     * is already revoked.
+     */
+    public function attachSuccessor(string $originInvoiceId, string $replacementProofId): void
+    {
+        $registration = $this->findForSalesInvoice($originInvoiceId);
+        if ($registration === null) {
+            return;
+        }
+
+        $registration->update(['replaced_by' => $replacementProofId]);
+
+        if ($registration->revoked_at !== null) {
+            $this->dispatchReplacement((string) $registration->proof_id);
+
+            return;
+        }
+
+        if (
+            $registration->revoke_requested_at !== null
+            && $registration->status === InvoiceChainRegistrationStatus::Confirmed
+        ) {
+            $this->dispatchRevocation((string) $registration->proof_id);
+        }
+    }
+
+    public function dispatchReplacement(string $proofId): void
+    {
+        if (! $this->isConfigured()) {
+            return;
+        }
+
+        $tenantId = tenant('id');
+        SetInvoiceReplacementOnChainJob::dispatch(
+            is_string($tenantId) ? $tenantId : null,
+            $proofId,
+        );
+    }
+
     public function submitRevocation(string $proofId): void
     {
         if (! $this->isConfigured()) {
@@ -240,26 +284,76 @@ class InvoiceChainRegistrationService
             $registration === null
             || $registration->status !== InvoiceChainRegistrationStatus::Confirmed
             || $registration->revoke_requested_at === null
-            || $registration->revoked_at !== null
         ) {
             return;
         }
 
+        if ($registration->revoked_at !== null) {
+            $this->submitReplacement($proofId);
+
+            return;
+        }
+
         try {
-            $receipt = $this->invoiceRegistryGateway->revokeInvoice($proofId, null);
+            $receipt = $this->invoiceRegistryGateway->revokeInvoice(
+                $proofId,
+                is_string($registration->replaced_by) ? $registration->replaced_by : null,
+            );
         } catch (Throwable $exception) {
             $registration->update(['revoke_error' => $this->safeError($exception)]);
 
             throw $exception;
         }
 
+        $onChainReplacedBy = $this->invoiceRegistryGateway->invoiceOf($proofId)?->replacedBy;
+
         $registration->update([
             'revoked_at' => now(),
             'revoke_tx_hash' => $receipt->txHash,
             'revoke_error' => null,
+            'replaced_by' => $onChainReplacedBy ?? $registration->replaced_by,
             'chain_status' => InvoiceProofVerificationStatus::Revoked,
             'status_checked_at' => now(),
         ]);
+    }
+
+    public function submitReplacement(string $proofId): void
+    {
+        if (! $this->isConfigured()) {
+            return;
+        }
+
+        $registration = InvoiceChainRegistration::query()->where('proof_id', $proofId)->first();
+        if (
+            $registration === null
+            || $registration->status !== InvoiceChainRegistrationStatus::Confirmed
+            || $registration->revoked_at === null
+            || ! is_string($registration->replaced_by)
+            || $registration->replaced_by === ''
+        ) {
+            return;
+        }
+
+        try {
+            $this->invoiceRegistryGateway->setReplacement($proofId, $registration->replaced_by);
+        } catch (Throwable $exception) {
+            $registration->update(['revoke_error' => $this->safeError($exception)]);
+
+            throw $exception;
+        }
+
+        $registration->update(['revoke_error' => null]);
+    }
+
+    private function onSuccessorRegistered(InvoiceSnapshot $snapshot): void
+    {
+        $invoice = SalesInvoice::query()->find($snapshot->invoice_id);
+        $originId = $invoice?->replaces_invoice_id;
+        if (! is_string($originId) || $originId === '') {
+            return;
+        }
+
+        $this->attachSuccessor($originId, (string) $snapshot->id);
     }
 
     public function syncDisputeFromChain(string $proofId, InvoiceOnChainRecord $onChain): void

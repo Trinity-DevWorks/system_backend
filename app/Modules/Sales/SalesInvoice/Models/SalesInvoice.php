@@ -56,6 +56,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'created_by',
     'posted_by',
     'posted_at',
+    'replaces_invoice_id',
 ])]
 class SalesInvoice extends Model implements AuditableContract
 {
@@ -166,5 +167,21 @@ class SalesInvoice extends Model implements AuditableContract
     {
         return $this->hasOne(InvoiceSnapshot::class, 'invoice_id')
             ->where('invoice_type', InvoiceProofType::Sales);
+    }
+
+    /**
+     * @return BelongsTo<SalesInvoice, $this>
+     */
+    public function replacesInvoice(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'replaces_invoice_id');
+    }
+
+    /**
+     * @return HasOne<SalesInvoice, $this>
+     */
+    public function replacedByInvoice(): HasOne
+    {
+        return $this->hasOne(self::class, 'replaces_invoice_id');
     }
 }

@@ -185,6 +185,7 @@ class InvoiceProofVerificationService
             disputedAt: self::chainInstant($onChainRecord?->disputedAt),
             disputeReasonHash: $onChainRecord?->disputeReasonHash,
             disputeReason: $disputeReason,
+            replacedBy: $onChainRecord?->replacedBy,
             attestations: $onChainRecord !== null ? $attestations : [],
             supplierWalletType: self::declaredWalletType($supplierWallet, $company?->wallet_address, $company?->wallet_type),
             buyerWalletType: self::declaredWalletType(

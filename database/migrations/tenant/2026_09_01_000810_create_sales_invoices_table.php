@@ -37,6 +37,7 @@ return new class extends Migration
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('posted_at')->nullable();
+            $table->uuid('replaces_invoice_id')->nullable()->unique();
             $table->timestamps();
 
             $table->index(['status', 'created_at']);

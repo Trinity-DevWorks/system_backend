@@ -528,6 +528,11 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $this->assertNull($live?->replacedBy);
         $this->assertTrue(InvoiceRegistryAbi::isInvoiceRevokedRevert('execution reverted: custom error 0x049eeccb'));
         $this->assertTrue(InvoiceRegistryAbi::isInvoiceDisputedRevert('execution reverted: custom error 0x5b9fb0e0'));
+        $this->assertSame(
+            '0x2ad8ebac'.$proof.$replacement,
+            InvoiceRegistryAbi::encodeSetReplacement(self::PROOF_ID, '33333333-3333-4333-8333-333333333333'),
+        );
+        $this->assertTrue(InvoiceRegistryAbi::isReplacementAlreadySetRevert('execution reverted: custom error 0x03ecca25'));
     }
 
     private function onChain(string $contentHash, InvoiceOnChainStatus $status, ?int $registeredAt = null): InvoiceOnChainRecord

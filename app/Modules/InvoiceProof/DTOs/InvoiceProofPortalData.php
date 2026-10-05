@@ -75,16 +75,24 @@ readonly class InvoiceProofPortalData
         public ?string $disputedAt = null,
         public ?string $disputeReason = null,
         public ?array $disputeEip712 = null,
+        public ?string $replacedBy = null,
+        public ?string $replacedByInvoiceNumber = null,
+        public ?array $replacedByInvoice = null,
+        public ?array $replacesInvoice = null,
     ) {}
 
     /**
      * @param  list<array<string, mixed>>  $otherInvoices
+     * @param  array{id: ?string, invoice_number: ?string, exp: ?int, sig: ?string}|null  $replacedByInvoice
+     * @param  array{id: ?string, invoice_number: ?string, exp: ?int, sig: ?string}|null  $replacesInvoice
      */
     public static function fromSnapshot(
         SalesInvoice $invoice,
         InvoiceSnapshot $snapshot,
         InvoiceProofVerificationData $proof,
         array $otherInvoices = [],
+        ?array $replacedByInvoice = null,
+        ?array $replacesInvoice = null,
     ): self {
         try {
             $canonical = json_decode($snapshot->canonical_json, true, 512, JSON_THROW_ON_ERROR);
@@ -137,6 +145,10 @@ readonly class InvoiceProofPortalData
             revokedAt: $proof->revokedAt,
             disputedAt: $proof->disputedAt,
             disputeReason: self::storedDisputeReason((string) $snapshot->id),
+            replacedBy: $proof->replacedBy,
+            replacedByInvoiceNumber: self::successorInvoiceNumber($proof->replacedBy),
+            replacedByInvoice: $replacedByInvoice,
+            replacesInvoice: $replacesInvoice,
         );
     }
 
@@ -186,6 +198,22 @@ readonly class InvoiceProofPortalData
         $reason = InvoiceChainRegistration::query()->where('proof_id', $proofId)->value('dispute_reason');
 
         return is_string($reason) && $reason !== '' ? $reason : null;
+    }
+
+    private static function successorInvoiceNumber(?string $proofId): ?string
+    {
+        if ($proofId === null || $proofId === '') {
+            return null;
+        }
+
+        $invoiceId = InvoiceChainRegistration::query()->where('proof_id', $proofId)->value('invoice_id');
+        if (! is_string($invoiceId) || $invoiceId === '') {
+            return null;
+        }
+
+        $number = SalesInvoice::query()->whereKey($invoiceId)->value('invoice_number');
+
+        return is_string($number) && $number !== '' ? $number : null;
     }
 
     private static function contentHash(mixed $value): ?string
@@ -296,6 +324,10 @@ readonly class InvoiceProofPortalData
             'revoked_at' => $this->revokedAt,
             'disputed_at' => $this->disputedAt,
             'dispute_reason' => $this->disputeReason,
+            'replaced_by' => $this->replacedBy,
+            'replaced_by_invoice_number' => $this->replacedByInvoiceNumber,
+            'replaced_by_invoice' => $this->replacedByInvoice,
+            'replaces_invoice' => $this->replacesInvoice,
             'other_invoices' => $this->otherInvoices,
         ];
     }

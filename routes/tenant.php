@@ -599,6 +599,8 @@ Route::middleware([
                 ->middleware('check.permission:sales_invoices,edit');
             Route::post('sales-invoices/{sales_invoice}/reverse', [SalesInvoiceController::class, 'reverse'])
                 ->middleware('check.permission:sales_invoices,reverse');
+            Route::post('sales-invoices/{sales_invoice}/reissue', [SalesInvoiceController::class, 'reissue'])
+                ->middleware('check.permission:sales_invoices,add');
             Route::get('sales-invoices/{sales_invoice}/verify', [SalesInvoiceController::class, 'verify'])
                 ->middleware('check.permission:sales_invoices,view');
             Route::post('sales-invoices/{sales_invoice}/approve-as-company', [SalesInvoiceController::class, 'approveAsCompany'])

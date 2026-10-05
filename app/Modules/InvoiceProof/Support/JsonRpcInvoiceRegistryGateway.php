@@ -152,6 +152,36 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
         }
     }
 
+    public function setReplacement(string $proofId, string $replacementProofId): InvoiceChainReceiptData
+    {
+        $alreadySet = new InvoiceChainReceiptData(
+            txHash: 'replacement-already-set',
+            blockNumber: null,
+            contractAddress: InvoiceProofBytes::address($this->contractAddress),
+        );
+
+        $onChain = $this->invoiceOf($proofId);
+        if ($onChain?->replacedBy !== null && hash_equals((string) $onChain->replacedBy, $replacementProofId)) {
+            return $alreadySet;
+        }
+
+        try {
+            return $this->sendFrom(
+                $this->registrarAddress,
+                InvoiceRegistryAbi::encodeSetReplacement($proofId, $replacementProofId),
+            );
+        } catch (RuntimeException $exception) {
+            if (InvoiceRegistryAbi::isReplacementAlreadySetRevert($exception->getMessage())) {
+                $again = $this->invoiceOf($proofId);
+                if ($again?->replacedBy !== null && hash_equals((string) $again->replacedBy, $replacementProofId)) {
+                    return $alreadySet;
+                }
+            }
+
+            throw $exception;
+        }
+    }
+
     public function setVerifier(string $companyAddress, string $verifierAddress, int $role): InvoiceChainReceiptData
     {
         return $this->sendFrom(

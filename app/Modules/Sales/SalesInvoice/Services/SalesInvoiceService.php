@@ -76,6 +76,8 @@ class SalesInvoiceService
                 'paymentTerm',
                 'createdByUser',
                 'postedByUser',
+                'replacesInvoice:id,invoice_number,status',
+                'replacedByInvoice:id,invoice_number,status,replaces_invoice_id',
                 'lines' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
                 'lines.item',
                 'lines.itemUom.uom',
@@ -244,6 +246,65 @@ class SalesInvoiceService
         }
 
         return $posted;
+    }
+
+    public function reissue(SalesInvoice $invoice, ?string $userId): SalesInvoice
+    {
+        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+
+        if (! in_array($invoice->status, [SalesInvoiceStatus::Posted, SalesInvoiceStatus::Reversed], true)) {
+            abort(422, 'Only a posted or reversed sales invoice can be reissued.', [
+                'X-Error-Code' => 'SALES_INVOICE_CANNOT_REISSUE',
+            ]);
+        }
+        if (bccomp((string) $invoice->paid_total, '0', 4) > 0) {
+            abort(422, 'This invoice has payments and cannot be reissued.', [
+                'X-Error-Code' => 'SALES_INVOICE_HAS_PAYMENTS',
+            ]);
+        }
+        if (SalesInvoice::query()->where('replaces_invoice_id', $invoice->id)->exists()) {
+            abort(422, 'This invoice already has a replacement.', [
+                'X-Error-Code' => 'SALES_INVOICE_ALREADY_REISSUED',
+            ]);
+        }
+
+        if ($invoice->status === SalesInvoiceStatus::Posted) {
+            $this->reverse($invoice, $userId);
+        }
+
+        $source = $this->find((string) $invoice->id);
+        $clone = $this->create([
+            'customer_id' => (string) $source->customer_id,
+            'warehouse_id' => (int) $source->warehouse_id,
+            'currency_id' => (int) $source->currency_id,
+            'salesman_id' => $source->salesman_id,
+            'payment_method_id' => $source->payment_method_id,
+            'payment_terms_id' => $source->payment_terms_id,
+            'invoice_date' => $source->invoice_date?->toDateString(),
+            'due_on' => $source->due_on?->toDateString(),
+            'exchange_rate' => $source->exchange_rate,
+            'reference_2' => $source->reference_2,
+            'billing_address' => is_array($source->billing_address) ? $source->billing_address : null,
+            'shipping_address' => is_array($source->shipping_address) ? $source->shipping_address : null,
+            'adjustment' => $source->adjustment,
+            'notes' => $source->notes,
+            'lines' => $source->lines->map(static fn (SalesInvoiceLine $line): array => [
+                'item_id' => (string) $line->item_id,
+                'item_uom_id' => $line->item_uom_id,
+                'warehouse_id' => $line->warehouse_id,
+                'lot_id' => $line->lot_id,
+                'quantity' => $line->quantity,
+                'unit_price' => $line->unit_price,
+                'discount_percent' => $line->discount_percent,
+                'tax_rate' => $line->tax_rate,
+                'description' => $line->description,
+                'notes' => $line->notes,
+            ])->all(),
+        ], $userId);
+
+        $clone->update(['replaces_invoice_id' => $source->id]);
+
+        return $this->find((string) $clone->id);
     }
 
     public function reverse(SalesInvoice $invoice, ?string $userId): SalesInvoice

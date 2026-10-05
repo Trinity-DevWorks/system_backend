@@ -983,6 +983,39 @@ class SalesInvoiceApiTest extends TestCase
             ->assertJsonPath('data.chain_status.status', 'revoked');
     }
 
+    public function test_reissue_clones_draft_and_reverses_posted_original(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $id = $this->postServiceInvoice();
+        [$proofId] = $this->confirmedProof($id);
+
+        $response = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/reissue"))
+            ->assertCreated();
+
+        $cloneId = $response->json('data.id');
+        $this->assertNotSame($id, $cloneId);
+        $response
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.replaces_invoice_id', $id);
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}"))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'reversed')
+            ->assertJsonPath('data.replaced_by_invoice.id', $cloneId)
+            ->assertJsonPath('data.can_reverse', false)
+            ->assertJsonPath('data.can_reissue', false);
+
+        Queue::assertPushed(RevokeSalesInvoiceOnChainJob::class, fn (RevokeSalesInvoiceOnChainJob $job): bool => $job->proofId === $proofId);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/reissue"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'SALES_INVOICE_ALREADY_REISSUED');
+    }
+
     public function test_reverse_of_unregistered_invoice_revokes_after_late_registration(): void
     {
         Queue::fake();
@@ -1670,6 +1703,10 @@ class SalesInvoiceApiTest extends TestCase
         $this->assertArrayHasKey('subtotal', $payload);
         $this->assertArrayHasKey('net_to_pay', $payload);
         $this->assertArrayNotHasKey('warehouse_id', $payload['lines'][0]);
+        $this->assertArrayHasKey('replaced_by_invoice', $payload);
+        $this->assertArrayHasKey('replaces_invoice', $payload);
+        $this->assertNull($payload['replaced_by_invoice']);
+        $this->assertNull($payload['replaces_invoice']);
         $this->assertArrayNotHasKey('item_id', $payload['lines'][0]);
         $this->assertArrayNotHasKey('notes', $payload['lines'][0]);
         $this->assertArrayNotHasKey('warehouse', $payload);

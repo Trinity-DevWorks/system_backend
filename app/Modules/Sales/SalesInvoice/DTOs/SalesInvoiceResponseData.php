@@ -37,6 +37,8 @@ readonly class SalesInvoiceResponseData
             'paymentTerm:id,name,code,due_days',
             'createdByUser:id,name,email',
             'postedByUser:id,name,email',
+            'replacesInvoice:id,invoice_number,status',
+            'replacedByInvoice:id,invoice_number,status,replaces_invoice_id',
         ]);
 
         $payload = [
@@ -74,6 +76,11 @@ readonly class SalesInvoiceResponseData
             'created_by' => self::userBrief($invoice->createdByUser),
             'posted_by' => self::userBrief($invoice->postedByUser),
             'posted_at' => $invoice->posted_at?->toIso8601String(),
+            'replaces_invoice_id' => $invoice->replaces_invoice_id,
+            'replaces_invoice' => self::invoiceLinkBrief($invoice->replacesInvoice),
+            'replaced_by_invoice' => self::invoiceLinkBrief($invoice->replacedByInvoice),
+            'can_reverse' => self::canReverse($invoice),
+            'can_reissue' => self::canReissue($invoice),
             'lines_count' => $invoice->lines_count ?? null,
             'chain_issue' => $chainIssue,
             'chain_status' => $chainStatus,
@@ -356,5 +363,43 @@ readonly class SalesInvoiceResponseData
             'name' => $user->name,
             'email' => $user->email,
         ];
+    }
+
+    /**
+     * @return array{id: string, invoice_number: ?string, status: ?string}|null
+     */
+    private static function invoiceLinkBrief(?SalesInvoice $invoice): ?array
+    {
+        if (! $invoice) {
+            return null;
+        }
+
+        $status = $invoice->status instanceof SalesInvoiceStatus
+            ? $invoice->status->value
+            : (is_string($invoice->status) ? $invoice->status : null);
+
+        return [
+            'id' => (string) $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'status' => $status,
+        ];
+    }
+
+    private static function canReverse(SalesInvoice $invoice): bool
+    {
+        return $invoice->status === SalesInvoiceStatus::Posted
+            && bccomp((string) $invoice->paid_total, '0', 4) <= 0;
+    }
+
+    private static function canReissue(SalesInvoice $invoice): bool
+    {
+        if (! in_array($invoice->status, [SalesInvoiceStatus::Posted, SalesInvoiceStatus::Reversed], true)) {
+            return false;
+        }
+        if (bccomp((string) $invoice->paid_total, '0', 4) > 0) {
+            return false;
+        }
+
+        return $invoice->replacedByInvoice === null;
     }
 }

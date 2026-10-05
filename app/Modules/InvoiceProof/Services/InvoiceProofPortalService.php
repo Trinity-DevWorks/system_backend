@@ -183,11 +183,15 @@ class InvoiceProofPortalService
 
         $company = CompanyProfile::singleton();
 
+        $invoice->loadMissing(['customer', 'replacesInvoice', 'replacedByInvoice']);
+
         return InvoiceProofPortalData::fromSnapshot(
             $invoice,
             $snapshot,
             $this->invoiceProofVerificationService->verifySalesInvoice($invoice, $company),
             $this->historyItemsForCustomer((string) $invoice->customer_id, (string) $invoice->id),
+            $this->signedPortalInvoice($invoice->replacedByInvoice),
+            $this->signedPortalInvoice($invoice->replacesInvoice),
         );
     }
 
@@ -275,6 +279,41 @@ class InvoiceProofPortalService
         }
 
         return $items;
+    }
+
+    /**
+     * Signed buyer-portal stamp for a related invoice, or the number only when it is still a draft.
+     *
+     * @return array{id: ?string, invoice_number: ?string, exp: ?int, sig: ?string}|null
+     */
+    private function signedPortalInvoice(?SalesInvoice $related): ?array
+    {
+        if ($related === null) {
+            return null;
+        }
+
+        $number = is_string($related->invoice_number) && $related->invoice_number !== ''
+            ? $related->invoice_number
+            : null;
+
+        $snapshot = $this->invoiceSnapshotService->findForSalesInvoice((string) $related->id);
+        if ($snapshot === null) {
+            return $number === null ? null : [
+                'id' => null,
+                'invoice_number' => $number,
+                'exp' => null,
+                'sig' => null,
+            ];
+        }
+
+        $issued = ProofPortalLink::issue((string) tenant('id'), (string) $related->id);
+
+        return [
+            'id' => (string) $related->id,
+            'invoice_number' => $number,
+            'exp' => $issued['exp'],
+            'sig' => $issued['sig'],
+        ];
     }
 
     /**

@@ -36,6 +36,12 @@ interface InvoiceRegistryGateway
     public function revokeInvoice(string $proofId, ?string $replacementProofId): InvoiceChainReceiptData;
 
     /**
+     * Registrar fills `replacedBy` on an already revoked proof. Succeeds without a
+     * transaction when the chain already points at the same successor.
+     */
+    public function setReplacement(string $proofId, string $replacementProofId): InvoiceChainReceiptData;
+
+    /**
      * Registrar lists (role > 0) or removes (role 0) a verifier for one company Safe.
      */
     public function setVerifier(string $companyAddress, string $verifierAddress, int $role): InvoiceChainReceiptData;

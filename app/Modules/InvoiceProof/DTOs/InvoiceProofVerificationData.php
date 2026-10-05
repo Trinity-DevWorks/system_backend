@@ -50,6 +50,7 @@ readonly class InvoiceProofVerificationData
         public ?string $disputedAt = null,
         public ?string $disputeReasonHash = null,
         public ?string $disputeReason = null,
+        public ?string $replacedBy = null,
     ) {}
 
     /**
@@ -146,6 +147,7 @@ readonly class InvoiceProofVerificationData
             'disputed_at' => $this->disputedAt,
             'dispute_reason_hash' => $this->disputeReasonHash,
             'dispute_reason' => $this->disputeReason,
+            'replaced_by' => $this->replacedBy,
             'attestations' => array_map(
                 static fn (InvoiceAttestationRecord $attestation): array => $attestation->toArray(),
                 $this->attestations,

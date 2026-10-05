@@ -35,6 +35,8 @@ final class InvoiceRegistryAbi
 
     public const REVOKE_INVOICE = '0x3b1da35c';
 
+    public const SET_REPLACEMENT = '0x2ad8ebac';
+
     public const DISPUTE_BY_BUYER = '0xaad824ff';
 
     public const ALREADY_REGISTERED = '3a81d6fc';
@@ -44,6 +46,8 @@ final class InvoiceRegistryAbi
     public const INVOICE_IS_REVOKED = '049eeccb';
 
     public const INVOICE_IS_DISPUTED = '5b9fb0e0';
+
+    public const REPLACEMENT_ALREADY_SET = '03ecca25';
 
     /** keccak256("InvoiceRegistered(bytes32,bytes32,address,address)") */
     public const INVOICE_REGISTERED_TOPIC = '0x20c1b4728816be48a6716ede4f3c00aca2675981eb46872a60c0b957685ad840';
@@ -79,6 +83,12 @@ final class InvoiceRegistryAbi
             .($replacementProofId !== null
                 ? InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($replacementProofId))
                 : str_repeat('0', 64));
+    }
+
+    public static function encodeSetReplacement(string $proofId, string $replacementProofId): string
+    {
+        return self::encodeProofIdCall(self::SET_REPLACEMENT, $proofId)
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($replacementProofId));
     }
 
     public static function encodeContentHashOf(string $proofId): string
@@ -366,6 +376,11 @@ final class InvoiceRegistryAbi
     public static function isInvoiceDisputedRevert(string $message): bool
     {
         return str_contains(strtolower($message), self::INVOICE_IS_DISPUTED);
+    }
+
+    public static function isReplacementAlreadySetRevert(string $message): bool
+    {
+        return str_contains(strtolower($message), self::REPLACEMENT_ALREADY_SET);
     }
 
     public static function decodeInvoice(string $data): ?InvoiceOnChainRecord

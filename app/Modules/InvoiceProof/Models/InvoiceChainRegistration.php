@@ -45,6 +45,7 @@ use Illuminate\Support\Carbon;
     'dispute_reason_hash',
     'dispute_reason',
     'dispute_tx_hash',
+    'replaced_by',
 ])]
 class InvoiceChainRegistration extends Model
 {

@@ -16,6 +16,7 @@ use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
 use App\Modules\InvoiceProof\Services\InvoiceProofVerificationService;
 use App\Modules\Sales\SalesInvoice\DTOs\SalesInvoiceLineResponseData;
 use App\Modules\Sales\SalesInvoice\DTOs\SalesInvoiceResponseData;
+use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Http\Requests\StoreSalesInvoiceRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\SyncSalesInvoiceLinesRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\UpdateSalesInvoiceRequest;
@@ -160,6 +161,27 @@ class SalesInvoiceController extends Controller
         return ApiResponse::success(
             SalesInvoiceResponseData::fromModel($invoice),
             'Sales invoice reversed successfully.'
+        );
+    }
+
+    public function reissue(Request $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        $user = $request->user();
+        if (
+            $salesInvoice->status === SalesInvoiceStatus::Posted
+            && ($user === null || ! $this->permissionService->userHas('sales_invoices', 'reverse', $user))
+        ) {
+            return new JsonResponse(['message' => 'Forbidden.'], 403);
+        }
+
+        $invoice = $this->salesInvoiceService->reissue(
+            $salesInvoice,
+            $user !== null ? (string) $user->id : null
+        );
+
+        return ApiResponse::created(
+            SalesInvoiceResponseData::fromModel($invoice),
+            'Sales invoice reissued successfully.'
         );
     }
 
