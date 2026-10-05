@@ -13,4 +13,5 @@ enum InvoiceOnChainStatus: int
     case SupplierApproved = 2;
     case FullyApproved = 3;
     case Revoked = 4;
+    case Disputed = 5;
 }

@@ -34,6 +34,7 @@ class InvoiceProofPortalService
     public function __construct(
         private readonly InvoiceSnapshotService $invoiceSnapshotService,
         private readonly InvoiceProofVerificationService $invoiceProofVerificationService,
+        private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
         private readonly CompanySafeOwnerLookup $companySafeOwnerLookup,
     ) {}
 
@@ -134,6 +135,19 @@ class InvoiceProofPortalService
         }
 
         ProofPortalUnlockChallenge::consume($tenantId, $invoiceId, $nonce);
+
+        return $this->show($invoice);
+    }
+
+    public function recordDispute(SalesInvoice $invoice, string $reason, ?string $txHash = null): InvoiceProofPortalData
+    {
+        $this->assertPortalInvoice($invoice);
+        $snapshot = $this->invoiceSnapshotService->findForSalesInvoice((string) $invoice->id);
+        if ($snapshot === null) {
+            abort(404);
+        }
+
+        $this->invoiceChainRegistrationService->storeDisputeReason((string) $snapshot->id, $reason, $txHash);
 
         return $this->show($invoice);
     }

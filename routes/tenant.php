@@ -119,6 +119,8 @@ Route::middleware([
         ->middleware('throttle:60,1');
     Route::post('proofs/{sales_invoice}/unlock', [InvoiceProofPortalController::class, 'unlock'])
         ->middleware('throttle:60,1');
+    Route::post('proofs/{sales_invoice}/dispute', [InvoiceProofPortalController::class, 'dispute'])
+        ->middleware('throttle:60,1');
 
     Route::middleware(['auth:sanctum', 'ensure.active', 'resolve.branch'])->group(function () {
         // Echo/Reverb private channel auth — inherits tenant domain tenancy + Bearer Sanctum.

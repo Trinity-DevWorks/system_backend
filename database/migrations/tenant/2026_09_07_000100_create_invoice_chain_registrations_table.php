@@ -27,6 +27,10 @@ return new class extends Migration
             $table->timestamp('revoked_at')->nullable();
             $table->string('revoke_tx_hash', 66)->nullable();
             $table->text('revoke_error')->nullable();
+            $table->timestamp('disputed_at')->nullable();
+            $table->string('dispute_reason_hash', 66)->nullable();
+            $table->text('dispute_reason')->nullable();
+            $table->string('dispute_tx_hash', 66)->nullable();
             $table->timestamps();
 
             $table->unique('proof_id');

@@ -23,5 +23,7 @@ readonly class InvoiceOnChainRecord
         public ?int $buyerApprovedAt = null,
         public ?int $revokedAt = null,
         public ?string $replacedBy = null,
+        public ?int $disputedAt = null,
+        public ?string $disputeReasonHash = null,
     ) {}
 }

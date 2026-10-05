@@ -6,6 +6,7 @@ namespace App\Modules\InvoiceProof\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
+use App\Modules\InvoiceProof\Http\Requests\RecordInvoiceProofDisputeRequest;
 use App\Modules\InvoiceProof\Http\Requests\UnlockInvoiceProofPortalRequest;
 use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
@@ -67,5 +68,23 @@ class InvoiceProofPortalController extends Controller
         );
 
         return ApiResponse::success($data->toArray(), 'Invoice proof unlocked successfully.');
+    }
+
+    public function dispute(RecordInvoiceProofDisputeRequest $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        $this->invoiceProofPortalService->assertValidLink(
+            (string) $salesInvoice->id,
+            $request->query('exp'),
+            $request->query('sig'),
+        );
+
+        $txHash = $request->validated('tx_hash');
+        $data = $this->invoiceProofPortalService->recordDispute(
+            $salesInvoice,
+            (string) $request->validated('reason'),
+            is_string($txHash) ? $txHash : null,
+        );
+
+        return ApiResponse::success($data->toArray(), 'Invoice dispute recorded.');
     }
 }

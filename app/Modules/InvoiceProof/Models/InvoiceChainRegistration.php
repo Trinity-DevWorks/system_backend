@@ -21,6 +21,8 @@ use Illuminate\Support\Carbon;
  * @property InvoiceProofVerificationStatus|null $chain_status last status read from the contract
  * @property Carbon|null $revoke_requested_at set when the ERP cancelled the invoice
  * @property Carbon|null $revoked_at set once revokeInvoice is confirmed on chain
+ * @property Carbon|null $disputed_at set once disputeByBuyer is confirmed on chain
+ * @property string|null $dispute_reason buyer text; keccak256 must match the chain hash
  */
 #[Fillable([
     'id',
@@ -39,6 +41,10 @@ use Illuminate\Support\Carbon;
     'revoked_at',
     'revoke_tx_hash',
     'revoke_error',
+    'disputed_at',
+    'dispute_reason_hash',
+    'dispute_reason',
+    'dispute_tx_hash',
 ])]
 class InvoiceChainRegistration extends Model
 {
@@ -58,6 +64,7 @@ class InvoiceChainRegistration extends Model
             'status_checked_at' => 'datetime',
             'revoke_requested_at' => 'datetime',
             'revoked_at' => 'datetime',
+            'disputed_at' => 'datetime',
         ];
     }
 

@@ -1881,6 +1881,9 @@ class SalesInvoiceApiTest extends TestCase
         $this->assertSame('0x5fbdb2315678afecb367f032d93f642f64180aa3', $data['contract_address'] ?? null);
         $this->assertSame($proofId, $data['proof_id'] ?? null);
         $this->assertSame('BuyerApproval', $data['eip712']['primary_type'] ?? null);
+        $this->assertTrue($data['can_dispute_as_buyer'] ?? false);
+        $this->assertSame('BuyerDispute', $data['dispute_eip712']['primary_type'] ?? null);
+        $this->assertStringStartsWith('Dispute invoice ', (string) ($data['dispute_eip712']['message']['statement'] ?? ''));
         $this->assertStringStartsWith('Approve invoice ', (string) ($data['eip712']['message']['statement'] ?? ''));
 
         $this->assertIsArray($data);
@@ -1890,6 +1893,58 @@ class SalesInvoiceApiTest extends TestCase
         $this->assertArrayNotHasKey('snapshot_intact', $data);
         $this->assertSame($supplier, $data['supplier_wallet'] ?? null);
         $this->assertArrayNotHasKey('can_approve_as_company', $data);
+    }
+
+    public function test_proof_portal_stores_dispute_reason_when_chain_hash_matches(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $id = $this->postServiceInvoice();
+        [$proofId, $hash] = $this->confirmedProof($id);
+        $reason = 'qty is wrong';
+        $reasonHash = InvoiceProofBytes::keccakUtf8($reason);
+        $disputed = new InvoiceOnChainRecord(
+            contentHash: $hash,
+            supplierAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+            buyerAddress: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
+            supplierApproved: true,
+            buyerApproved: false,
+            status: InvoiceOnChainStatus::Disputed,
+            disputedAt: 1700001000,
+            disputeReasonHash: $reasonHash,
+        );
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->with($proofId)->willReturn($disputed);
+        $gateway->method('attestationsOf')->willReturn([]);
+        $this->app->instance(InvoiceRegistryGateway::class, $gateway);
+
+        $stamp = $this->proofPortalStamp($id);
+        $this->unlockProofPortal($id, $stamp);
+
+        $this->asTenantRequest(null)
+            ->postJson($this->tenantUrl("/proofs/{$id}/dispute?exp={$stamp['exp']}&sig={$stamp['sig']}"), [
+                'reason' => $reason,
+                'tx_hash' => '0x'.str_repeat('ab', 32),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'disputed')
+            ->assertJsonPath('data.dispute_reason', $reason)
+            ->assertJsonPath('data.can_approve_as_buyer', false)
+            ->assertJsonPath('data.can_dispute_as_buyer', false);
+
+        $this->tenant->run(function () use ($proofId, $reason, $reasonHash): void {
+            $registration = InvoiceChainRegistration::query()->where('proof_id', $proofId)->sole();
+            $this->assertSame($reason, $registration->dispute_reason);
+            $this->assertSame($reasonHash, $registration->dispute_reason_hash);
+            $this->assertNotNull($registration->disputed_at);
+        });
+
+        $this->asTenantRequest(null)
+            ->postJson($this->tenantUrl("/proofs/{$id}/dispute?exp={$stamp['exp']}&sig={$stamp['sig']}"), [
+                'reason' => 'a different reason',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'INVOICE_PROOF_DISPUTE_REASON_MISMATCH');
     }
 
     public function test_proof_portal_omits_supplier_eip712_when_waiting_company(): void

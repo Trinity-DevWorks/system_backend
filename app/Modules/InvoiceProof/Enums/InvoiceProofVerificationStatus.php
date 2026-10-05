@@ -18,6 +18,7 @@ enum InvoiceProofVerificationStatus: string
     case WaitingBuyer = 'waiting_buyer';
     case FullyApproved = 'fully_approved';
     case Revoked = 'revoked';
+    case Disputed = 'disputed';
 
     /**
      * @return list<string>

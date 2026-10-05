@@ -271,6 +271,8 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $this->assertSame(InvoiceProofVerificationStatus::WaitingBuyer, $result->status);
         $this->assertFalse($result->canApproveAsCompany);
         $this->assertTrue($result->canApproveAsBuyer);
+        $this->assertTrue($result->canDisputeAsBuyer);
+        $this->assertSame('BuyerDispute', $result->disputeEip712['primary_type'] ?? null);
         $this->assertSame(self::PROOF_ID, $result->proofId);
         $this->assertSame('0x5fbdb2315678afecb367f032d93f642f64180aa3', $result->contractAddress);
         $this->assertIsArray($result->eip712);
@@ -448,6 +450,33 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $this->assertSame('2023-11-14T22:28:20+00:00', $result->toArray()['revoked_at']);
     }
 
+    public function test_disputed_chain_record_is_disputed_without_approve_action(): void
+    {
+        config(['blockchain.contract_address' => '0x5FbDB2315678afecb367f032d93F642f64180aa3']);
+
+        $invoice = $this->salesInvoice();
+        $snapshot = $this->snapshotFor($invoice);
+        $onChain = new InvoiceOnChainRecord(
+            contentHash: $snapshot->content_hash,
+            supplierAddress: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+            buyerAddress: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
+            supplierApproved: true,
+            buyerApproved: false,
+            status: InvoiceOnChainStatus::Disputed,
+            disputedAt: 1700001000,
+            disputeReasonHash: '0x'.str_repeat('dd', 32),
+        );
+
+        $result = $this->service->evaluateSalesInvoice($invoice, $snapshot, $this->company(), $onChain, true);
+
+        $this->assertSame(InvoiceProofVerificationStatus::Disputed, $result->status);
+        $this->assertFalse($result->canApproveAsBuyer);
+        $this->assertFalse($result->canDisputeAsBuyer);
+        $this->assertNull($result->eip712);
+        $this->assertSame('2023-11-14T22:30:00+00:00', $result->toArray()['disputed_at']);
+        $this->assertSame('0x'.str_repeat('dd', 32), $result->toArray()['dispute_reason_hash']);
+    }
+
     public function test_reversed_invoice_offers_no_approval_before_the_revoke_lands(): void
     {
         config(['blockchain.contract_address' => '0x5FbDB2315678afecb367f032d93F642f64180aa3']);
@@ -498,6 +527,7 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $this->assertNull($live?->revokedAt);
         $this->assertNull($live?->replacedBy);
         $this->assertTrue(InvoiceRegistryAbi::isInvoiceRevokedRevert('execution reverted: custom error 0x049eeccb'));
+        $this->assertTrue(InvoiceRegistryAbi::isInvoiceDisputedRevert('execution reverted: custom error 0x5b9fb0e0'));
     }
 
     private function onChain(string $contentHash, InvoiceOnChainStatus $status, ?int $registeredAt = null): InvoiceOnChainRecord

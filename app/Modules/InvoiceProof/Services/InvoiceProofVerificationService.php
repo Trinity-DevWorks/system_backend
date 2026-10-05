@@ -12,6 +12,7 @@ use App\Modules\InvoiceProof\DTOs\InvoiceProofVerificationData;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
 use App\Modules\InvoiceProof\Enums\WalletType;
+use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Models\InvoiceVerifier;
 use App\Modules\InvoiceProof\Serializers\SalesInvoiceCanonicalSerializer;
@@ -74,7 +75,17 @@ class InvoiceProofVerificationService
             }
         }
 
-        $proof = $this->evaluateSalesInvoice($invoice, $snapshot, $company, $onChain, $chainEnabled, $attestations);
+        if ($snapshot !== null && $onChain !== null && $onChain->disputedAt !== null) {
+            $this->invoiceChainRegistrationService->syncDisputeFromChain((string) $snapshot->id, $onChain);
+        }
+
+        $disputeReason = null;
+        if ($snapshot !== null) {
+            $stored = InvoiceChainRegistration::query()->where('proof_id', $snapshot->id)->value('dispute_reason');
+            $disputeReason = is_string($stored) && $stored !== '' ? $stored : null;
+        }
+
+        $proof = $this->evaluateSalesInvoice($invoice, $snapshot, $company, $onChain, $chainEnabled, $attestations, $disputeReason);
 
         if ($snapshot !== null && $chainRead) {
             $this->invoiceChainStatusRecorder->record(
@@ -97,6 +108,7 @@ class InvoiceProofVerificationService
         InvoiceOnChainRecord|string|null $onChain = null,
         bool $chainEnabled = false,
         array $attestations = [],
+        ?string $disputeReason = null,
     ): InvoiceProofVerificationData {
         if ($snapshot === null) {
             return InvoiceProofVerificationData::notRegistered();
@@ -131,10 +143,12 @@ class InvoiceProofVerificationService
 
         $canApproveAsCompany = false;
         $canApproveAsBuyer = false;
+        $canDisputeAsBuyer = false;
         $chainId = $chainEnabled ? (int) config('blockchain.chain_id') : null;
         $contractAddress = $chainEnabled ? $this->configuredContractAddress() : null;
         $eip712 = null;
-        // A reversed invoice is revoked by a queued job; until it lands nobody may approve it.
+        $disputeEip712 = null;
+        // A reversed invoice is revoked by a queued job; until it lands nobody may approve or dispute it.
         $posted = $invoice->status === SalesInvoiceStatus::Posted;
         if ($posted && $status === InvoiceProofVerificationStatus::WaitingCompany && $supplierWallet !== null) {
             $eip712 = $this->partyApprovalTypedData('SupplierApproval', $snapshot, $chainId, $contractAddress);
@@ -142,6 +156,8 @@ class InvoiceProofVerificationService
         } elseif ($posted && $status === InvoiceProofVerificationStatus::WaitingBuyer && $buyerWallet !== null) {
             $eip712 = $this->partyApprovalTypedData('BuyerApproval', $snapshot, $chainId, $contractAddress);
             $canApproveAsBuyer = $eip712 !== null;
+            $disputeEip712 = $this->buyerDisputeTypedData($snapshot, $chainId, $contractAddress);
+            $canDisputeAsBuyer = $disputeEip712 !== null;
         }
 
         return new InvoiceProofVerificationData(
@@ -155,8 +171,10 @@ class InvoiceProofVerificationService
             buyerWallet: $buyerWallet,
             proofId: (string) $snapshot->id,
             eip712: $eip712,
+            disputeEip712: $disputeEip712,
             canApproveAsCompany: $canApproveAsCompany,
             canApproveAsBuyer: $canApproveAsBuyer,
+            canDisputeAsBuyer: $canDisputeAsBuyer,
             blockchainNetwork: $chainEnabled ? BlockchainNetwork::key() : null,
             safeTxServiceUrl: $chainEnabled ? BlockchainNetwork::safeTxServiceUrl() : null,
             safeApiKey: $chainEnabled ? BlockchainNetwork::safeApiKey() : null,
@@ -164,6 +182,9 @@ class InvoiceProofVerificationService
             supplierApprovedAt: self::chainInstant($onChainRecord?->supplierApprovedAt),
             buyerApprovedAt: self::chainInstant($onChainRecord?->buyerApprovedAt),
             revokedAt: self::chainInstant($onChainRecord?->revokedAt),
+            disputedAt: self::chainInstant($onChainRecord?->disputedAt),
+            disputeReasonHash: $onChainRecord?->disputeReasonHash,
+            disputeReason: $disputeReason,
             attestations: $onChainRecord !== null ? $attestations : [],
             supplierWalletType: self::declaredWalletType($supplierWallet, $company?->wallet_address, $company?->wallet_type),
             buyerWalletType: self::declaredWalletType(
@@ -302,6 +323,46 @@ class InvoiceProofVerificationService
     }
 
     /**
+     * @return array{
+     *     domain: array{name: string, version: string, chain_id: int, verifying_contract: string},
+     *     primary_type: string,
+     *     types: array<string, list<array{name: string, type: string}>>,
+     *     message: array{proof_id: string, content_hash: string, invoice_number: string, statement: string}
+     * }|null
+     */
+    private function buyerDisputeTypedData(
+        InvoiceSnapshot $snapshot,
+        ?int $chainId,
+        ?string $contractAddress,
+    ): ?array {
+        if ($chainId === null || $chainId <= 0 || $contractAddress === null) {
+            return null;
+        }
+
+        $details = $this->approvalDetailsFromSnapshot($snapshot);
+        if ($details === null) {
+            return null;
+        }
+
+        $canonical = json_decode($snapshot->canonical_json, true);
+        $supplier = is_array($canonical['supplier'] ?? null) ? $canonical['supplier'] : [];
+        $companyName = is_string($supplier['name'] ?? null) ? $supplier['name'] : '';
+
+        try {
+            return InvoiceRegistryAbi::buyerDisputeTypedData(
+                $chainId,
+                $contractAddress,
+                (string) $snapshot->id,
+                $snapshot->content_hash,
+                $details['invoice_number'],
+                InvoiceApprovalStatement::dispute($companyName, $details['invoice_number']),
+            );
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    /**
      * @return array{invoice_number: string, statement: string}|null
      */
     private function approvalDetailsFromSnapshot(InvoiceSnapshot $snapshot): ?array
@@ -344,6 +405,7 @@ class InvoiceProofVerificationService
             InvoiceOnChainStatus::SupplierApproved => InvoiceProofVerificationStatus::WaitingBuyer,
             InvoiceOnChainStatus::FullyApproved => InvoiceProofVerificationStatus::FullyApproved,
             InvoiceOnChainStatus::Revoked => InvoiceProofVerificationStatus::Revoked,
+            InvoiceOnChainStatus::Disputed => InvoiceProofVerificationStatus::Disputed,
         };
     }
 

@@ -35,11 +35,15 @@ final class InvoiceRegistryAbi
 
     public const REVOKE_INVOICE = '0x3b1da35c';
 
+    public const DISPUTE_BY_BUYER = '0xaad824ff';
+
     public const ALREADY_REGISTERED = '3a81d6fc';
 
     public const PARTY_ALREADY_SET = '8cfb1c1a';
 
     public const INVOICE_IS_REVOKED = '049eeccb';
+
+    public const INVOICE_IS_DISPUTED = '5b9fb0e0';
 
     /** keccak256("InvoiceRegistered(bytes32,bytes32,address,address)") */
     public const INVOICE_REGISTERED_TOPIC = '0x20c1b4728816be48a6716ede4f3c00aca2675981eb46872a60c0b957685ad840';
@@ -119,6 +123,33 @@ final class InvoiceRegistryAbi
         );
     }
 
+    public static function encodeDisputeByBuyer(
+        string $proofId,
+        string $contentHash,
+        string $reasonHash,
+        string $invoiceNumber,
+        string $statement,
+        string $signature,
+    ): string {
+        $encodedNumber = self::encodeDynamic(bin2hex($invoiceNumber));
+        $encodedStatement = self::encodeDynamic(bin2hex($statement));
+        $encodedSignature = self::encodeDynamic(InvoiceProofBytes::strip0x($signature));
+        $headSize = 192;
+        $statementOffset = $headSize + intdiv(strlen($encodedNumber), 2);
+        $signatureOffset = $statementOffset + intdiv(strlen($encodedStatement), 2);
+
+        return self::DISPUTE_BY_BUYER
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($contentHash))
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($reasonHash))
+            .self::padUint($headSize)
+            .self::padUint($statementOffset)
+            .self::padUint($signatureOffset)
+            .$encodedNumber
+            .$encodedStatement
+            .$encodedSignature;
+    }
+
     /**
      * EIP-712 payload for MetaMask `eth_signTypedData_v4`. Domain keys are
      * snake_case on the wire; type field names match the Solidity struct.
@@ -174,6 +205,38 @@ final class InvoiceRegistryAbi
             $invoiceNumber,
             $statement,
         );
+    }
+
+    /**
+     * Typed data for `disputeByBuyer`. `reason_hash` is filled by the buyer after they type the reason.
+     *
+     * @return array{
+     *     domain: array{name: string, version: string, chain_id: int, verifying_contract: string},
+     *     primary_type: string,
+     *     types: array<string, list<array{name: string, type: string}>>,
+     *     message: array{proof_id: string, content_hash: string, invoice_number: string, statement: string}
+     * }
+     */
+    public static function buyerDisputeTypedData(
+        int $chainId,
+        string $contractAddress,
+        string $proofId,
+        string $contentHash,
+        string $invoiceNumber,
+        string $statement,
+    ): array {
+        $typed = self::partyApprovalTypedData(
+            'BuyerDispute',
+            $chainId,
+            $contractAddress,
+            $proofId,
+            $contentHash,
+            $invoiceNumber,
+            $statement,
+        );
+        array_splice($typed['types']['BuyerDispute'], 2, 0, [['name' => 'reasonHash', 'type' => 'bytes32']]);
+
+        return $typed;
     }
 
     public static function encodeInvoices(string $proofId): string
@@ -300,6 +363,11 @@ final class InvoiceRegistryAbi
         return str_contains(strtolower($message), self::INVOICE_IS_REVOKED);
     }
 
+    public static function isInvoiceDisputedRevert(string $message): bool
+    {
+        return str_contains(strtolower($message), self::INVOICE_IS_DISPUTED);
+    }
+
     public static function decodeInvoice(string $data): ?InvoiceOnChainRecord
     {
         $hex = InvoiceProofBytes::strip0x($data);
@@ -316,8 +384,11 @@ final class InvoiceRegistryAbi
         $buyerApproved = self::wordIsTrue(substr($hex, 256, 64));
         $revokedAt = self::decodeTimestamp(substr($hex, 512, 64));
         $replacedBy = self::decodeBytes32('0x'.substr($hex, 576, 64));
+        $disputedAt = strlen($hex) >= 704 ? self::decodeTimestamp(substr($hex, 640, 64)) : null;
+        $disputeReasonHash = strlen($hex) >= 768 ? self::decodeBytes32('0x'.substr($hex, 704, 64)) : null;
         $status = match (true) {
             $revokedAt !== null => InvoiceOnChainStatus::Revoked,
+            $disputedAt !== null => InvoiceOnChainStatus::Disputed,
             $buyerApproved => InvoiceOnChainStatus::FullyApproved,
             $supplierApproved => InvoiceOnChainStatus::SupplierApproved,
             default => InvoiceOnChainStatus::Registered,
@@ -335,6 +406,8 @@ final class InvoiceRegistryAbi
             buyerApprovedAt: self::decodeTimestamp(substr($hex, 448, 64)),
             revokedAt: $revokedAt,
             replacedBy: $replacedBy !== null ? InvoiceProofBytes::bytes32ToProofId($replacedBy) : null,
+            disputedAt: $disputedAt,
+            disputeReasonHash: $disputeReasonHash !== null ? '0x'.$disputeReasonHash : null,
         );
     }
 

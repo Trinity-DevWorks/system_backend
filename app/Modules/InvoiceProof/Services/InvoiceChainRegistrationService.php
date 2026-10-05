@@ -8,6 +8,7 @@ use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
 use App\Modules\InvoiceProof\DTOs\InvoiceChainReceiptData;
+use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
 use App\Modules\InvoiceProof\Enums\InvoiceChainRegistrationStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceProofType;
@@ -20,9 +21,11 @@ use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
 use App\Modules\InvoiceProof\Support\InvoicePartyWallets;
+use App\Modules\InvoiceProof\Support\InvoiceProofBytes;
 use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -259,6 +262,107 @@ class InvoiceChainRegistrationService
         ]);
     }
 
+    public function syncDisputeFromChain(string $proofId, InvoiceOnChainRecord $onChain): void
+    {
+        if ($onChain->disputedAt === null) {
+            return;
+        }
+
+        $values = [
+            'disputed_at' => $onChain->disputedAt > 0
+                ? Carbon::createFromTimestampUTC($onChain->disputedAt)
+                : now(),
+            'dispute_reason_hash' => $onChain->disputeReasonHash,
+            'chain_status' => InvoiceProofVerificationStatus::Disputed,
+            'status_checked_at' => now(),
+        ];
+
+        InvoiceChainRegistration::query()
+            ->where('proof_id', $proofId)
+            ->whereNull('disputed_at')
+            ->update($values);
+
+        InvoiceChainRegistration::query()
+            ->where('proof_id', $proofId)
+            ->whereNotNull('disputed_at')
+            ->whereNull('dispute_reason_hash')
+            ->update(['dispute_reason_hash' => $onChain->disputeReasonHash]);
+    }
+
+    /**
+     * Stores the buyer reason once the chain already records that dispute.
+     * keccak256(reason) must equal the on-chain disputeReasonHash.
+     */
+    public function storeDisputeReason(string $proofId, string $reason, ?string $txHash = null): void
+    {
+        $reason = trim($reason);
+        if ($reason === '') {
+            abort(422, 'A dispute reason is required.', [
+                'X-Error-Code' => 'VALIDATION_ERROR',
+            ]);
+        }
+
+        $registration = InvoiceChainRegistration::query()->where('proof_id', $proofId)->first();
+        if ($registration === null) {
+            abort(422, 'This invoice is not registered on the blockchain.', [
+                'X-Error-Code' => 'INVOICE_PROOF_NOT_ON_CHAIN',
+            ]);
+        }
+
+        try {
+            $onChain = $this->invoiceRegistryGateway->invoiceOf($proofId);
+        } catch (Throwable) {
+            abort(503, 'Could not read the invoice from the blockchain.', [
+                'X-Error-Code' => 'INVOICE_PROOF_CHAIN_FAILED',
+            ]);
+        }
+
+        if ($onChain === null || $onChain->disputedAt === null || $onChain->disputeReasonHash === null) {
+            abort(422, 'This invoice is not disputed on the blockchain yet.', [
+                'X-Error-Code' => 'INVOICE_PROOF_NOT_DISPUTED',
+            ]);
+        }
+
+        $hash = InvoiceProofBytes::keccakUtf8($reason);
+        if (! hash_equals(strtolower($onChain->disputeReasonHash), strtolower($hash))) {
+            abort(422, 'The dispute reason does not match the hash on the blockchain.', [
+                'X-Error-Code' => 'INVOICE_PROOF_DISPUTE_REASON_MISMATCH',
+            ]);
+        }
+
+        $this->syncDisputeFromChain($proofId, $onChain);
+        $registration->refresh();
+        $registration->update([
+            'dispute_reason' => $reason,
+            'dispute_reason_hash' => $hash,
+            'dispute_tx_hash' => $txHash ?? $registration->dispute_tx_hash,
+        ]);
+    }
+
+    public function salesInvoiceIsDisputed(SalesInvoice $invoice): bool
+    {
+        $registration = $this->findForSalesInvoice((string) $invoice->id);
+        if ($registration === null) {
+            return false;
+        }
+
+        if ($registration->disputed_at !== null || $registration->chain_status === InvoiceProofVerificationStatus::Disputed) {
+            return true;
+        }
+
+        if (! $this->isConfigured()) {
+            return false;
+        }
+
+        try {
+            $onChain = $this->invoiceRegistryGateway->invoiceOf((string) $registration->proof_id);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $onChain?->disputedAt !== null;
+    }
+
     /**
      * Fill empty on-chain party slots from current ERP wallets without changing contentHash.
      */
@@ -279,7 +383,7 @@ class InvoiceChainRegistrationService
             return;
         }
 
-        if ($onChain === null || $onChain->revokedAt !== null) {
+        if ($onChain === null || $onChain->revokedAt !== null || $onChain->disputedAt !== null) {
             return;
         }
 

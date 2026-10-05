@@ -8,6 +8,7 @@ use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Customer\Enums\LedgerReferenceType;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Services\CustomerLedgerService;
+use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Sales\CustomerReceipt\DTOs\CustomerReceiptResponseData;
@@ -33,6 +34,7 @@ class CustomerReceiptService
         private readonly CustomerLedgerService $customerLedgerService,
         private readonly ExchangeRateService $exchangeRateService,
         private readonly WarehouseService $warehouseService,
+        private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
     ) {}
 
     /**
@@ -476,6 +478,10 @@ class CustomerReceiptService
     {
         if ($invoice->status !== SalesInvoiceStatus::Posted) {
             $this->fail('Only a posted invoice can be allocated.', 'CUSTOMER_RECEIPT_INVOICE_NOT_OPEN');
+        }
+
+        if ($this->invoiceChainRegistrationService->salesInvoiceIsDisputed($invoice)) {
+            $this->fail('This invoice is disputed and cannot receive a customer receipt.', 'SALES_INVOICE_DISPUTED');
         }
 
         if ((string) $invoice->customer_id !== (string) $receipt->customer_id) {

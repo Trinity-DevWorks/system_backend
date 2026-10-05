@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\InvoiceProof\Support;
 
 use InvalidArgumentException;
+use kornrunner\Keccak;
 
 /**
  * Encodes Laravel snapshot ids and SHA-256 hex into EVM bytes32 values.
@@ -73,5 +74,13 @@ final class InvoiceProofBytes
         $hex = strtolower($hex);
 
         return str_starts_with($hex, '0x') ? substr($hex, 2) : $hex;
+    }
+
+    /**
+     * keccak256 of UTF-8 bytes, 0x-prefixed, matching Solidity keccak256(bytes(reason)).
+     */
+    public static function keccakUtf8(string $value): string
+    {
+        return '0x'.Keccak::hash($value, 256);
     }
 }

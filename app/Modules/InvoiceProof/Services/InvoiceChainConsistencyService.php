@@ -310,7 +310,7 @@ class InvoiceChainConsistencyService
         };
 
         $attestations = null;
-        if (in_array($status, [InvoiceProofVerificationStatus::FullyApproved, InvoiceProofVerificationStatus::Revoked], true)) {
+        if (in_array($status, [InvoiceProofVerificationStatus::FullyApproved, InvoiceProofVerificationStatus::Revoked, InvoiceProofVerificationStatus::Disputed], true)) {
             try {
                 $attestations = $this->invoiceRegistryGateway->attestationsOf($proofId);
             } catch (Throwable) {

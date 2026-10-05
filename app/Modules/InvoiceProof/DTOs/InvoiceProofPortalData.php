@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\InvoiceProof\DTOs;
 
 use App\Modules\Currency\Models\Currency;
+use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Support\InvoiceProofBytes;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
@@ -61,6 +62,7 @@ readonly class InvoiceProofPortalData
         public ?string $proofId,
         public ?array $eip712,
         public bool $canApproveAsBuyer,
+        public bool $canDisputeAsBuyer = false,
         public bool $locked = false,
         public ?string $registeredAt = null,
         public ?string $supplierApprovedAt = null,
@@ -70,6 +72,9 @@ readonly class InvoiceProofPortalData
         public ?string $buyerWalletType = null,
         public ?string $financedAt = null,
         public ?string $revokedAt = null,
+        public ?string $disputedAt = null,
+        public ?string $disputeReason = null,
+        public ?array $disputeEip712 = null,
     ) {}
 
     /**
@@ -121,13 +126,17 @@ readonly class InvoiceProofPortalData
             supplierWallet: $proof->supplierWallet,
             proofId: $proof->proofId,
             eip712: $proof->canApproveAsBuyer ? $proof->eip712 : null,
+            disputeEip712: $proof->canDisputeAsBuyer ? $proof->disputeEip712 : null,
             canApproveAsBuyer: $proof->canApproveAsBuyer,
+            canDisputeAsBuyer: $proof->canDisputeAsBuyer,
             registeredAt: $proof->registeredAt,
             supplierApprovedAt: $proof->supplierApprovedAt,
             buyerApprovedAt: $proof->buyerApprovedAt,
             otherInvoices: $otherInvoices,
             financedAt: $proof->financedAt(),
             revokedAt: $proof->revokedAt,
+            disputedAt: $proof->disputedAt,
+            disputeReason: self::storedDisputeReason((string) $snapshot->id),
         );
     }
 
@@ -170,6 +179,13 @@ readonly class InvoiceProofPortalData
         }
 
         return $lines;
+    }
+
+    private static function storedDisputeReason(string $proofId): ?string
+    {
+        $reason = InvoiceChainRegistration::query()->where('proof_id', $proofId)->value('dispute_reason');
+
+        return is_string($reason) && $reason !== '' ? $reason : null;
     }
 
     private static function contentHash(mixed $value): ?string
@@ -269,13 +285,17 @@ readonly class InvoiceProofPortalData
             'supplier_wallet' => $this->supplierWallet,
             'proof_id' => $this->proofId,
             'eip712' => $this->eip712,
+            'dispute_eip712' => $this->disputeEip712,
             'can_approve_as_buyer' => $this->canApproveAsBuyer,
+            'can_dispute_as_buyer' => $this->canDisputeAsBuyer,
             'locked' => false,
             'registered_at' => $this->registeredAt,
             'supplier_approved_at' => $this->supplierApprovedAt,
             'buyer_approved_at' => $this->buyerApprovedAt,
             'financed_at' => $this->financedAt,
             'revoked_at' => $this->revokedAt,
+            'disputed_at' => $this->disputedAt,
+            'dispute_reason' => $this->disputeReason,
             'other_invoices' => $this->otherInvoices,
         ];
     }

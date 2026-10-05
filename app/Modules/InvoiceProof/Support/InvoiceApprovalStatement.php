@@ -34,6 +34,12 @@ final class InvoiceApprovalStatement
         return $sentence.'.';
     }
 
+    public static function dispute(string $companyName, string $invoiceNumber): string
+    {
+        return 'Dispute invoice '.self::number($invoiceNumber).' from '.self::company($companyName)
+            .'. I do not approve this invoice.';
+    }
+
     private static function company(string $companyName): string
     {
         $company = trim($companyName);

@@ -33,8 +33,10 @@ readonly class InvoiceProofVerificationData
         public ?string $buyerWallet = null,
         public ?string $proofId = null,
         public ?array $eip712 = null,
+        public ?array $disputeEip712 = null,
         public bool $canApproveAsCompany = false,
         public bool $canApproveAsBuyer = false,
+        public bool $canDisputeAsBuyer = false,
         public ?string $blockchainNetwork = null,
         public ?string $safeTxServiceUrl = null,
         public ?string $safeApiKey = null,
@@ -45,6 +47,9 @@ readonly class InvoiceProofVerificationData
         public ?string $supplierWalletType = null,
         public ?string $buyerWalletType = null,
         public ?string $revokedAt = null,
+        public ?string $disputedAt = null,
+        public ?string $disputeReasonHash = null,
+        public ?string $disputeReason = null,
     ) {}
 
     /**
@@ -127,8 +132,10 @@ readonly class InvoiceProofVerificationData
             'buyer_wallet_type' => $this->buyerWalletType,
             'proof_id' => $this->proofId,
             'eip712' => $this->eip712,
+            'dispute_eip712' => $this->disputeEip712,
             'can_approve_as_company' => $this->canApproveAsCompany,
             'can_approve_as_buyer' => $this->canApproveAsBuyer,
+            'can_dispute_as_buyer' => $this->canDisputeAsBuyer,
             'blockchain_network' => $this->blockchainNetwork,
             'safe_tx_service_url' => $this->safeTxServiceUrl,
             'safe_api_key' => $this->safeApiKey,
@@ -136,6 +143,9 @@ readonly class InvoiceProofVerificationData
             'supplier_approved_at' => $this->supplierApprovedAt,
             'buyer_approved_at' => $this->buyerApprovedAt,
             'revoked_at' => $this->revokedAt,
+            'disputed_at' => $this->disputedAt,
+            'dispute_reason_hash' => $this->disputeReasonHash,
+            'dispute_reason' => $this->disputeReason,
             'attestations' => array_map(
                 static fn (InvoiceAttestationRecord $attestation): array => $attestation->toArray(),
                 $this->attestations,
