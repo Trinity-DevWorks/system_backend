@@ -264,6 +264,19 @@ Invoice proof:
 - `PROOF_WALLET_MISMATCH` (HTTP 422) — personal_sign signer is neither the invoice buyer wallet nor an owner of the buyer Safe
 - `PROOF_BUYER_UNKNOWN` (HTTP 422) — buyer history sign-in wallet is not stored on a customer of this company
 - `PROOF_UNLOCK_INVALID` (HTTP 422) — unlock nonce is missing, expired, or already used
+- `SALES_INVOICE_HAS_CREDITS` (HTTP 422) — reverse or reissue blocked while credited_total is greater than zero
+- `CREDIT_NOTE_NO_LINES` (HTTP 422)
+- `CREDIT_NOTE_EXCEEDS_OPEN` (HTTP 422)
+- `CREDIT_NOTE_NOT_POSTED` (HTTP 422)
+- `CREDIT_NOTE_UNDERFLOW` (HTTP 422)
+- `CREDIT_NOTE_LINE_MISMATCH` (HTTP 422)
+- `CREDIT_NOTE_BUNDLE_NOT_ALLOWED` (HTTP 422)
+- `CREDIT_NOTE_LINE_INVALID_QUANTITY` (HTTP 422)
+- `CREDIT_NOTE_QTY_EXCEEDS` (HTTP 422)
+- `CREDIT_NOTE_INVOICE_NOT_POSTED` (HTTP 422)
+- `CREDIT_NOTE_INVOICE_CLOSED` (HTTP 422)
+- `CREDIT_NOTE_NOT_DRAFT` (HTTP 422)
+- `CREDIT_NOTE_CHAIN_REVOKED` (HTTP 422) — reversing a credit note is blocked after full credit cancelled the invoice seal (`revokeInvoice`, same as reverse)
 - `SALES_INVOICE_NOT_POSTED` (HTTP 422) — company approval is only allowed on posted invoices
 - `SALES_INVOICE_DISPUTED` (HTTP 422) — a customer receipt cannot be allocated to a buyer-disputed invoice
 - `SALES_INVOICE_CANNOT_REISSUE` (HTTP 422) — reissue is only allowed on a posted or reversed invoice

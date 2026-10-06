@@ -28,6 +28,7 @@ class CurrencyService
         'goods_receipts',
         'purchase_invoices',
         'sales_invoices',
+        'sales_credit_notes',
         'customer_receipts',
         'supplier_payments',
     ];

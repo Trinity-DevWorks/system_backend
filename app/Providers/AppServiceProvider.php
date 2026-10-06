@@ -68,6 +68,8 @@ use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
+use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
+use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNoteLine;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
 use App\Modules\Salesman\Models\Salesman;
@@ -159,6 +161,8 @@ class AppServiceProvider extends ServiceProvider
             'sales_invoice' => SalesInvoice::class,
             'customer_receipt' => CustomerReceipt::class,
             'sales_invoice_line' => SalesInvoiceLine::class,
+            'sales_credit_note' => SalesCreditNote::class,
+            'sales_credit_note_line' => SalesCreditNoteLine::class,
             'invoice_verifier' => InvoiceVerifier::class,
             'supplier' => Supplier::class,
             'supplier_group' => SupplierGroup::class,

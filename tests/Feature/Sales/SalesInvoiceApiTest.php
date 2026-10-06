@@ -983,6 +983,86 @@ class SalesInvoiceApiTest extends TestCase
             ->assertJsonPath('data.chain_status.status', 'revoked');
     }
 
+    public function test_full_credit_queues_chain_revocation_and_blocks_credit_note_reverse(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $id = $this->postServiceInvoice();
+        [$proofId] = $this->confirmedProof($id);
+        $lineId = $this->firstInvoiceLineId($id);
+
+        $noteId = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-credit-notes'), [
+                'sales_invoice_id' => $id,
+                'lines' => [[
+                    'sales_invoice_line_id' => $lineId,
+                    'quantity' => 1,
+                ]],
+            ])
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-credit-notes/{$noteId}/post"))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'posted')
+            ->assertJsonPath('data.can_reverse', false);
+
+        Queue::assertPushed(
+            RevokeSalesInvoiceOnChainJob::class,
+            fn (RevokeSalesInvoiceOnChainJob $job): bool => $job->proofId === $proofId,
+        );
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}"))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'posted');
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-credit-notes/{$noteId}/reverse"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CREDIT_NOTE_CHAIN_REVOKED');
+    }
+
+    public function test_partial_credit_does_not_revoke_on_chain(): void
+    {
+        Queue::fake();
+        $this->enableBlockchainConfig();
+        $id = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices'), $this->baseInvoicePayload([
+                'lines' => [[
+                    'item_id' => $this->catalog['service_item_id'],
+                    'quantity' => 2,
+                    'unit_price' => 50,
+                ]],
+            ]))
+            ->assertCreated()
+            ->json('data.id');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/post"))
+            ->assertOk();
+        $this->confirmedProof($id);
+        $lineId = $this->firstInvoiceLineId($id);
+
+        $noteId = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-credit-notes'), [
+                'sales_invoice_id' => $id,
+                'lines' => [[
+                    'sales_invoice_line_id' => $lineId,
+                    'quantity' => 1,
+                ]],
+            ])
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-credit-notes/{$noteId}/post"))
+            ->assertOk()
+            ->assertJsonPath('data.can_reverse', true);
+
+        Queue::assertNotPushed(RevokeSalesInvoiceOnChainJob::class);
+    }
+
     public function test_reissue_clones_draft_and_reverses_posted_original(): void
     {
         Queue::fake();
@@ -2280,6 +2360,13 @@ class SalesInvoiceApiTest extends TestCase
             ->assertOk();
 
         return $id;
+    }
+
+    private function firstInvoiceLineId(string $invoiceId): int
+    {
+        return (int) $this->tenant->run(
+            fn (): int => (int) SalesInvoiceLine::query()->where('sales_invoice_id', $invoiceId)->orderBy('id')->value('id')
+        );
     }
 
     /**

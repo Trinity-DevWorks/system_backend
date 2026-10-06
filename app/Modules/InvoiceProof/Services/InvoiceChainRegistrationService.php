@@ -105,6 +105,13 @@ class InvoiceChainRegistrationService
             ->first();
     }
 
+    public function revokeRequestedForSalesInvoice(string $invoiceId): bool
+    {
+        $registration = $this->findForSalesInvoice($invoiceId);
+
+        return $registration !== null && $registration->revoke_requested_at !== null;
+    }
+
     public function submitProof(string $proofId): void
     {
         if (! $this->isConfigured()) {

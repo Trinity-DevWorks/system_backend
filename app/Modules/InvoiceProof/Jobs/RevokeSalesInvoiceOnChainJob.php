@@ -16,7 +16,7 @@ use Illuminate\Queue\SerializesModels;
 /**
  * Revokes the InvoiceRegistry proof of a sales invoice the ERP cancelled.
  *
- * Dispatched after the reverse transaction commits, or right after a late registration
+ * Dispatched after the reverse or full-credit transaction commits, or right after a late registration
  * is confirmed. Retries if Anvil/RPC is down.
  */
 class RevokeSalesInvoiceOnChainJob implements ShouldBeUnique, ShouldQueue

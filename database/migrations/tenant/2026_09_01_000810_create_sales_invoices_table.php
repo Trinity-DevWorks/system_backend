@@ -32,6 +32,7 @@ return new class extends Migration
             $table->decimal('adjustment', 20, 4)->default(0);
             $table->decimal('grand_total', 20, 4)->default(0);
             $table->decimal('paid_total', 20, 4)->default(0);
+            $table->decimal('credited_total', 20, 4)->default(0);
             $table->decimal('net_to_pay', 20, 4)->default(0);
             $table->text('notes')->nullable();
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();

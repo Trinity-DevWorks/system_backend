@@ -65,6 +65,7 @@ use App\Modules\Rbac\Http\Controllers\UserAttachmentController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
 use App\Modules\Sales\CustomerReceipt\Http\Controllers\CustomerReceiptController;
+use App\Modules\Sales\SalesCreditNote\Http\Controllers\SalesCreditNoteController;
 use App\Modules\Sales\SalesInvoice\Http\Controllers\SalesInvoiceController;
 use App\Modules\Salesman\Http\Controllers\SalesmanAttachmentController;
 use App\Modules\Salesman\Http\Controllers\SalesmanController;
@@ -580,6 +581,27 @@ Route::middleware([
                 ->middleware('check.permission:customer_receipts,edit');
             Route::post('customer-receipts/{customer_receipt}/reverse', [CustomerReceiptController::class, 'reverse'])
                 ->middleware('check.permission:customer_receipts,reverse');
+
+            Route::get('sales-credit-notes/open-invoices', [SalesCreditNoteController::class, 'openInvoices'])
+                ->middleware('check.permission:sales_credit_notes,view');
+            Route::get('sales-credit-notes/source/{sales_invoice}', [SalesCreditNoteController::class, 'sourceLines'])
+                ->middleware('check.permission:sales_credit_notes,view');
+            Route::get('sales-credit-notes', [SalesCreditNoteController::class, 'index'])
+                ->middleware('check.permission:sales_credit_notes,view');
+            Route::post('sales-credit-notes', [SalesCreditNoteController::class, 'store'])
+                ->middleware('check.permission:sales_credit_notes,add');
+            Route::get('sales-credit-notes/{sales_credit_note}', [SalesCreditNoteController::class, 'show'])
+                ->middleware('check.permission:sales_credit_notes,view');
+            Route::put('sales-credit-notes/{sales_credit_note}', [SalesCreditNoteController::class, 'update'])
+                ->middleware('check.permission:sales_credit_notes,edit');
+            Route::delete('sales-credit-notes/{sales_credit_note}', [SalesCreditNoteController::class, 'destroy'])
+                ->middleware('check.permission:sales_credit_notes,delete');
+            Route::put('sales-credit-notes/{sales_credit_note}/lines/sync', [SalesCreditNoteController::class, 'syncLines'])
+                ->middleware('check.permission:sales_credit_notes,edit');
+            Route::post('sales-credit-notes/{sales_credit_note}/post', [SalesCreditNoteController::class, 'post'])
+                ->middleware('check.permission:sales_credit_notes,edit');
+            Route::post('sales-credit-notes/{sales_credit_note}/reverse', [SalesCreditNoteController::class, 'reverse'])
+                ->middleware('check.permission:sales_credit_notes,reverse');
 
             Route::get('sales-invoices/item-availability', [SalesInvoiceController::class, 'itemAvailability'])
                 ->middleware('check.permission:sales_invoices,view');

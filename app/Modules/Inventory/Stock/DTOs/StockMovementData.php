@@ -210,6 +210,31 @@ readonly class StockMovementData
         );
     }
 
+    public static function forSaleReturn(
+        string $itemId,
+        int $warehouseId,
+        string $quantityDelta,
+        string $creditNoteId,
+        ?int $itemUomId,
+        ?string $notes,
+        ?string $userId,
+        ?int $lotId = null,
+    ): self {
+        return new self(
+            itemId: $itemId,
+            warehouseId: $warehouseId,
+            quantityDelta: self::formatDelta($quantityDelta),
+            type: StockMovementType::SaleReturn,
+            referenceType: 'sales_credit_note',
+            referenceId: $creditNoteId,
+            itemUomId: $itemUomId,
+            notes: self::normalizeNotes($notes),
+            userId: $userId,
+            unitCost: null,
+            lotId: $lotId,
+        );
+    }
+
     public static function forSaleBundleComponent(
         string $itemId,
         int $warehouseId,

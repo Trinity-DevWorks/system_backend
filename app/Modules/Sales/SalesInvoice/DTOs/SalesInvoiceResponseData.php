@@ -65,6 +65,7 @@ readonly class SalesInvoiceResponseData
             'adjustment' => (string) $invoice->adjustment,
             'grand_total' => (string) $invoice->grand_total,
             'paid_total' => (string) $invoice->paid_total,
+            'credited_total' => (string) $invoice->credited_total,
             'net_to_pay' => (string) $invoice->net_to_pay,
             'notes' => $invoice->notes,
             'customer' => self::customerBrief($invoice->customer),
@@ -96,6 +97,16 @@ readonly class SalesInvoiceResponseData
                 'lines.lot',
             ]);
             $payload['lines'] = SalesInvoiceLineResponseData::collectionToArray($invoice->lines);
+            $invoice->loadMissing(['creditNotes']);
+            $payload['credit_notes'] = $invoice->creditNotes
+                ->map(static fn ($note): array => [
+                    'id' => (string) $note->id,
+                    'credit_note_number' => $note->credit_note_number,
+                    'status' => $note->status instanceof \BackedEnum ? $note->status->value : (string) $note->status,
+                    'grand_total' => (string) $note->grand_total,
+                ])
+                ->values()
+                ->all();
         }
 
         return self::applySealedSnapshot($invoice, $payload);
@@ -388,7 +399,8 @@ readonly class SalesInvoiceResponseData
     private static function canReverse(SalesInvoice $invoice): bool
     {
         return $invoice->status === SalesInvoiceStatus::Posted
-            && bccomp((string) $invoice->paid_total, '0', 4) <= 0;
+            && bccomp((string) $invoice->paid_total, '0', 4) <= 0
+            && bccomp((string) ($invoice->credited_total ?? 0), '0', 4) <= 0;
     }
 
     private static function canReissue(SalesInvoice $invoice): bool
@@ -397,6 +409,9 @@ readonly class SalesInvoiceResponseData
             return false;
         }
         if (bccomp((string) $invoice->paid_total, '0', 4) > 0) {
+            return false;
+        }
+        if (bccomp((string) ($invoice->credited_total ?? 0), '0', 4) > 0) {
             return false;
         }
 

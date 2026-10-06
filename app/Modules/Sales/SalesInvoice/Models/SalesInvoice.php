@@ -11,6 +11,7 @@ use App\Modules\InvoiceProof\Enums\InvoiceProofType;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
+use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Warehouse\Models\Warehouse;
@@ -51,6 +52,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'adjustment',
     'grand_total',
     'paid_total',
+    'credited_total',
     'net_to_pay',
     'notes',
     'created_by',
@@ -83,6 +85,7 @@ class SalesInvoice extends Model implements AuditableContract
             'adjustment' => 'decimal:4',
             'grand_total' => 'decimal:4',
             'paid_total' => 'decimal:4',
+            'credited_total' => 'decimal:4',
             'net_to_pay' => 'decimal:4',
             'posted_at' => 'datetime',
         ];
@@ -183,5 +186,13 @@ class SalesInvoice extends Model implements AuditableContract
     public function replacedByInvoice(): HasOne
     {
         return $this->hasOne(self::class, 'replaces_invoice_id');
+    }
+
+    /**
+     * @return HasMany<SalesCreditNote, $this>
+     */
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(SalesCreditNote::class);
     }
 }

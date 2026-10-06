@@ -65,9 +65,10 @@ final class PaymentAllocation
         return self::normalize($next);
     }
 
-    public static function netToPay(mixed $grandTotal, mixed $paidTotal): string
+    public static function netToPay(mixed $grandTotal, mixed $paidTotal, mixed $creditedTotal = 0): string
     {
         $net = bcsub(self::normalize($grandTotal), self::normalize($paidTotal), 4);
+        $net = bcsub($net, self::normalize($creditedTotal), 4);
         if (bccomp($net, '0', 4) < 0) {
             return self::normalize(0);
         }

@@ -262,6 +262,11 @@ class SalesInvoiceService
                 'X-Error-Code' => 'SALES_INVOICE_HAS_PAYMENTS',
             ]);
         }
+        if (bccomp((string) ($invoice->credited_total ?? 0), '0', 4) > 0) {
+            abort(422, 'This invoice has credit notes and cannot be reissued.', [
+                'X-Error-Code' => 'SALES_INVOICE_HAS_CREDITS',
+            ]);
+        }
         if (SalesInvoice::query()->where('replaces_invoice_id', $invoice->id)->exists()) {
             abort(422, 'This invoice already has a replacement.', [
                 'X-Error-Code' => 'SALES_INVOICE_ALREADY_REISSUED',
@@ -319,6 +324,11 @@ class SalesInvoiceService
             if (bccomp((string) $locked->paid_total, '0', 4) > 0) {
                 abort(422, 'This invoice has payments and cannot be reversed.', [
                     'X-Error-Code' => 'SALES_INVOICE_HAS_PAYMENTS',
+                ]);
+            }
+            if (bccomp((string) ($locked->credited_total ?? 0), '0', 4) > 0) {
+                abort(422, 'This invoice has credit notes and cannot be reversed.', [
+                    'X-Error-Code' => 'SALES_INVOICE_HAS_CREDITS',
                 ]);
             }
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
@@ -700,7 +710,7 @@ class SalesInvoiceService
             'tax_total' => $totals['tax_total'],
             'grand_total' => $totals['grand_total'],
             'paid_total' => PriceMath::normalize($invoice->paid_total ?? 0),
-            'net_to_pay' => PaymentAllocation::netToPay($totals['grand_total'], $invoice->paid_total ?? 0),
+            'net_to_pay' => PaymentAllocation::netToPay($totals['grand_total'], $invoice->paid_total ?? 0, $invoice->credited_total ?? 0),
         ]);
     }
 

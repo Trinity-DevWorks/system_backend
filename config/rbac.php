@@ -120,6 +120,10 @@ return [
             'label' => 'Sales Invoice Management',
             'actions' => [...$crud, 'reverse'],
         ],
+        'sales_credit_notes' => [
+            'label' => 'Sales Credit Note Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
         'invoice_proofs' => [
             'label' => 'Invoice Proofs',
             'actions' => ['view', 'edit'],

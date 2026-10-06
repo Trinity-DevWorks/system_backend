@@ -251,7 +251,7 @@ class CustomerReceiptService
                 $paid = PaymentAllocation::add($invoice->paid_total, $allocation->applied_amount);
                 $invoice->update([
                     'paid_total' => $paid,
-                    'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid),
+                    'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid, $invoice->credited_total),
                 ]);
             }
 
@@ -315,7 +315,7 @@ class CustomerReceiptService
 
                 $invoice->update([
                     'paid_total' => $paid,
-                    'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid),
+                    'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid, $invoice->credited_total),
                 ]);
             }
 

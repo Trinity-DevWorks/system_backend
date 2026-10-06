@@ -59,6 +59,7 @@ class RbacResourceCatalogTest extends TestCase
         $this->assertTrue(RbacResourceCatalog::allows('stock', 'delete'));
         $this->assertTrue(RbacResourceCatalog::allows('stock', 'reverse'));
         $this->assertTrue(RbacResourceCatalog::allows('sales_invoices', 'reverse'));
+        $this->assertTrue(RbacResourceCatalog::allows('sales_credit_notes', 'reverse'));
         $this->assertTrue(RbacResourceCatalog::allows('purchase_invoices', 'reverse'));
         $this->assertTrue(RbacResourceCatalog::allows('customer_receipts', 'reverse'));
         $this->assertTrue(RbacResourceCatalog::allows('supplier_payments', 'reverse'));

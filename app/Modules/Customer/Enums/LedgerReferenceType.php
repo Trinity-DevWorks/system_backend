@@ -9,4 +9,5 @@ enum LedgerReferenceType: string
     case OpeningBalance = 'opening_balance';
     case Invoice = 'invoice';
     case Payment = 'payment';
+    case CreditNote = 'credit_note';
 }

@@ -444,6 +444,7 @@ class CustomerLedgerService
     {
         $invoiceIds = [];
         $paymentIds = [];
+        $creditNoteIds = [];
         foreach ($entries as $entry) {
             if ($entry->reference_id === null) {
                 continue;
@@ -453,6 +454,8 @@ class CustomerLedgerService
                 $invoiceIds[] = (string) $entry->reference_id;
             } elseif ($type === LedgerReferenceType::Payment->value) {
                 $paymentIds[] = (string) $entry->reference_id;
+            } elseif ($type === LedgerReferenceType::CreditNote->value) {
+                $creditNoteIds[] = (string) $entry->reference_id;
             }
         }
 
@@ -470,6 +473,14 @@ class CustomerLedgerService
             foreach ($numbers as $id => $number) {
                 if ($number !== null && $number !== '') {
                     $out[LedgerReferenceType::Payment->value.'|'.$id] = (string) $number;
+                }
+            }
+        }
+        if ($creditNoteIds !== []) {
+            $numbers = DB::table('sales_credit_notes')->whereIn('id', array_values(array_unique($creditNoteIds)))->pluck('credit_note_number', 'id');
+            foreach ($numbers as $id => $number) {
+                if ($number !== null && $number !== '') {
+                    $out[LedgerReferenceType::CreditNote->value.'|'.$id] = (string) $number;
                 }
             }
         }
