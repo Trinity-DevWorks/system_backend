@@ -29,6 +29,8 @@ return new class extends Migration
             $table->date('exempted_to')->nullable();
             $table->string('vat_number', 128)->nullable();
             $table->text('notes')->nullable();
+            $table->string('wallet_address', 42)->nullable();
+            $table->string('wallet_type', 16)->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

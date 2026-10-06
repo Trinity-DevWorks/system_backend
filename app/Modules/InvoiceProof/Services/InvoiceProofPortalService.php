@@ -7,6 +7,10 @@ namespace App\Modules\InvoiceProof\Services;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Customer\Models\Customer;
+use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
+use App\Modules\Supplier\Models\Supplier;
 use App\Modules\InvoiceProof\Contracts\CompanySafeOwnerLookup;
 use App\Modules\InvoiceProof\DTOs\BuyerInvoiceHistoryItemData;
 use App\Modules\InvoiceProof\DTOs\BuyerPortalLinkData;
@@ -69,6 +73,30 @@ class InvoiceProofPortalService
 
         return BuyerPortalLinkData::fromIssued(
             ProofPortalLink::issue($tenantId, (string) $invoice->id)
+        );
+    }
+
+    public function issueVendorLink(PurchaseInvoice $invoice): BuyerPortalLinkData
+    {
+        if (! CompanySetting::current()->invoiceProofsEnabled()) {
+            abort(
+                403,
+                'Invoice proofs are disabled for this company.',
+                ['X-Error-Code' => 'INVOICE_PROOFS_DISABLED']
+            );
+        }
+
+        PurchaseInvoiceRules::assertPostedForProof($invoice);
+
+        $snapshot = $this->invoiceSnapshotService->findForPurchaseInvoice((string) $invoice->id);
+        if ($snapshot === null) {
+            abort(404);
+        }
+
+        $tenantId = (string) tenant('id');
+
+        return BuyerPortalLinkData::fromIssued(
+            ProofPortalLink::issue($tenantId, (string) $invoice->id, '/proofs/purchases/')
         );
     }
 
@@ -186,13 +214,157 @@ class InvoiceProofPortalService
         $invoice->loadMissing(['customer', 'replacesInvoice', 'replacedByInvoice']);
 
         return InvoiceProofPortalData::fromSnapshot(
-            $invoice,
+            (string) $invoice->id,
             $snapshot,
             $this->invoiceProofVerificationService->verifySalesInvoice($invoice, $company),
             $this->historyItemsForCustomer((string) $invoice->customer_id, (string) $invoice->id),
             $this->signedPortalInvoice($invoice->replacedByInvoice),
             $this->signedPortalInvoice($invoice->replacesInvoice),
         );
+    }
+
+    public function challengePurchase(PurchaseInvoice $invoice): InvoiceProofPortalChallengeData
+    {
+        $this->assertPurchasePortalInvoice($invoice);
+        $invoice->loadMissing('supplier');
+        $issued = ProofPortalUnlockChallenge::issue(
+            (string) tenant('id'),
+            (string) $invoice->id,
+            (string) CompanyProfile::singleton()->company_name,
+            (string) $invoice->invoice_number,
+        );
+
+        $vendorWallet = WalletAddress::normalize($invoice->supplier?->wallet_address);
+
+        return new InvoiceProofPortalChallengeData(
+            locked: true,
+            chainId: (int) config('blockchain.chain_id'),
+            buyerWallet: $vendorWallet,
+            nonce: $issued['nonce'],
+            message: $issued['message'],
+            buyerWalletType: $vendorWallet === null ? null : $invoice->supplier?->wallet_type?->value,
+        );
+    }
+
+    public function unlockPurchase(PurchaseInvoice $invoice, string $address, string $signature): InvoiceProofPortalData
+    {
+        $this->assertPurchasePortalInvoice($invoice);
+        $invoice->loadMissing('supplier');
+
+        $expected = WalletAddress::normalize($invoice->supplier?->wallet_address);
+        if ($expected === null) {
+            abort(422, 'No vendor wallet is configured for this invoice.', [
+                'X-Error-Code' => 'PROOF_WALLET_REQUIRED',
+            ]);
+        }
+
+        $submitted = WalletAddress::normalize($address);
+        $tenantId = (string) tenant('id');
+        $invoiceId = (string) $invoice->id;
+        $nonce = ProofPortalUnlockChallenge::current($tenantId, $invoiceId);
+        if ($nonce === null) {
+            abort(422, 'This unlock challenge has expired. Refresh and try again.', [
+                'X-Error-Code' => 'PROOF_UNLOCK_INVALID',
+            ]);
+        }
+
+        $message = ProofPortalUnlockChallenge::message(
+            (string) CompanyProfile::singleton()->company_name,
+            (string) $invoice->invoice_number,
+            $nonce,
+        );
+        $recovered = EthereumPersonalSign::recoverAddress($message, $signature);
+        if (
+            $submitted === null
+            || $recovered === null
+            || ! hash_equals($submitted, $recovered)
+            || ! $this->canActForBuyer($expected, $recovered)
+        ) {
+            abort(422, 'The connected wallet does not match this invoice.', [
+                'X-Error-Code' => 'PROOF_WALLET_MISMATCH',
+            ]);
+        }
+
+        ProofPortalUnlockChallenge::consume($tenantId, $invoiceId, $nonce);
+
+        return $this->showPurchase($invoice);
+    }
+
+    public function recordPurchaseDispute(PurchaseInvoice $invoice, string $reason, ?string $txHash = null): InvoiceProofPortalData
+    {
+        $this->assertPurchasePortalInvoice($invoice);
+        $snapshot = $this->invoiceSnapshotService->findForPurchaseInvoice((string) $invoice->id);
+        if ($snapshot === null) {
+            abort(404);
+        }
+
+        $this->invoiceChainRegistrationService->storeDisputeReason((string) $snapshot->id, $reason, $txHash);
+
+        return $this->showPurchase($invoice);
+    }
+
+    public function showPurchase(PurchaseInvoice $invoice): InvoiceProofPortalData
+    {
+        $this->assertPurchasePortalInvoice($invoice);
+
+        $snapshot = $this->invoiceSnapshotService->findForPurchaseInvoice((string) $invoice->id);
+        if ($snapshot === null) {
+            abort(404);
+        }
+
+        $company = CompanyProfile::singleton();
+        $invoice->loadMissing(['supplier', 'replacesInvoice', 'replacedByInvoice']);
+
+        return InvoiceProofPortalData::fromSnapshot(
+            (string) $invoice->id,
+            $snapshot,
+            $this->invoiceProofVerificationService->verifyPurchaseInvoice($invoice, $company),
+            $this->historyItemsForSupplier((string) $invoice->supplier_id, (string) $invoice->id),
+            $this->signedPurchasePortalInvoice($invoice->replacedByInvoice),
+            $this->signedPurchasePortalInvoice($invoice->replacesInvoice),
+            true,
+        );
+    }
+
+    /**
+     * @return array{locked: true, chain_id: int, nonce: string, message: string, company_name: string}
+     */
+    public function vendorHistoryChallenge(): array
+    {
+        return $this->historyChallenge();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function vendorHistory(string $address, string $signature, string $nonce): array
+    {
+        $this->assertProofsEnabled();
+        $companyName = (string) CompanyProfile::singleton()->company_name;
+        $message = InvoiceApprovalStatement::history($companyName, $nonce);
+        ProofPortalHistoryChallenge::consume((string) tenant('id'), $message);
+
+        $recovered = EthereumPersonalSign::recoverAddress($message, $signature);
+        $submitted = WalletAddress::normalize($address);
+        if ($submitted === null || $recovered === null || ! hash_equals($submitted, $recovered)) {
+            $this->abortUnknownVendor();
+        }
+
+        $supplierIds = Supplier::query()
+            ->whereRaw('lower(wallet_address) = ?', [$submitted])
+            ->pluck('id')
+            ->map(static fn ($id): string => (string) $id)
+            ->all();
+        if ($supplierIds === []) {
+            $this->abortUnknownVendor();
+        }
+
+        $items = [];
+        foreach ($supplierIds as $supplierId) {
+            array_push($items, ...$this->historyItemsForSupplier($supplierId, null));
+        }
+
+        return $items;
     }
 
     /**
@@ -275,10 +447,92 @@ class InvoiceProofPortalService
             }
             $proof = $this->invoiceProofVerificationService->verifySalesInvoice($invoice, $company);
             $issued = ProofPortalLink::issue($tenantId, (string) $invoice->id);
-            $items[] = $this->historyItem($invoice, $snapshot->canonical_json, $proof->status->value, $issued)->toArray();
+            $items[] = $this->historyItem(
+                (string) $invoice->id,
+                $invoice->invoice_number,
+                $invoice->grand_total,
+                $snapshot->canonical_json,
+                $proof->status->value,
+                $issued,
+            )->toArray();
         }
 
         return $items;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function historyItemsForSupplier(string $supplierId, ?string $exceptInvoiceId): array
+    {
+        if ($supplierId === '') {
+            return [];
+        }
+
+        $invoices = PurchaseInvoice::query()
+            ->where('supplier_id', $supplierId)
+            ->whereIn('status', [PurchaseInvoiceStatus::Posted, PurchaseInvoiceStatus::Reversed])
+            ->orderByDesc('invoice_date')
+            ->orderByDesc('posted_at')
+            ->get();
+
+        $company = CompanyProfile::singleton();
+        $tenantId = (string) tenant('id');
+        $items = [];
+        foreach ($invoices as $invoice) {
+            if ($exceptInvoiceId !== null && (string) $invoice->id === $exceptInvoiceId) {
+                continue;
+            }
+            $snapshot = $this->invoiceSnapshotService->findForPurchaseInvoice((string) $invoice->id);
+            if ($snapshot === null) {
+                continue;
+            }
+            $proof = $this->invoiceProofVerificationService->verifyPurchaseInvoice($invoice, $company);
+            $issued = ProofPortalLink::issue($tenantId, (string) $invoice->id, '/proofs/purchases/');
+            $items[] = $this->historyItem(
+                (string) $invoice->id,
+                $invoice->invoice_number,
+                $invoice->grand_total,
+                $snapshot->canonical_json,
+                $proof->status->value,
+                $issued,
+            )->toArray();
+        }
+
+        return $items;
+    }
+
+    /**
+     * @return array{id: ?string, invoice_number: ?string, exp: ?int, sig: ?string}|null
+     */
+    private function signedPurchasePortalInvoice(?PurchaseInvoice $related): ?array
+    {
+        if ($related === null) {
+            return null;
+        }
+
+        $number = is_string($related->invoice_number) && $related->invoice_number !== ''
+            ? $related->invoice_number
+            : null;
+
+        $snapshot = $this->invoiceSnapshotService->findForPurchaseInvoice((string) $related->id);
+        if ($snapshot === null) {
+            return $number === null ? null : [
+                'id' => null,
+                'invoice_number' => $number,
+                'exp' => null,
+                'sig' => null,
+            ];
+        }
+
+        $issued = ProofPortalLink::issue((string) tenant('id'), (string) $related->id, '/proofs/purchases/');
+
+        return [
+            'id' => (string) $related->id,
+            'invoice_number' => $number,
+            'exp' => $issued['exp'],
+            'sig' => $issued['sig'],
+        ];
     }
 
     /**
@@ -319,8 +573,14 @@ class InvoiceProofPortalService
     /**
      * @param  array{url: string, exp: int, sig: string}  $issued
      */
-    private function historyItem(SalesInvoice $invoice, string $canonicalJson, string $status, array $issued): BuyerInvoiceHistoryItemData
-    {
+    private function historyItem(
+        string $id,
+        mixed $invoiceNumber,
+        mixed $grandTotal,
+        string $canonicalJson,
+        string $status,
+        array $issued,
+    ): BuyerInvoiceHistoryItemData {
         $canonical = [];
 
         try {
@@ -332,13 +592,13 @@ class InvoiceProofPortalService
             $canonical = [];
         }
 
-        $number = $canonical['invoice_number'] ?? $invoice->invoice_number;
+        $number = $canonical['invoice_number'] ?? $invoiceNumber;
         $date = $canonical['invoice_date'] ?? null;
-        $total = $canonical['grand_total'] ?? $invoice->grand_total;
+        $total = $canonical['grand_total'] ?? $grandTotal;
         $currency = $canonical['currency_code'] ?? null;
 
         return new BuyerInvoiceHistoryItemData(
-            id: (string) $invoice->id,
+            id: $id,
             invoiceNumber: is_string($number) && $number !== '' ? $number : null,
             invoiceDate: is_string($date) && $date !== '' ? $date : null,
             grandTotal: is_string($total) ? $total : (string) $total,
@@ -365,6 +625,33 @@ class InvoiceProofPortalService
         abort(422, 'The connected wallet does not match a customer of this company.', [
             'X-Error-Code' => 'PROOF_BUYER_UNKNOWN',
         ]);
+    }
+
+    private function abortUnknownVendor(): never
+    {
+        abort(422, 'The connected wallet does not match a vendor of this company.', [
+            'X-Error-Code' => 'PROOF_VENDOR_UNKNOWN',
+        ]);
+    }
+
+    private function assertPurchasePortalInvoice(PurchaseInvoice $invoice): void
+    {
+        if (! in_array($invoice->status, [PurchaseInvoiceStatus::Posted, PurchaseInvoiceStatus::Reversed], true)) {
+            abort(404);
+        }
+
+        if (! CompanySetting::current()->invoiceProofsEnabled()) {
+            abort(
+                403,
+                'Invoice proofs are disabled for this company.',
+                ['X-Error-Code' => 'INVOICE_PROOFS_DISABLED']
+            );
+        }
+
+        $snapshot = $this->invoiceSnapshotService->findForPurchaseInvoice((string) $invoice->id);
+        if ($snapshot === null) {
+            abort(404);
+        }
     }
 
     /**

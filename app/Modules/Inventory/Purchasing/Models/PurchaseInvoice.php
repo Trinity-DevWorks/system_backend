@@ -48,6 +48,10 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'paid_total',
     'net_to_pay',
     'notes',
+    'replaces_invoice_id',
+    'linked_proof_id',
+    'linked_seal',
+    'linked_dispute_reason',
     'created_by',
     'posted_by',
     'posted_at',
@@ -66,6 +70,7 @@ class PurchaseInvoice extends Model implements AuditableContract
     {
         return [
             'status' => PurchaseInvoiceStatus::class,
+            'linked_seal' => 'array',
             'invoice_date' => 'date',
             'due_on' => 'date',
             'exchange_rate' => 'decimal:12',
@@ -150,6 +155,22 @@ class PurchaseInvoice extends Model implements AuditableContract
     public function postedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'posted_by');
+    }
+
+    /**
+     * @return BelongsTo<PurchaseInvoice, $this>
+     */
+    public function replacesInvoice(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'replaces_invoice_id');
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<PurchaseInvoice, $this>
+     */
+    public function replacedByInvoice(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(self::class, 'replaces_invoice_id');
     }
 
     /**

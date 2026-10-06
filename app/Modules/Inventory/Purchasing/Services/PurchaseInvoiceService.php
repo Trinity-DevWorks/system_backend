@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\Services;
 
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\ExchangeRateService;
@@ -19,6 +20,9 @@ use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
 use App\Modules\Inventory\Purchasing\Support\GoodsReceiptRules;
 use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceLineQuantity;
 use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
+use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
+use App\Modules\InvoiceProof\Services\InvoiceSnapshotService;
+use App\Modules\InvoiceProof\Services\LinkedPurchaseDisclosureService;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Services\InventoryLotService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
@@ -48,6 +52,9 @@ class PurchaseInvoiceService
         private readonly InventoryLotService $inventoryLotService,
         private readonly SupplierItemService $supplierItemService,
         private readonly ExchangeRateService $exchangeRateService,
+        private readonly InvoiceSnapshotService $invoiceSnapshotService,
+        private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
+        private readonly LinkedPurchaseDisclosureService $linkedPurchaseDisclosureService,
     ) {}
 
     /**
@@ -218,7 +225,8 @@ class PurchaseInvoiceService
 
     public function post(PurchaseInvoice $invoice, ?string $userId): PurchaseInvoice
     {
-        return DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
+        $proofId = null;
+        $posted = DB::transaction(function () use ($invoice, $userId, &$proofId): PurchaseInvoice {
             $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             PurchaseInvoiceRules::assertPostable($locked);
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
@@ -296,13 +304,33 @@ class PurchaseInvoiceService
                 'posted_at' => now(),
             ]);
 
+            if ($locked->linked_proof_id !== null && ! CompanySetting::current()->invoiceProofsEnabled()) {
+                abort(403, 'Invoice proofs are disabled for this company.', [
+                    'X-Error-Code' => 'INVOICE_PROOFS_DISABLED',
+                ]);
+            }
+
+            if (CompanySetting::current()->invoiceProofsEnabled() && $locked->linked_proof_id !== null) {
+                $this->invoiceChainRegistrationService->assertExternalProofLink((string) $locked->linked_proof_id);
+            } elseif (CompanySetting::current()->invoiceProofsEnabled()) {
+                $snapshot = $this->invoiceSnapshotService->capturePurchaseInvoice($locked->fresh() ?? $locked);
+                $this->invoiceChainRegistrationService->recordPending($snapshot);
+                $proofId = (string) $snapshot->id;
+            }
+
             return $this->find($locked->id);
         });
+
+        if (is_string($proofId)) {
+            $this->invoiceChainRegistrationService->dispatchRegistration($proofId);
+        }
+
+        return $posted;
     }
 
     public function reverse(PurchaseInvoice $invoice, ?string $userId): PurchaseInvoice
     {
-        return DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
+        $reversed = DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
             $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== PurchaseInvoiceStatus::Posted) {
                 abort(422, 'Only a posted purchase invoice can be reversed.', [
@@ -338,6 +366,78 @@ class PurchaseInvoiceService
 
             return $this->find($locked->id);
         });
+
+        if ($reversed->linked_proof_id === null) {
+            $this->invoiceChainRegistrationService->requestPurchaseRevocation($reversed);
+        }
+
+        return $reversed;
+    }
+
+    public function reissue(PurchaseInvoice $invoice, ?string $userId): PurchaseInvoice
+    {
+        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+
+        if (! in_array($invoice->status, [PurchaseInvoiceStatus::Posted, PurchaseInvoiceStatus::Reversed], true)) {
+            abort(422, 'Only a posted or reversed purchase invoice can be reissued.', [
+                'X-Error-Code' => 'PURCHASE_INVOICE_CANNOT_REISSUE',
+            ]);
+        }
+        if (bccomp((string) $invoice->paid_total, '0', 4) > 0) {
+            abort(422, 'This invoice has payments and cannot be reissued.', [
+                'X-Error-Code' => 'PURCHASE_INVOICE_HAS_PAYMENTS',
+            ]);
+        }
+        if ($invoice->goods_receipt_id !== null) {
+            abort(422, 'A goods-receipt purchase invoice cannot be reissued. Reverse the GRN-linked bill instead.', [
+                'X-Error-Code' => 'PURCHASE_INVOICE_GRN_CANNOT_REISSUE',
+            ]);
+        }
+        if ($invoice->linked_proof_id !== null) {
+            abort(422, 'A purchase invoice linked to a supplier proof cannot be reissued.', [
+                'X-Error-Code' => 'PURCHASE_INVOICE_LINKED_CANNOT_REISSUE',
+            ]);
+        }
+        if (PurchaseInvoice::query()->where('replaces_invoice_id', $invoice->id)->exists()) {
+            abort(422, 'This invoice already has a replacement.', [
+                'X-Error-Code' => 'PURCHASE_INVOICE_ALREADY_REISSUED',
+            ]);
+        }
+
+        if ($invoice->status === PurchaseInvoiceStatus::Posted) {
+            $this->reverse($invoice, $userId);
+        }
+
+        $source = $this->find((string) $invoice->id);
+        $clone = $this->create([
+            'supplier_id' => (string) $source->supplier_id,
+            'warehouse_id' => (int) $source->warehouse_id,
+            'currency_id' => (int) $source->currency_id,
+            'payment_method_id' => $source->payment_method_id,
+            'payment_terms_id' => $source->payment_terms_id,
+            'invoice_date' => $source->invoice_date?->toDateString(),
+            'due_on' => $source->due_on?->toDateString(),
+            'exchange_rate' => $source->exchange_rate,
+            'reference_2' => $source->reference_2,
+            'adjustment' => $source->adjustment,
+            'notes' => $source->notes,
+            'lines' => $source->lines->map(static fn (PurchaseInvoiceLine $line): array => [
+                'item_id' => (string) $line->item_id,
+                'item_uom_id' => $line->item_uom_id,
+                'warehouse_id' => $line->warehouse_id,
+                'lot_id' => $line->lot_id,
+                'quantity' => $line->quantity,
+                'unit_price' => $line->unit_price,
+                'discount_percent' => $line->discount_percent,
+                'tax_rate' => $line->tax_rate,
+                'description' => $line->description,
+                'notes' => $line->notes,
+            ])->all(),
+        ], $userId);
+
+        $clone->update(['replaces_invoice_id' => $source->id]);
+
+        return $this->find((string) $clone->id);
     }
 
     private function undoDirectPurchaseOrderReceipt(PurchaseInvoice $invoice): void
@@ -430,7 +530,15 @@ class PurchaseInvoiceService
                 ? (int) $order->warehouse_id
                 : (int) ($data['warehouse_id'] ?? $existing?->warehouse_id));
 
-        return [
+        $proofId = $this->resolveLinkedProofId($data, $existing);
+        $seal = null;
+        if ($proofId !== null) {
+            $storedSeal = is_array($existing?->linked_seal) ? $existing->linked_seal : null;
+            $disclosure = isset($data['disclosure']) && is_array($data['disclosure']) ? $data['disclosure'] : null;
+            $seal = $this->linkedPurchaseDisclosureService->sealFor($proofId, $disclosure, $storedSeal);
+        }
+
+        $header = [
             'supplier_id' => (string) $supplier->id,
             'goods_receipt_id' => $receipt?->id,
             'purchase_order_id' => $order?->id,
@@ -452,7 +560,14 @@ class PurchaseInvoiceService
                 ? PriceMath::normalize($data['adjustment'] ?? 0)
                 : ($existing !== null ? (string) $existing->adjustment : PriceMath::normalize(0)),
             'notes' => $this->nullableString($data['notes'] ?? $existing?->notes),
+            'linked_proof_id' => $proofId,
+            'linked_seal' => $seal,
         ];
+        if ($seal !== null) {
+            $this->linkedPurchaseDisclosureService->assertHeaderMatches($header, $seal);
+        }
+
+        return $header;
     }
 
     private function defaultDueOn(string $invoiceDate, ?int $paymentTermsId): string
@@ -471,6 +586,10 @@ class PurchaseInvoiceService
      */
     private function replaceLines(PurchaseInvoice $invoice, array $lines): void
     {
+        $this->linkedPurchaseDisclosureService->assertLinesMatch(
+            is_array($invoice->linked_seal) ? $invoice->linked_seal : null,
+            $lines,
+        );
         $invoice->loadMissing('supplier');
         $supplier = $invoice->supplier;
         $date = $invoice->invoice_date->toDateString();
@@ -691,5 +810,31 @@ class PurchaseInvoiceService
         $text = trim((string) $value);
 
         return $text === '' ? null : $text;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveLinkedProofId(array $data, ?PurchaseInvoice $existing): ?string
+    {
+        $raw = array_key_exists('linked_proof_id', $data)
+            ? $data['linked_proof_id']
+            : $existing?->linked_proof_id;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        $proofId = strtolower(trim((string) $raw));
+        $taken = PurchaseInvoice::query()
+            ->where('linked_proof_id', $proofId)
+            ->when($existing !== null, fn ($query) => $query->whereKeyNot($existing->id))
+            ->exists();
+        if ($taken) {
+            abort(422, 'This supplier proof is already linked to another purchase invoice.', [
+                'X-Error-Code' => 'PURCHASE_INVOICE_LINKED_PROOF_IN_USE',
+            ]);
+        }
+
+        return $proofId;
     }
 }

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\InvoiceProof\Services;
 
 use App\Modules\CompanySetting\Models\CompanySetting;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofDisclosureData;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofFieldsData;
 use App\Modules\InvoiceProof\Enums\InvoiceChainRegistrationStatus;
@@ -28,7 +30,14 @@ class InvoiceProofDisclosureService
 
     public function fields(SalesInvoice $invoice): InvoiceProofFieldsData
     {
-        [$snapshot, $tree] = $this->sealedTree($invoice);
+        [$snapshot, $tree] = $this->sealedTree($this->salesSnapshot($invoice));
+
+        return InvoiceProofFieldsData::fromTree($snapshot, $tree);
+    }
+
+    public function fieldsForPurchase(PurchaseInvoice $invoice): InvoiceProofFieldsData
+    {
+        [$snapshot, $tree] = $this->sealedTree($this->purchaseSnapshot($invoice));
 
         return InvoiceProofFieldsData::fromTree($snapshot, $tree);
     }
@@ -38,7 +47,31 @@ class InvoiceProofDisclosureService
      */
     public function disclose(SalesInvoice $invoice, array $paths): InvoiceProofDisclosureData
     {
-        [$snapshot, $tree] = $this->sealedTree($invoice);
+        return $this->discloseSnapshot(
+            $this->salesSnapshot($invoice),
+            $paths,
+            $this->invoiceChainRegistrationService->findForSalesInvoice((string) $invoice->id),
+        );
+    }
+
+    /**
+     * @param  list<string>  $paths
+     */
+    public function disclosePurchase(PurchaseInvoice $invoice, array $paths): InvoiceProofDisclosureData
+    {
+        return $this->discloseSnapshot(
+            $this->purchaseSnapshot($invoice),
+            $paths,
+            $this->invoiceChainRegistrationService->findForPurchaseInvoice((string) $invoice->id),
+        );
+    }
+
+    /**
+     * @param  list<string>  $paths
+     */
+    private function discloseSnapshot(InvoiceSnapshot $snapshot, array $paths, mixed $registration): InvoiceProofDisclosureData
+    {
+        [$snapshot, $tree] = $this->sealedTree($snapshot);
 
         $indices = [];
         foreach ($paths as $path) {
@@ -53,9 +86,6 @@ class InvoiceProofDisclosureService
         ksort($indices);
 
         $chainEnabled = $this->invoiceChainRegistrationService->isConfigured();
-        $registration = $chainEnabled
-            ? $this->invoiceChainRegistrationService->findForSalesInvoice((string) $invoice->id)
-            : null;
         if ($registration?->status !== InvoiceChainRegistrationStatus::Confirmed) {
             $registration = null;
         }
@@ -66,21 +96,12 @@ class InvoiceProofDisclosureService
             array_values($indices),
             $chainEnabled ? (int) config('blockchain.chain_id') : null,
             $chainEnabled ? $this->configuredContractAddress() : null,
-            $registration,
+            $chainEnabled ? $registration : null,
         );
     }
 
-    /**
-     * @return array{0: InvoiceSnapshot, 1: CanonicalInvoiceMerkle}
-     */
-    private function sealedTree(SalesInvoice $invoice): array
+    private function salesSnapshot(SalesInvoice $invoice): InvoiceSnapshot
     {
-        if (! CompanySetting::current()->invoiceProofsEnabled()) {
-            abort(403, 'Invoice proofs are disabled for this company.', [
-                'X-Error-Code' => 'INVOICE_PROOFS_DISABLED',
-            ]);
-        }
-
         if ($invoice->status !== SalesInvoiceStatus::Posted) {
             abort(422, 'Only posted sales invoices have a proof.', [
                 'X-Error-Code' => 'SALES_INVOICE_NOT_POSTED',
@@ -91,6 +112,34 @@ class InvoiceProofDisclosureService
         if ($snapshot === null) {
             abort(422, 'This invoice has no sealed proof yet.', [
                 'X-Error-Code' => 'INVOICE_PROOF_NOT_REGISTERED',
+            ]);
+        }
+
+        return $snapshot;
+    }
+
+    private function purchaseSnapshot(PurchaseInvoice $invoice): InvoiceSnapshot
+    {
+        PurchaseInvoiceRules::assertPostedForProof($invoice);
+
+        $snapshot = $this->invoiceSnapshotService->findForPurchaseInvoice((string) $invoice->id);
+        if ($snapshot === null) {
+            abort(422, 'This invoice has no sealed proof yet.', [
+                'X-Error-Code' => 'INVOICE_PROOF_NOT_REGISTERED',
+            ]);
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * @return array{0: InvoiceSnapshot, 1: CanonicalInvoiceMerkle}
+     */
+    private function sealedTree(InvoiceSnapshot $snapshot): array
+    {
+        if (! CompanySetting::current()->invoiceProofsEnabled()) {
+            abort(403, 'Invoice proofs are disabled for this company.', [
+                'X-Error-Code' => 'INVOICE_PROOFS_DISABLED',
             ]);
         }
 

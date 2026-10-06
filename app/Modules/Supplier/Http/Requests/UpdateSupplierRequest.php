@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Http\Requests;
 
+use App\Modules\InvoiceProof\Enums\WalletType;
+use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Modules\Supplier\Models\Supplier;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Enum;
 use Illuminate\Validation\Validator;
 
 class UpdateSupplierRequest extends FormRequest
@@ -32,6 +35,13 @@ class UpdateSupplierRequest extends FormRequest
                 'exempted_from' => null,
                 'exempted_to' => null,
             ]);
+        }
+
+        if ($this->exists('wallet_address')) {
+            $wallet = $this->input('wallet_address');
+            if ($wallet === null || (is_string($wallet) && trim($wallet) === '')) {
+                $this->merge(['wallet_address' => null, 'wallet_type' => null]);
+            }
         }
     }
 
@@ -65,6 +75,8 @@ class UpdateSupplierRequest extends FormRequest
             'exempted_from' => ['sometimes', 'nullable', 'date', 'required_with:exempted_to'],
             'exempted_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:exempted_from'],
             'notes' => ['sometimes', 'nullable', 'string'],
+            'wallet_address' => WalletAddress::optionalRule(),
+            'wallet_type' => ['nullable', 'required_with:wallet_address', new Enum(WalletType::class)],
             'credit_limit' => ['prohibited'],
             'opening_balance' => ['prohibited'],
             'supplier_code' => ['prohibited'],

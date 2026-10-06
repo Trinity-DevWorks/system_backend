@@ -36,6 +36,10 @@ return new class extends Migration
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('posted_at')->nullable();
+            $table->uuid('replaces_invoice_id')->nullable()->unique();
+            $table->uuid('linked_proof_id')->nullable()->unique();
+            $table->json('linked_seal')->nullable();
+            $table->text('linked_dispute_reason')->nullable();
             $table->timestamps();
 
             $table->index(['status', 'created_at']);

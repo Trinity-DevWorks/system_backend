@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\InvoiceProof\Http\Requests\RecordInvoiceProofDisputeRequest;
 use App\Modules\InvoiceProof\Http\Requests\UnlockInvoiceProofPortalRequest;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use Illuminate\Http\JsonResponse;
@@ -86,5 +87,56 @@ class InvoiceProofPortalController extends Controller
         );
 
         return ApiResponse::success($data->toArray(), 'Invoice dispute recorded.');
+    }
+
+    public function vendorHistoryChallenge(): JsonResponse
+    {
+        return ApiResponse::success(
+            $this->invoiceProofPortalService->vendorHistoryChallenge(),
+            'Vendor invoice list challenge issued.'
+        );
+    }
+
+    public function vendorHistory(UnlockInvoiceProofPortalRequest $request): JsonResponse
+    {
+        return ApiResponse::success(
+            $this->invoiceProofPortalService->vendorHistory(
+                (string) $request->validated('address'),
+                (string) $request->validated('signature'),
+                (string) $request->validated('nonce'),
+            ),
+            'Vendor invoices loaded.'
+        );
+    }
+
+    public function showPurchase(Request $request, PurchaseInvoice $purchaseInvoice): JsonResponse
+    {
+        $this->invoiceProofPortalService->assertValidLink(
+            (string) $purchaseInvoice->id,
+            $request->query('exp'),
+            $request->query('sig'),
+        );
+
+        return ApiResponse::success(
+            $this->invoiceProofPortalService->challengePurchase($purchaseInvoice)->toArray(),
+            'Invoice proof challenge issued.'
+        );
+    }
+
+    public function unlockPurchase(UnlockInvoiceProofPortalRequest $request, PurchaseInvoice $purchaseInvoice): JsonResponse
+    {
+        $this->invoiceProofPortalService->assertValidLink(
+            (string) $purchaseInvoice->id,
+            $request->query('exp'),
+            $request->query('sig'),
+        );
+
+        $data = $this->invoiceProofPortalService->unlockPurchase(
+            $purchaseInvoice,
+            (string) $request->validated('address'),
+            (string) $request->validated('signature'),
+        );
+
+        return ApiResponse::success($data->toArray(), 'Invoice proof unlocked successfully.');
     }
 }

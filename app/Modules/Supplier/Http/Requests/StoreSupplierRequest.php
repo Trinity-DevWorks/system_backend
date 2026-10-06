@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Http\Requests;
 
+use App\Modules\InvoiceProof\Enums\WalletType;
+use App\Modules\InvoiceProof\Support\WalletAddress;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rules\Enum;
 
 class StoreSupplierRequest extends FormRequest
 {
@@ -29,6 +32,11 @@ class StoreSupplierRequest extends FormRequest
                 'exempted_from' => null,
                 'exempted_to' => null,
             ]);
+        }
+
+        $wallet = $this->input('wallet_address');
+        if ($wallet === null || (is_string($wallet) && trim($wallet) === '')) {
+            $this->merge(['wallet_address' => null, 'wallet_type' => null]);
         }
     }
 
@@ -59,6 +67,8 @@ class StoreSupplierRequest extends FormRequest
             'exempted_from' => ['nullable', 'date', 'required_with:exempted_to'],
             'exempted_to' => ['nullable', 'date', 'after_or_equal:exempted_from'],
             'notes' => ['nullable', 'string'],
+            'wallet_address' => WalletAddress::optionalRule(),
+            'wallet_type' => ['nullable', 'required_with:wallet_address', new Enum(WalletType::class)],
 
             'addresses' => ['nullable', 'array'],
             'addresses.*.address_line_1' => ['required_with:addresses', 'string', 'max:255'],

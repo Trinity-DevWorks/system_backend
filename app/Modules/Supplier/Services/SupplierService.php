@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Supplier\Services;
 
 use App\Modules\CompanySetting\Support\PriceMath;
+use App\Modules\InvoiceProof\Enums\WalletType;
+use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
+use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
+use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
 use App\Modules\Supplier\Models\SupplierBalance;
@@ -19,7 +23,9 @@ use Illuminate\Support\Facades\DB;
 class SupplierService
 {
     public function __construct(
-        private readonly SupplierLedgerService $ledgerService
+        private readonly SupplierLedgerService $ledgerService,
+        private readonly CompanySafeSignerGuard $companySafeSignerGuard,
+        private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
     ) {}
 
     public function list(): Collection
@@ -92,6 +98,11 @@ class SupplierService
     public function create(array $validated): Supplier
     {
         return DB::transaction(function () use ($validated): Supplier {
+            $walletAddress = WalletAddress::normalize($validated['wallet_address'] ?? null);
+            $walletType = $walletAddress === null ? null : WalletType::tryFrom((string) ($validated['wallet_type'] ?? ''));
+            $this->companySafeSignerGuard->abortIfWalletTypeInvalid($walletAddress, $walletType);
+            $this->companySafeSignerGuard->abortIfCustomerWalletForbidden($walletAddress);
+
             $supplier = Supplier::query()->create([
                 'supplier_group_id' => $validated['supplier_group_id'] ?? null,
                 'payment_method_id' => $validated['payment_method_id'] ?? null,
@@ -110,6 +121,8 @@ class SupplierService
                 'exempted_to' => $validated['exempted_to'] ?? null,
                 'vat_number' => $validated['vat_number'] ?? null,
                 'notes' => $validated['notes'] ?? null,
+                'wallet_address' => $walletAddress,
+                'wallet_type' => $walletType,
             ]);
 
             $addresses = $validated['addresses'] ?? [];
@@ -185,6 +198,20 @@ class SupplierService
             $currencyBalances = $patch['currency_balances'] ?? null;
             $scalar = collect($patch)->except(['currency_balances'])->all();
 
+            if (array_key_exists('wallet_address', $scalar) || array_key_exists('wallet_type', $scalar)) {
+                $wallet = array_key_exists('wallet_address', $scalar)
+                    ? WalletAddress::normalize($scalar['wallet_address'])
+                    : WalletAddress::normalize($supplier->wallet_address);
+                $walletType = array_key_exists('wallet_type', $scalar)
+                    ? WalletType::tryFrom((string) ($scalar['wallet_type'] ?? ''))
+                    : $supplier->wallet_type;
+                $scalar['wallet_address'] = $wallet;
+                $scalar['wallet_type'] = $wallet === null ? null : $walletType;
+                $this->companySafeSignerGuard->abortIfWalletTypeInvalid($wallet, $scalar['wallet_type']);
+                $this->companySafeSignerGuard->abortIfCustomerWalletForbidden($wallet);
+            }
+
+            $previousWallet = WalletAddress::normalize($supplier->wallet_address);
             $supplier->fill($scalar);
             if (! $supplier->is_vat_registered) {
                 $supplier->vat_number = null;
@@ -201,13 +228,20 @@ class SupplierService
             }
         });
 
-        return $supplier->refresh()->load([
+        $supplier = $supplier->refresh()->load([
             'supplierGroup',
             'balances.currency',
             'paymentMethod',
             'paymentTerm',
             'vatGroup',
         ]);
+
+        $nextWallet = WalletAddress::normalize($supplier->wallet_address);
+        if ($nextWallet !== null) {
+            $this->invoiceChainRegistrationService->dispatchVendorPartySync((string) $supplier->id);
+        }
+
+        return $supplier;
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Modules\Currency\Models\Currency;
 use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Support\InvoiceProofBytes;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use InvalidArgumentException;
 use JsonException;
@@ -62,6 +63,7 @@ readonly class InvoiceProofPortalData
         public ?string $proofId,
         public ?array $eip712,
         public bool $canApproveAsBuyer,
+        public bool $canApproveAsCompany = false,
         public bool $canDisputeAsBuyer = false,
         public bool $locked = false,
         public ?string $registeredAt = null,
@@ -87,12 +89,13 @@ readonly class InvoiceProofPortalData
      * @param  array{id: ?string, invoice_number: ?string, exp: ?int, sig: ?string}|null  $replacesInvoice
      */
     public static function fromSnapshot(
-        SalesInvoice $invoice,
+        string $invoiceId,
         InvoiceSnapshot $snapshot,
         InvoiceProofVerificationData $proof,
         array $otherInvoices = [],
         ?array $replacedByInvoice = null,
         ?array $replacesInvoice = null,
+        bool $asVendor = false,
     ): self {
         try {
             $canonical = json_decode($snapshot->canonical_json, true, 512, JSON_THROW_ON_ERROR);
@@ -109,8 +112,11 @@ readonly class InvoiceProofPortalData
         $supplier = is_array($canonical['supplier'] ?? null) ? $canonical['supplier'] : [];
         $buyer = is_array($canonical['buyer'] ?? null) ? $canonical['buyer'] : [];
 
+        $vendorTyped = $asVendor && $proof->canApproveAsCompany;
+        $buyerTyped = ! $asVendor && $proof->canApproveAsBuyer;
+
         return new self(
-            id: (string) $invoice->id,
+            id: $invoiceId,
             companyName: self::stringOrEmpty($supplier['name'] ?? null),
             customerName: self::stringOrNull($buyer['name'] ?? null),
             invoiceNumber: self::stringOrNull($canonical['invoice_number'] ?? null),
@@ -133,10 +139,11 @@ readonly class InvoiceProofPortalData
             buyerWalletType: $proof->buyerWalletType,
             supplierWallet: $proof->supplierWallet,
             proofId: $proof->proofId,
-            eip712: $proof->canApproveAsBuyer ? $proof->eip712 : null,
-            disputeEip712: $proof->canDisputeAsBuyer ? $proof->disputeEip712 : null,
-            canApproveAsBuyer: $proof->canApproveAsBuyer,
-            canDisputeAsBuyer: $proof->canDisputeAsBuyer,
+            eip712: ($vendorTyped || $buyerTyped) ? $proof->eip712 : null,
+            disputeEip712: (! $asVendor && $proof->canDisputeAsBuyer) ? $proof->disputeEip712 : null,
+            canApproveAsBuyer: $buyerTyped,
+            canApproveAsCompany: $vendorTyped,
+            canDisputeAsBuyer: ! $asVendor && $proof->canDisputeAsBuyer,
             registeredAt: $proof->registeredAt,
             supplierApprovedAt: $proof->supplierApprovedAt,
             buyerApprovedAt: $proof->buyerApprovedAt,
@@ -211,7 +218,8 @@ readonly class InvoiceProofPortalData
             return null;
         }
 
-        $number = SalesInvoice::query()->whereKey($invoiceId)->value('invoice_number');
+        $number = SalesInvoice::query()->whereKey($invoiceId)->value('invoice_number')
+            ?? PurchaseInvoice::query()->whereKey($invoiceId)->value('invoice_number');
 
         return is_string($number) && $number !== '' ? $number : null;
     }
@@ -315,6 +323,7 @@ readonly class InvoiceProofPortalData
             'eip712' => $this->eip712,
             'dispute_eip712' => $this->disputeEip712,
             'can_approve_as_buyer' => $this->canApproveAsBuyer,
+            'can_approve_as_company' => $this->canApproveAsCompany,
             'can_dispute_as_buyer' => $this->canDisputeAsBuyer,
             'locked' => false,
             'registered_at' => $this->registeredAt,

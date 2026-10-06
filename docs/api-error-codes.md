@@ -263,6 +263,7 @@ Invoice proof:
 - `PROOF_WALLET_REQUIRED` (HTTP 422) — buyer portal unlock requires a customer `wallet_address`
 - `PROOF_WALLET_MISMATCH` (HTTP 422) — personal_sign signer is neither the invoice buyer wallet nor an owner of the buyer Safe
 - `PROOF_BUYER_UNKNOWN` (HTTP 422) — buyer history sign-in wallet is not stored on a customer of this company
+- `PROOF_VENDOR_UNKNOWN` (HTTP 422) — vendor history sign-in wallet is not stored on a supplier of this company
 - `PROOF_UNLOCK_INVALID` (HTTP 422) — unlock nonce is missing, expired, or already used
 - `SALES_INVOICE_HAS_CREDITS` (HTTP 422) — reverse or reissue blocked while credited_total is greater than zero
 - `CREDIT_NOTE_NO_LINES` (HTTP 422)
@@ -281,6 +282,25 @@ Invoice proof:
 - `SALES_INVOICE_DISPUTED` (HTTP 422) — a customer receipt cannot be allocated to a buyer-disputed invoice
 - `SALES_INVOICE_CANNOT_REISSUE` (HTTP 422) — reissue is only allowed on a posted or reversed invoice
 - `SALES_INVOICE_ALREADY_REISSUED` (HTTP 422) — a replacement invoice already exists
+- `PURCHASE_INVOICE_PROOF_NOT_POSTED` (HTTP 422) — supplier portal link, proof disclosure, and buyer approval/dispute require a posted purchase invoice
+- `PURCHASE_INVOICE_REVERSED` (HTTP 422) — those proof actions are blocked after reverse (chain revoke); verify/status may still be read
+- `PURCHASE_INVOICE_CANNOT_REISSUE` (HTTP 422) — reissue is only allowed on a posted or reversed purchase invoice
+- `PURCHASE_INVOICE_GRN_CANNOT_REISSUE` (HTTP 422) — a goods-receipt purchase invoice cannot be cloned (unique GRN + stock)
+- `PURCHASE_INVOICE_LINKED_PROOF_NOT_FOUND` (HTTP 422) — the pasted sales-invoice proof id is not on InvoiceRegistry
+- `PURCHASE_INVOICE_LINKED_PROOF_BUYER_MISMATCH` (HTTP 422) — the on-chain buyer is not this company's wallet
+- `PURCHASE_INVOICE_LINKED_PROOF_CLOSED` (HTTP 422) — the supplier proof is revoked or disputed
+- `PURCHASE_INVOICE_LINKED_PROOF_NO_COMPANY_WALLET` (HTTP 422) — the company wallet is required before linking
+- `PURCHASE_INVOICE_LINKED_PROOF_IN_USE` (HTTP 422) — another purchase invoice already links this proof
+- `PURCHASE_INVOICE_LINKED_CANNOT_REISSUE` (HTTP 422) — a linked purchase invoice cannot be reissued
+- `PURCHASE_INVOICE_LINKED_PROOF` (HTTP 422) — vendor link and selective disclosure do not apply to a linked supplier proof
+- `PURCHASE_INVOICE_LINKED_DISCLOSURE_REQUIRED` (HTTP 422) — a supplier disclosure file is required to link a proof
+- `PURCHASE_INVOICE_LINKED_DISCLOSURE_INCOMPLETE` (HTTP 422) — the disclosure is missing commercial invoice fields
+- `PURCHASE_INVOICE_LINKED_DISCLOSURE_MISMATCH` (HTTP 422) — the disclosure does not match the on-chain proof
+- `PURCHASE_INVOICE_LINKED_SUPPLIER_NOT_FOUND` (HTTP 422) — no single active supplier matches the disclosed supplier
+- `PURCHASE_INVOICE_LINKED_CURRENCY_NOT_FOUND` (HTTP 422) — the disclosed currency is not in this company
+- `PURCHASE_INVOICE_LINKED_ITEM_NOT_FOUND` (HTTP 422) — a disclosed item code or unit is not in this catalog
+- `PURCHASE_INVOICE_LINKED_SEAL_MISMATCH` (HTTP 422) — a sealed field was changed; the buyer warehouse may still change
+- `PURCHASE_INVOICE_ALREADY_REISSUED` (HTTP 422) — a replacement purchase invoice already exists
 - `INVOICE_PROOF_NOT_DISPUTED` (HTTP 422) — the portal dispute reason was submitted before `disputeByBuyer` landed on chain
 - `INVOICE_PROOF_DISPUTE_REASON_MISMATCH` (HTTP 422) — keccak256 of the submitted reason is not the on-chain `disputeReasonHash`
 - `INVOICE_PROOF_NOT_ON_CHAIN` (HTTP 422) — the hash is not on InvoiceRegistry yet
@@ -288,6 +308,7 @@ Invoice proof:
 - `INVOICE_PROOF_COMPANY_ALREADY_APPROVED` (HTTP 422) — `approveBySupplier` has already run for this proof
 - `INVOICE_PROOF_PARTY_NOT_SET` (HTTP 422) — company approve was requested but the on-chain supplier slot is still `address(0)`
 - `COMPANY_APPROVAL_REQUIRES_WALLET` (HTTP 422) — company approval is executed by the company Safe (`msg.sender` = supplier); Laravel does not broadcast `approveBySupplier`
+- `BUYER_APPROVAL_REQUIRES_WALLET` (HTTP 422) — purchase-invoice buyer approval is signed in the company wallet; Laravel does not broadcast `approveByBuyer`
 - `INVOICE_PROOF_CHAIN_FAILED` (HTTP 503) — JSON-RPC / InvoiceRegistry write failed, or Safe owners could not be read
 - `INVOICE_PROOF_NOT_REGISTERED` (HTTP 422) — a posted invoice has no sealed snapshot, so there is nothing to disclose
 - `INVOICE_PROOF_FIELD_UNKNOWN` (HTTP 422) — a requested disclosure path is not a leaf of the sealed snapshot

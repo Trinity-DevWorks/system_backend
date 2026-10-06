@@ -28,7 +28,21 @@ class InvoiceChainStatusLookup
      * @param  iterable<mixed>  $invoiceIds
      * @return array<string, array{status: string, financed: bool, checked_at: string|null}>
      */
+    public function forPurchaseInvoices(iterable $invoiceIds): array
+    {
+        return $this->forInvoices(InvoiceProofType::Purchase, $invoiceIds);
+    }
+
     public function forSalesInvoices(iterable $invoiceIds): array
+    {
+        return $this->forInvoices(InvoiceProofType::Sales, $invoiceIds);
+    }
+
+    /**
+     * @param  iterable<mixed>  $invoiceIds
+     * @return array<string, array{status: string, financed: bool, checked_at: string|null}>
+     */
+    private function forInvoices(InvoiceProofType $type, iterable $invoiceIds): array
     {
         $ids = collect($invoiceIds)->map(fn (mixed $id): string => (string) $id)->filter()->unique()->values();
         if ($ids->isEmpty() || ! $this->invoiceChainIssueLookup->visible()) {
@@ -36,7 +50,7 @@ class InvoiceChainStatusLookup
         }
 
         $registrations = InvoiceChainRegistration::query()
-            ->where('invoice_type', InvoiceProofType::Sales)
+            ->where('invoice_type', $type)
             ->whereIn('invoice_id', $ids)
             ->orderBy('created_at')
             ->get(['invoice_id', 'status', 'chain_status', 'financed_at', 'status_checked_at', 'updated_at']);

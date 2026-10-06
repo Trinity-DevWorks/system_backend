@@ -46,6 +46,8 @@ readonly class SupplierResponseData
         public string $createdAt,
         public string $updatedAt,
         public ?string $deletedAt,
+        public ?string $walletAddress = null,
+        public ?string $walletType = null,
     ) {}
 
     /**
@@ -142,6 +144,10 @@ readonly class SupplierResponseData
             createdAt: (string) $supplier->created_at,
             updatedAt: (string) $supplier->updated_at,
             deletedAt: $supplier->deleted_at?->toIso8601String(),
+            walletAddress: $supplier->wallet_address,
+            walletType: $supplier->wallet_type instanceof \BackedEnum
+                ? $supplier->wallet_type->value
+                : ($supplier->wallet_type !== null ? (string) $supplier->wallet_type : null),
         );
     }
 
@@ -196,6 +202,8 @@ readonly class SupplierResponseData
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
             'deleted_at' => $this->deletedAt,
+            'wallet_address' => $this->walletAddress,
+            'wallet_type' => $this->walletType,
         ];
     }
 }

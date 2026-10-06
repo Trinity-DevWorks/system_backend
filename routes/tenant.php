@@ -116,6 +116,14 @@ Route::middleware([
         ->middleware('throttle:60,1');
     Route::post('proofs/history', [InvoiceProofPortalController::class, 'history'])
         ->middleware('throttle:60,1');
+    Route::get('proofs/purchases/history', [InvoiceProofPortalController::class, 'vendorHistoryChallenge'])
+        ->middleware('throttle:60,1');
+    Route::post('proofs/purchases/history', [InvoiceProofPortalController::class, 'vendorHistory'])
+        ->middleware('throttle:60,1');
+    Route::get('proofs/purchases/{purchase_invoice}', [InvoiceProofPortalController::class, 'showPurchase'])
+        ->middleware('throttle:60,1');
+    Route::post('proofs/purchases/{purchase_invoice}/unlock', [InvoiceProofPortalController::class, 'unlockPurchase'])
+        ->middleware('throttle:60,1');
     Route::get('proofs/{sales_invoice}', [InvoiceProofPortalController::class, 'show'])
         ->middleware('throttle:60,1');
     Route::post('proofs/{sales_invoice}/unlock', [InvoiceProofPortalController::class, 'unlock'])
@@ -734,6 +742,11 @@ Route::middleware([
                 ->middleware('check.permission:purchase_invoices,view');
             Route::post('purchase-invoices', [PurchaseInvoiceController::class, 'store'])
                 ->middleware('check.permission:purchase_invoices,add');
+            Route::post('purchase-invoices/linked-proofs/import', [PurchaseInvoiceController::class, 'importLinkedProof'])
+                ->middleware(['check.permission:purchase_invoices,add', 'check.permission:invoice_proofs,view']);
+            Route::get('purchase-invoices/linked-proofs/{proofId}', [PurchaseInvoiceController::class, 'previewLinkedProof'])
+                ->whereUuid('proofId')
+                ->middleware(['check.permission:purchase_invoices,view', 'check.permission:invoice_proofs,view']);
             Route::get('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'show'])
                 ->middleware('check.permission:purchase_invoices,view');
             Route::put('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'update'])
@@ -746,6 +759,20 @@ Route::middleware([
                 ->middleware('check.permission:purchase_invoices,edit');
             Route::post('purchase-invoices/{purchase_invoice}/reverse', [PurchaseInvoiceController::class, 'reverse'])
                 ->middleware('check.permission:purchase_invoices,reverse');
+            Route::post('purchase-invoices/{purchase_invoice}/reissue', [PurchaseInvoiceController::class, 'reissue'])
+                ->middleware('check.permission:purchase_invoices,add');
+            Route::get('purchase-invoices/{purchase_invoice}/verify', [PurchaseInvoiceController::class, 'verify'])
+                ->middleware('check.permission:purchase_invoices,view');
+            Route::post('purchase-invoices/{purchase_invoice}/approve-as-buyer', [PurchaseInvoiceController::class, 'approveAsBuyer'])
+                ->middleware('check.permission:invoice_proofs,edit');
+            Route::post('purchase-invoices/{purchase_invoice}/dispute', [PurchaseInvoiceController::class, 'recordDispute'])
+                ->middleware('check.permission:invoice_proofs,edit');
+            Route::post('purchase-invoices/{purchase_invoice}/vendor-portal-link', [PurchaseInvoiceController::class, 'vendorPortalLink'])
+                ->middleware(['check.permission:purchase_invoices,view', 'check.permission:invoice_proofs,view']);
+            Route::get('purchase-invoices/{purchase_invoice}/proof-fields', [PurchaseInvoiceController::class, 'proofFields'])
+                ->middleware(['check.permission:purchase_invoices,view', 'check.permission:invoice_proofs,view']);
+            Route::post('purchase-invoices/{purchase_invoice}/proof-disclosure', [PurchaseInvoiceController::class, 'proofDisclosure'])
+                ->middleware(['check.permission:purchase_invoices,view', 'check.permission:invoice_proofs,view']);
 
             Route::apiResource('supplier-groups', SupplierGroupController::class)
                 ->middlewareFor(['index', 'show'], ['check.permission:supplier_groups,view'])

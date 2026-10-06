@@ -24,6 +24,21 @@ final class PurchaseInvoiceRules
         }
     }
 
+    public static function assertPostedForProof(PurchaseInvoice $invoice): void
+    {
+        if ($invoice->status === PurchaseInvoiceStatus::Reversed) {
+            abort(422, 'This purchase invoice is reversed.', [
+                'X-Error-Code' => 'PURCHASE_INVOICE_REVERSED',
+            ]);
+        }
+
+        if ($invoice->status !== PurchaseInvoiceStatus::Posted) {
+            abort(422, 'This purchase invoice must be posted first.', [
+                'X-Error-Code' => 'PURCHASE_INVOICE_PROOF_NOT_POSTED',
+            ]);
+        }
+    }
+
     public static function assertPostable(PurchaseInvoice $invoice): void
     {
         self::assertDraft($invoice);

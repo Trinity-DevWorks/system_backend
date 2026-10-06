@@ -37,13 +37,14 @@ final class ProofPortalLink
     /**
      * @return array{url: string, exp: int, sig: string}
      */
-    public static function issue(string $tenantId, string $invoiceId): array
+    public static function issue(string $tenantId, string $invoiceId, string $pathPrefix = '/proofs/'): array
     {
         $exp = time() + (self::ttlDays() * 86400);
         $sig = self::sign($tenantId, $invoiceId, $exp);
+        $prefix = str_ends_with($pathPrefix, '/') ? $pathPrefix : $pathPrefix.'/';
 
         return [
-            'url' => '/proofs/'.$invoiceId.'?exp='.$exp.'&sig='.$sig,
+            'url' => $prefix.$invoiceId.'?exp='.$exp.'&sig='.$sig,
             'exp' => $exp,
             'sig' => $sig,
         ];

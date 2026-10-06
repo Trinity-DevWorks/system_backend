@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Supplier\Models;
 
 use App\Models\Attachment;
+use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\VatGroup\Models\VatGroup;
@@ -42,6 +43,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'exempted_to',
     'vat_number',
     'notes',
+    'wallet_address',
+    'wallet_type',
 ])]
 class Supplier extends Model implements AuditableContract
 {
@@ -61,6 +64,7 @@ class Supplier extends Model implements AuditableContract
             'is_exempted' => 'boolean',
             'exempted_from' => 'date',
             'exempted_to' => 'date',
+            'wallet_type' => WalletType::class,
         ];
     }
 

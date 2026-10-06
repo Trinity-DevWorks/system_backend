@@ -7,6 +7,8 @@ namespace App\Modules\InvoiceProof\Services;
 use App\Modules\InvoiceProof\CanonicalInvoiceSchema;
 use App\Modules\InvoiceProof\Enums\InvoiceProofType;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\InvoiceProof\Serializers\PurchaseInvoiceCanonicalSerializer;
 use App\Modules\InvoiceProof\Serializers\SalesInvoiceCanonicalSerializer;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceHasher;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceMerkle;
@@ -44,6 +46,35 @@ class InvoiceSnapshotService
     {
         return InvoiceSnapshot::query()
             ->where('invoice_type', InvoiceProofType::Sales)
+            ->where('invoice_id', $invoiceId)
+            ->first();
+    }
+
+    public function capturePurchaseInvoice(PurchaseInvoice $invoice): InvoiceSnapshot
+    {
+        if ($this->exists(InvoiceProofType::Purchase, (string) $invoice->id)) {
+            abort(409, 'This invoice already has an immutable snapshot.', ['X-Error-Code' => 'INVOICE_SNAPSHOT_ALREADY_EXISTS']);
+        }
+
+        $proofId = (string) Str::uuid();
+        $canonicalJson = PurchaseInvoiceCanonicalSerializer::serialize($invoice, $proofId)->toJson();
+        $disclosureSecret = CanonicalInvoiceMerkle::newSecret();
+
+        return InvoiceSnapshot::query()->create([
+            'id' => $proofId,
+            'invoice_type' => InvoiceProofType::Purchase,
+            'invoice_id' => $invoice->id,
+            'schema_version' => CanonicalInvoiceSchema::VERSION,
+            'canonical_json' => $canonicalJson,
+            'content_hash' => CanonicalInvoiceHasher::hash($canonicalJson, $disclosureSecret),
+            'disclosure_secret' => $disclosureSecret,
+        ]);
+    }
+
+    public function findForPurchaseInvoice(string $invoiceId): ?InvoiceSnapshot
+    {
+        return InvoiceSnapshot::query()
+            ->where('invoice_type', InvoiceProofType::Purchase)
             ->where('invoice_id', $invoiceId)
             ->first();
     }

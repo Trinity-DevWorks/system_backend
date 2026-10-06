@@ -121,6 +121,9 @@ readonly class SalesInvoiceResponseData
     private static function applySealedSnapshot(SalesInvoice $invoice, array $payload): array
     {
         $invoice->loadMissing('snapshot');
+        if ($invoice->snapshot !== null) {
+            $payload['proof_id'] = (string) $invoice->snapshot->id;
+        }
         $canonical = self::canonicalArray($invoice->snapshot);
         if ($canonical === null) {
             return $payload;
