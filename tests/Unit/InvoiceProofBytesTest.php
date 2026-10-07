@@ -70,10 +70,12 @@ class InvoiceProofBytesTest extends TestCase
         $proofId = '11111111-1111-4111-8111-111111111111';
         $hash = str_repeat('ab', 32);
 
-        $calldata = InvoiceRegistryAbi::encodeApproveBySupplier($proofId, $hash, 'INV-0001', 'Approve invoice INV-0001 from Acme.');
+        $statement = 'Approve invoice INV-0001 from Acme.';
+        $calldata = InvoiceRegistryAbi::encodeApproveBySupplier($proofId, $hash, 'INV-0001', $statement);
 
-        $this->assertStringStartsWith('0x1d97ab7e', $calldata);
-        $this->assertStringContainsString(bin2hex('Approve invoice INV-0001 from Acme.'), $calldata);
+        $this->assertStringStartsWith('0x79240e14', $calldata);
+        $this->assertStringNotContainsString(bin2hex($statement), $calldata);
+        $this->assertStringContainsString(substr(InvoiceProofBytes::keccakUtf8($statement), 2), $calldata);
     }
 
     public function test_approve_by_buyer_calldata_encodes_typed_approval(): void
@@ -82,16 +84,18 @@ class InvoiceProofBytesTest extends TestCase
         $hash = str_repeat('ab', 32);
         $signature = '0x112233445566778899001122334455667788990011223344556677889900112233';
 
+        $statement = 'Approve invoice INV-0001 from Acme.';
         $calldata = InvoiceRegistryAbi::encodeApproveByBuyer(
             $proofId,
             $hash,
             'INV-0001',
-            'Approve invoice INV-0001 from Acme.',
+            $statement,
             $signature,
         );
 
-        $this->assertStringStartsWith('0x0a3e2d36', $calldata);
-        $this->assertStringContainsString(bin2hex('Approve invoice INV-0001 from Acme.'), $calldata);
+        $this->assertStringStartsWith('0xd137afbb', $calldata);
+        $this->assertStringNotContainsString(bin2hex($statement), $calldata);
+        $this->assertStringContainsString(substr(InvoiceProofBytes::keccakUtf8($statement), 2), $calldata);
     }
 
     public function test_buyer_approval_typed_data_uses_contract_domain(): void

@@ -124,9 +124,13 @@ Route::middleware([
         ->middleware('throttle:60,1');
     Route::post('proofs/purchases/{purchase_invoice}/unlock', [InvoiceProofPortalController::class, 'unlockPurchase'])
         ->middleware('throttle:60,1');
+    Route::post('proofs/purchases/{purchase_invoice}/resume', [InvoiceProofPortalController::class, 'resumePurchase'])
+        ->middleware('throttle:60,1');
     Route::get('proofs/{sales_invoice}', [InvoiceProofPortalController::class, 'show'])
         ->middleware('throttle:60,1');
     Route::post('proofs/{sales_invoice}/unlock', [InvoiceProofPortalController::class, 'unlock'])
+        ->middleware('throttle:60,1');
+    Route::post('proofs/{sales_invoice}/resume', [InvoiceProofPortalController::class, 'resume'])
         ->middleware('throttle:60,1');
     Route::post('proofs/{sales_invoice}/dispute', [InvoiceProofPortalController::class, 'dispute'])
         ->middleware('throttle:60,1');

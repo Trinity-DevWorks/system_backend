@@ -2285,6 +2285,33 @@ class SalesInvoiceApiTest extends TestCase
             ->assertJsonPath('code', 'PROOF_UNLOCK_INVALID');
     }
 
+    public function test_proof_portal_resume_reuses_the_signed_wallet(): void
+    {
+        $id = $this->postServiceInvoice();
+        $payload = $this->unlockProofPortal($id);
+        $session = $payload['portal_session'] ?? null;
+        $this->assertIsString($session);
+        $stamp = $this->proofPortalStamp($id);
+
+        $this->asTenantRequest(null)
+            ->postJson($this->tenantUrl("/proofs/{$id}/resume?exp={$stamp['exp']}&sig={$stamp['sig']}"), [
+                'session' => $session,
+                'address' => '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.locked', false)
+            ->assertJsonPath('data.id', $id)
+            ->assertJsonPath('data.portal_session', $session);
+
+        $this->asTenantRequest(null)
+            ->postJson($this->tenantUrl("/proofs/{$id}/resume?exp={$stamp['exp']}&sig={$stamp['sig']}"), [
+                'session' => str_repeat('ab', 32),
+                'address' => '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PROOF_SESSION_INVALID');
+    }
+
     public function test_proof_portal_unlock_rejects_unsigned_link(): void
     {
         $id = $this->postServiceInvoice();

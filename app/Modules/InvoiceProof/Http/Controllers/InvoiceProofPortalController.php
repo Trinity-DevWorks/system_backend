@@ -7,7 +7,10 @@ namespace App\Modules\InvoiceProof\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\InvoiceProof\Http\Requests\RecordInvoiceProofDisputeRequest;
+use App\Modules\InvoiceProof\Http\Requests\ResumeInvoiceProofPortalRequest;
 use App\Modules\InvoiceProof\Http\Requests\UnlockInvoiceProofPortalRequest;
+use App\Modules\InvoiceProof\Support\ProofPortalSession;
+use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
@@ -62,13 +65,36 @@ class InvoiceProofPortalController extends Controller
             $request->query('sig'),
         );
 
+        $address = (string) $request->validated('address');
         $data = $this->invoiceProofPortalService->unlock(
             $salesInvoice,
-            (string) $request->validated('address'),
+            $address,
             (string) $request->validated('signature'),
         );
 
-        return ApiResponse::success($data->toArray(), 'Invoice proof unlocked successfully.');
+        return ApiResponse::success(
+            $this->withPortalSession($data->toArray(), $address, ProofPortalSession::ROLE_BUYER),
+            'Invoice proof unlocked successfully.'
+        );
+    }
+
+    public function resume(ResumeInvoiceProofPortalRequest $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        $this->invoiceProofPortalService->assertValidLink(
+            (string) $salesInvoice->id,
+            $request->query('exp'),
+            $request->query('sig'),
+        );
+
+        $data = $this->invoiceProofPortalService->resume(
+            $salesInvoice,
+            (string) $request->validated('session'),
+            (string) $request->validated('address'),
+        );
+        $payload = $data->toArray();
+        $payload['portal_session'] = (string) $request->validated('session');
+
+        return ApiResponse::success($payload, 'Invoice proof unlocked successfully.');
     }
 
     public function dispute(RecordInvoiceProofDisputeRequest $request, SalesInvoice $salesInvoice): JsonResponse
@@ -131,12 +157,49 @@ class InvoiceProofPortalController extends Controller
             $request->query('sig'),
         );
 
+        $address = (string) $request->validated('address');
         $data = $this->invoiceProofPortalService->unlockPurchase(
             $purchaseInvoice,
-            (string) $request->validated('address'),
+            $address,
             (string) $request->validated('signature'),
         );
 
-        return ApiResponse::success($data->toArray(), 'Invoice proof unlocked successfully.');
+        return ApiResponse::success(
+            $this->withPortalSession($data->toArray(), $address, ProofPortalSession::ROLE_VENDOR),
+            'Invoice proof unlocked successfully.'
+        );
+    }
+
+    public function resumePurchase(ResumeInvoiceProofPortalRequest $request, PurchaseInvoice $purchaseInvoice): JsonResponse
+    {
+        $this->invoiceProofPortalService->assertValidLink(
+            (string) $purchaseInvoice->id,
+            $request->query('exp'),
+            $request->query('sig'),
+        );
+
+        $data = $this->invoiceProofPortalService->resumePurchase(
+            $purchaseInvoice,
+            (string) $request->validated('session'),
+            (string) $request->validated('address'),
+        );
+        $payload = $data->toArray();
+        $payload['portal_session'] = (string) $request->validated('session');
+
+        return ApiResponse::success($payload, 'Invoice proof unlocked successfully.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function withPortalSession(array $payload, string $address, string $role): array
+    {
+        $signer = WalletAddress::normalize($address);
+        if ($signer !== null) {
+            $payload['portal_session'] = ProofPortalSession::issue((string) tenant('id'), $signer, $role);
+        }
+
+        return $payload;
     }
 }

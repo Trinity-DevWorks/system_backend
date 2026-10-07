@@ -19,9 +19,9 @@ final class InvoiceRegistryAbi
 
     public const CONTENT_HASH_OF = '0x3dda9d51';
 
-    public const APPROVE_BY_SUPPLIER = '0x1d97ab7e';
+    public const APPROVE_BY_SUPPLIER = '0x79240e14';
 
-    public const APPROVE_BY_BUYER = '0x0a3e2d36';
+    public const APPROVE_BY_BUYER = '0xd137afbb';
 
     public const INVOICES = '0xf8a8a076';
 
@@ -37,7 +37,7 @@ final class InvoiceRegistryAbi
 
     public const SET_REPLACEMENT = '0x2ad8ebac';
 
-    public const DISPUTE_BY_BUYER = '0xaad824ff';
+    public const DISPUTE_BY_BUYER = '0x54723105';
 
     public const ALREADY_REGISTERED = '3a81d6fc';
 
@@ -102,18 +102,11 @@ final class InvoiceRegistryAbi
         string $invoiceNumber,
         string $statement,
     ): string {
-        $encodedNumber = self::encodeDynamic(bin2hex($invoiceNumber));
-        $encodedStatement = self::encodeDynamic(bin2hex($statement));
-        $headSize = 128;
-        $statementOffset = $headSize + intdiv(strlen($encodedNumber), 2);
-
         return self::APPROVE_BY_SUPPLIER
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($contentHash))
-            .self::padUint($headSize)
-            .self::padUint($statementOffset)
-            .$encodedNumber
-            .$encodedStatement;
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($invoiceNumber))
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($statement));
     }
 
     public static function encodeApproveByBuyer(
@@ -141,22 +134,15 @@ final class InvoiceRegistryAbi
         string $statement,
         string $signature,
     ): string {
-        $encodedNumber = self::encodeDynamic(bin2hex($invoiceNumber));
-        $encodedStatement = self::encodeDynamic(bin2hex($statement));
         $encodedSignature = self::encodeDynamic(InvoiceProofBytes::strip0x($signature));
-        $headSize = 192;
-        $statementOffset = $headSize + intdiv(strlen($encodedNumber), 2);
-        $signatureOffset = $statementOffset + intdiv(strlen($encodedStatement), 2);
 
         return self::DISPUTE_BY_BUYER
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($contentHash))
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($reasonHash))
-            .self::padUint($headSize)
-            .self::padUint($statementOffset)
-            .self::padUint($signatureOffset)
-            .$encodedNumber
-            .$encodedStatement
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($invoiceNumber))
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($statement))
+            .self::padUint(192)
             .$encodedSignature;
     }
 
@@ -487,21 +473,14 @@ final class InvoiceRegistryAbi
         string $statement,
         string $signature,
     ): string {
-        $encodedNumber = self::encodeDynamic(bin2hex($invoiceNumber));
-        $encodedStatement = self::encodeDynamic(bin2hex($statement));
         $encodedSignature = self::encodeDynamic(InvoiceProofBytes::strip0x($signature));
-        $headSize = 160;
-        $statementOffset = $headSize + intdiv(strlen($encodedNumber), 2);
-        $signatureOffset = $statementOffset + intdiv(strlen($encodedStatement), 2);
 
         return $selector
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($contentHash))
-            .self::padUint($headSize)
-            .self::padUint($statementOffset)
-            .self::padUint($signatureOffset)
-            .$encodedNumber
-            .$encodedStatement
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($invoiceNumber))
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($statement))
+            .self::padUint(160)
             .$encodedSignature;
     }
 

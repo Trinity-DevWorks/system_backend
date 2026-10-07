@@ -265,6 +265,7 @@ Invoice proof:
 - `PROOF_BUYER_UNKNOWN` (HTTP 422) — buyer history sign-in wallet is not stored on a customer of this company
 - `PROOF_VENDOR_UNKNOWN` (HTTP 422) — vendor history sign-in wallet is not stored on a supplier of this company
 - `PROOF_UNLOCK_INVALID` (HTTP 422) — unlock nonce is missing, expired, or already used
+- `PROOF_SESSION_INVALID` (HTTP 422) — portal session is missing, expired, or for a different wallet. Connect the wallet again. A valid session opens another invoice for that same wallet without a new signature.
 - `SALES_INVOICE_HAS_CREDITS` (HTTP 422) — reverse or reissue blocked while credited_total is greater than zero
 - `CREDIT_NOTE_NO_LINES` (HTTP 422)
 - `CREDIT_NOTE_EXCEEDS_OPEN` (HTTP 422)

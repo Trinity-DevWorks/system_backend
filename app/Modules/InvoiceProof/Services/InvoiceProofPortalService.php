@@ -20,6 +20,7 @@ use App\Modules\InvoiceProof\Support\EthereumPersonalSign;
 use App\Modules\InvoiceProof\Support\InvoiceApprovalStatement;
 use App\Modules\InvoiceProof\Support\ProofPortalHistoryChallenge;
 use App\Modules\InvoiceProof\Support\ProofPortalLink;
+use App\Modules\InvoiceProof\Support\ProofPortalSession;
 use App\Modules\InvoiceProof\Support\ProofPortalUnlockChallenge;
 use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
@@ -167,6 +168,15 @@ class InvoiceProofPortalService
         return $this->show($invoice);
     }
 
+    public function resume(SalesInvoice $invoice, string $token, string $address): InvoiceProofPortalData
+    {
+        $this->assertPortalInvoice($invoice);
+        $invoice->loadMissing('customer');
+        $this->assertSession($token, $address, ProofPortalSession::ROLE_BUYER, $invoice->customer?->wallet_address);
+
+        return $this->show($invoice);
+    }
+
     public function recordDispute(SalesInvoice $invoice, string $reason, ?string $txHash = null): InvoiceProofPortalData
     {
         $this->assertPortalInvoice($invoice);
@@ -288,6 +298,47 @@ class InvoiceProofPortalService
         ProofPortalUnlockChallenge::consume($tenantId, $invoiceId, $nonce);
 
         return $this->showPurchase($invoice);
+    }
+
+    public function resumePurchase(PurchaseInvoice $invoice, string $token, string $address): InvoiceProofPortalData
+    {
+        $this->assertPurchasePortalInvoice($invoice);
+        $invoice->loadMissing('supplier');
+        $this->assertSession($token, $address, ProofPortalSession::ROLE_VENDOR, $invoice->supplier?->wallet_address);
+
+        return $this->showPurchase($invoice);
+    }
+
+    private function assertSession(string $token, string $address, string $role, mixed $expectedWallet): void
+    {
+        $session = ProofPortalSession::find($token);
+        $submitted = WalletAddress::normalize($address);
+        $expected = WalletAddress::normalize($expectedWallet);
+        if (
+            $session === null
+            || $session['tenant_id'] !== (string) tenant('id')
+            || $session['role'] !== $role
+            || $submitted === null
+            || ! hash_equals($session['signer'], $submitted)
+        ) {
+            abort(422, 'This portal session has expired. Connect your wallet again.', [
+                'X-Error-Code' => 'PROOF_SESSION_INVALID',
+            ]);
+        }
+
+        if ($expected === null) {
+            abort(422, $role === ProofPortalSession::ROLE_VENDOR
+                ? 'No vendor wallet is configured for this invoice.'
+                : 'No buyer wallet is configured for this invoice.', [
+                'X-Error-Code' => 'PROOF_WALLET_REQUIRED',
+            ]);
+        }
+
+        if (! $this->canActForBuyer($expected, $submitted)) {
+            abort(422, 'The connected wallet does not match this invoice.', [
+                'X-Error-Code' => 'PROOF_WALLET_MISMATCH',
+            ]);
+        }
     }
 
     public function recordPurchaseDispute(PurchaseInvoice $invoice, string $reason, ?string $txHash = null): InvoiceProofPortalData
