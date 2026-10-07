@@ -30,6 +30,9 @@ class InvoiceProofDisclosureService
 
     public function fields(SalesInvoice $invoice): InvoiceProofFieldsData
     {
+        $this->assertRegisteredOnChain(
+            $this->invoiceChainRegistrationService->findForSalesInvoice((string) $invoice->id),
+        );
         [$snapshot, $tree] = $this->sealedTree($this->salesSnapshot($invoice));
 
         return InvoiceProofFieldsData::fromTree($snapshot, $tree);
@@ -37,21 +40,30 @@ class InvoiceProofDisclosureService
 
     public function fieldsForPurchase(PurchaseInvoice $invoice): InvoiceProofFieldsData
     {
+        $this->assertRegisteredOnChain(
+            $this->invoiceChainRegistrationService->findForPurchaseInvoice((string) $invoice->id),
+        );
         [$snapshot, $tree] = $this->sealedTree($this->purchaseSnapshot($invoice));
 
         return InvoiceProofFieldsData::fromTree($snapshot, $tree);
     }
 
     /**
-     * @param  list<string>  $paths
+     * @return array<string, mixed>
      */
+    public function discloseAll(SalesInvoice $invoice): array
+    {
+        $paths = array_column($this->fields($invoice)->toArray()['fields'], 'path');
+
+        return $this->disclose($invoice, $paths)->toArray();
+    }
+
     public function disclose(SalesInvoice $invoice, array $paths): InvoiceProofDisclosureData
     {
-        return $this->discloseSnapshot(
-            $this->salesSnapshot($invoice),
-            $paths,
-            $this->invoiceChainRegistrationService->findForSalesInvoice((string) $invoice->id),
-        );
+        $registration = $this->invoiceChainRegistrationService->findForSalesInvoice((string) $invoice->id);
+        $this->assertRegisteredOnChain($registration);
+
+        return $this->discloseSnapshot($this->salesSnapshot($invoice), $paths, $registration);
     }
 
     /**
@@ -59,11 +71,23 @@ class InvoiceProofDisclosureService
      */
     public function disclosePurchase(PurchaseInvoice $invoice, array $paths): InvoiceProofDisclosureData
     {
-        return $this->discloseSnapshot(
-            $this->purchaseSnapshot($invoice),
-            $paths,
-            $this->invoiceChainRegistrationService->findForPurchaseInvoice((string) $invoice->id),
-        );
+        $registration = $this->invoiceChainRegistrationService->findForPurchaseInvoice((string) $invoice->id);
+        $this->assertRegisteredOnChain($registration);
+
+        return $this->discloseSnapshot($this->purchaseSnapshot($invoice), $paths, $registration);
+    }
+
+    private function assertRegisteredOnChain(mixed $registration): void
+    {
+        if (! $this->invoiceChainRegistrationService->isConfigured()) {
+            return;
+        }
+
+        if ($registration?->status !== InvoiceChainRegistrationStatus::Confirmed) {
+            abort(422, 'This invoice is not registered on chain yet.', [
+                'X-Error-Code' => 'INVOICE_PROOF_NOT_ON_CHAIN',
+            ]);
+        }
     }
 
     /**

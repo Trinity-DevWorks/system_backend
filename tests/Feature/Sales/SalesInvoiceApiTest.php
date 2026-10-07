@@ -549,6 +549,31 @@ class SalesInvoiceApiTest extends TestCase
             ->assertJsonPath('code', 'SALES_INVOICE_NOT_POSTED');
     }
 
+    public function test_proof_disclosure_rejected_while_chain_registration_is_pending(): void
+    {
+        Queue::fake();
+        config([
+            'blockchain.enabled' => true,
+            'blockchain.rpc_url' => 'http://127.0.0.1:8545',
+            'blockchain.contract_address' => '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+            'blockchain.registrar_address' => '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+        ]);
+
+        $id = $this->postServiceInvoice();
+
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}/proof-fields"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'INVOICE_PROOF_NOT_ON_CHAIN');
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/proof-disclosure"), [
+                'fields' => ['grand_total'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'INVOICE_PROOF_NOT_ON_CHAIN');
+    }
+
     public function test_proof_disclosure_blocked_when_snapshot_was_tampered(): void
     {
         $id = $this->postServiceInvoice();
@@ -1848,11 +1873,11 @@ class SalesInvoiceApiTest extends TestCase
         $this->assertIsInt($data['exp'] ?? null);
         $this->assertIsString($data['sig'] ?? null);
         $this->assertIsString($data['url'] ?? null);
-        $this->assertStringContainsString("proofs/{$id}", (string) $data['url']);
+        $this->assertStringContainsString("proofs/sales/{$id}", (string) $data['url']);
         $this->assertGreaterThan(time(), (int) $data['exp']);
 
         $this->asTenantRequest(null)
-            ->getJson($this->tenantUrl((string) $data['url']))
+            ->getJson($this->tenantUrl("/proofs/{$id}?exp={$data['exp']}&sig={$data['sig']}"))
             ->assertOk()
             ->assertJsonPath('data.locked', true);
     }

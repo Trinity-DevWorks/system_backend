@@ -21,6 +21,7 @@ use App\Modules\Supplier\Http\Requests\UpdateSupplierRequest;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Supplier\Services\SupplierService;
+use App\Services\Central\TenantCompanyWalletService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,7 +37,8 @@ class SupplierController extends Controller
 
     public function __construct(
         private readonly SupplierService $supplierService,
-        private readonly SupplierLedgerService $ledgerService
+        private readonly SupplierLedgerService $ledgerService,
+        private readonly TenantCompanyWalletService $tenantCompanyWallets,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -72,7 +74,7 @@ class SupplierController extends Controller
         $ledgerBy = $this->ledgerService->balancesPerCurrencyForSupplier($supplier);
 
         return ApiResponse::created(
-            SupplierResponseData::fromModel($supplier, $ledgerBy, Currency::getPrimary()?->id)->toArray(),
+            $this->withKnownTenant(SupplierResponseData::fromModel($supplier, $ledgerBy, Currency::getPrimary()?->id)->toArray()),
             'Supplier created successfully.'
         );
     }
@@ -82,7 +84,7 @@ class SupplierController extends Controller
         $section = $this->resolveShowSection($request, self::SHOW_SECTIONS, 'summary');
         $supplier->loadMissing(['balances.currency', 'supplierGroup', 'paymentMethod', 'paymentTerm', 'vatGroup']);
         $ledgerBy = $this->ledgerService->balancesPerCurrencyForSupplier($supplier);
-        $base = SupplierResponseData::fromModel($supplier, $ledgerBy, Currency::getPrimary()?->id)->toArray();
+        $base = $this->withKnownTenant(SupplierResponseData::fromModel($supplier, $ledgerBy, Currency::getPrimary()?->id)->toArray());
 
         if ($section === 'summary') {
             return ApiResponse::success($base, 'Supplier fetched successfully.');
@@ -136,9 +138,21 @@ class SupplierController extends Controller
         $ledgerBy = $this->ledgerService->balancesPerCurrencyForSupplier($supplier);
 
         return ApiResponse::success(
-            SupplierResponseData::fromModel($supplier, $ledgerBy, Currency::getPrimary()?->id)->toArray(),
+            $this->withKnownTenant(SupplierResponseData::fromModel($supplier, $ledgerBy, Currency::getPrimary()?->id)->toArray()),
             'Supplier updated successfully.'
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function withKnownTenant(array $payload): array
+    {
+        $wallet = $payload['wallet_address'] ?? null;
+        $payload['known_tenant'] = $this->tenantCompanyWallets->knownTenant(is_string($wallet) ? $wallet : null);
+
+        return $payload;
     }
 
     public function destroy(Supplier $supplier): JsonResponse

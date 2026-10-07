@@ -22,6 +22,7 @@ use App\Modules\Customer\Http\Requests\UpdateCustomerRequest;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Services\CustomerLedgerService;
 use App\Modules\Customer\Services\CustomerService;
+use App\Services\Central\TenantCompanyWalletService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,7 +38,8 @@ class CustomerController extends Controller
 
     public function __construct(
         private readonly CustomerService $customerService,
-        private readonly CustomerLedgerService $ledgerService
+        private readonly CustomerLedgerService $ledgerService,
+        private readonly TenantCompanyWalletService $tenantCompanyWallets,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -79,7 +81,7 @@ class CustomerController extends Controller
         $ledgerBy = $this->ledgerService->balancesPerCurrencyForCustomer($customer);
 
         return ApiResponse::created(
-            CustomerResponseData::fromModel($customer, $ledgerBy, Currency::getPrimary()?->id)->toArray(),
+            $this->withKnownTenant(CustomerResponseData::fromModel($customer, $ledgerBy, Currency::getPrimary()?->id)->toArray()),
             'Customer created successfully.'
         );
     }
@@ -89,7 +91,7 @@ class CustomerController extends Controller
         $section = $this->resolveShowSection($request, self::SHOW_SECTIONS, 'summary');
         $customer->loadMissing(['balances.currency', 'customerGroup', 'salesman', 'paymentMethod', 'paymentTerm', 'vatGroup']);
         $ledgerBy = $this->ledgerService->balancesPerCurrencyForCustomer($customer);
-        $base = CustomerResponseData::fromModel($customer, $ledgerBy, Currency::getPrimary()?->id)->toArray();
+        $base = $this->withKnownTenant(CustomerResponseData::fromModel($customer, $ledgerBy, Currency::getPrimary()?->id)->toArray());
 
         if ($section === 'summary') {
             return ApiResponse::success($base, 'Customer fetched successfully.');
@@ -143,9 +145,21 @@ class CustomerController extends Controller
         $ledgerBy = $this->ledgerService->balancesPerCurrencyForCustomer($customer);
 
         return ApiResponse::success(
-            CustomerResponseData::fromModel($customer, $ledgerBy, Currency::getPrimary()?->id)->toArray(),
+            $this->withKnownTenant(CustomerResponseData::fromModel($customer, $ledgerBy, Currency::getPrimary()?->id)->toArray()),
             'Customer updated successfully.'
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function withKnownTenant(array $payload): array
+    {
+        $wallet = $payload['wallet_address'] ?? null;
+        $payload['known_tenant'] = $this->tenantCompanyWallets->knownTenant(is_string($wallet) ? $wallet : null);
+
+        return $payload;
     }
 
     public function destroy(Customer $customer): JsonResponse

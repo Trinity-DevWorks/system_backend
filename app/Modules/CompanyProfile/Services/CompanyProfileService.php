@@ -10,6 +10,7 @@ use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
 use App\Modules\InvoiceProof\Services\InvoiceVerifierService;
 use App\Modules\InvoiceProof\Support\CompanySafeSignerGuard;
 use App\Modules\InvoiceProof\Support\WalletAddress;
+use App\Services\Central\TenantCompanyWalletService;
 use App\Support\TenantReferenceCache;
 
 class CompanyProfileService
@@ -20,6 +21,7 @@ class CompanyProfileService
         private readonly CompanySafeSignerGuard $companySafeSignerGuard,
         private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
         private readonly InvoiceVerifierService $invoiceVerifierService,
+        private readonly TenantCompanyWalletService $tenantCompanyWallets,
     ) {}
 
     public function get(): CompanyProfile
@@ -51,6 +53,8 @@ class CompanyProfileService
             $this->invoiceChainRegistrationService->dispatchSupplierPartySync();
             $this->invoiceVerifierService->dispatchCompanyResync();
         }
+
+        $this->tenantCompanyWallets->syncFromProfile($profile);
 
         return $profile;
     }

@@ -157,6 +157,18 @@ return [
             'mail_subject' => 'Lot :lot_number of :item_code expires :expiry_date',
             'permission' => ['resource' => 'stock', 'action' => 'view'],
         ],
+        'purchase_invoice.received' => [
+            'severity' => 'info',
+            'default_channels' => ['database', 'mail'],
+            'mail_subject' => 'Invoice :invoice_number from :company_name',
+            'permission' => ['resource' => 'purchase_invoices', 'action' => 'view'],
+        ],
+        'purchase_invoice.needs_setup' => [
+            'severity' => 'warning',
+            'default_channels' => ['database', 'mail'],
+            'mail_subject' => 'Invoice :invoice_number from :company_name needs setup',
+            'permission' => ['resource' => 'purchase_invoices', 'action' => 'view'],
+        ],
         'invoice_proof.chain_issues' => [
             'severity' => 'critical',
             'default_channels' => ['database', 'mail'],

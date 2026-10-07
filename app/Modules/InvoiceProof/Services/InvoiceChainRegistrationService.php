@@ -217,6 +217,14 @@ class InvoiceChainRegistrationService
         }
 
         $this->onSuccessorRegistered($snapshot);
+
+        if (! $this->isPurchaseSnapshot($snapshot) && ! $this->documentIsReversed($snapshot)) {
+            try {
+                app(TenantSalesInvoiceDelivery::class)->deliver($snapshot);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
     }
 
     /**
