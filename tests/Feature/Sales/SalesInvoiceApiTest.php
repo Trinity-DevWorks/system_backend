@@ -1540,7 +1540,14 @@ class SalesInvoiceApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'tampered')
             ->assertJsonPath('data.snapshot_intact', false)
-            ->assertJsonPath('data.live_invoice_matches', true);
+            ->assertJsonPath('data.live_invoice_matches', true)
+            ->assertJsonPath('data.tamper_reason', 'snapshot');
+
+        $fields = $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}/verify"))
+            ->json('data.tampered_fields');
+        $this->assertIsArray($fields);
+        $this->assertNotEmpty($fields);
     }
 
     public function test_post_issues_sale_stock_from_line_warehouse(): void

@@ -12,6 +12,7 @@ use App\Modules\Inventory\Purchasing\SupplierPayment\Enums\SupplierPaymentStatus
 use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPaymentAllocation;
 use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
+use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
@@ -33,6 +34,7 @@ class SupplierPaymentService
         private readonly SupplierLedgerService $supplierLedgerService,
         private readonly ExchangeRateService $exchangeRateService,
         private readonly WarehouseService $warehouseService,
+        private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
     ) {}
 
     /**
@@ -119,7 +121,10 @@ class SupplierPaymentService
         $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
 
         return $query->get()
+            ->reject(fn (PurchaseInvoice $invoice): bool => $this->invoiceChainRegistrationService->purchaseInvoiceIsDisputed($invoice)
+                || $this->invoiceChainRegistrationService->purchaseInvoiceIsRevoked($invoice))
             ->map(fn (PurchaseInvoice $invoice): array => SupplierPaymentResponseData::openInvoice($invoice))
+            ->values()
             ->all();
     }
 
@@ -473,6 +478,14 @@ class SupplierPaymentService
     {
         if ($invoice->status !== PurchaseInvoiceStatus::Posted) {
             $this->fail('Only a posted invoice can be allocated.', 'SUPPLIER_PAYMENT_INVOICE_NOT_OPEN');
+        }
+
+        if ($this->invoiceChainRegistrationService->purchaseInvoiceIsDisputed($invoice)) {
+            $this->fail('This invoice is disputed and cannot receive a supplier payment.', 'PURCHASE_INVOICE_DISPUTED');
+        }
+
+        if ($this->invoiceChainRegistrationService->purchaseInvoiceIsRevoked($invoice)) {
+            $this->fail('This invoice is revoked on the blockchain and cannot receive a supplier payment.', 'PURCHASE_INVOICE_REVOKED');
         }
 
         if ((string) $invoice->supplier_id !== (string) $payment->supplier_id) {

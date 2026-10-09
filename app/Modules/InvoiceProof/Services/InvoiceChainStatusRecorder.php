@@ -46,7 +46,7 @@ class InvoiceChainStatusRecorder
     private static function financedAt(array $attestations): ?Carbon
     {
         foreach ($attestations as $attestation) {
-            if ($attestation->role === InvoiceVerifierRole::Financier) {
+            if ($attestation->role === InvoiceVerifierRole::Financier && $attestation->partySide !== 'buyer') {
                 return $attestation->attestedAt !== null && $attestation->attestedAt > 0
                     ? Carbon::createFromTimestampUTC($attestation->attestedAt)
                     : now();

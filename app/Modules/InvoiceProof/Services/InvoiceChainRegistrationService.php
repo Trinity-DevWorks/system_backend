@@ -529,6 +529,116 @@ class InvoiceChainRegistrationService
         return $onChain?->disputedAt !== null;
     }
 
+    public function salesInvoiceIsRevoked(SalesInvoice $invoice): bool
+    {
+        $registration = $this->findForSalesInvoice((string) $invoice->id);
+        if ($registration === null) {
+            return false;
+        }
+
+        if ($this->registrationIsRevoked($registration)) {
+            return true;
+        }
+
+        if (! $this->isConfigured()) {
+            return false;
+        }
+
+        try {
+            $onChain = $this->invoiceRegistryGateway->invoiceOf((string) $registration->proof_id);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $onChain?->revokedAt !== null;
+    }
+
+    /**
+     * A buyer-issued purchase invoice is disputed on its own registration.
+     * A purchase invoice linked to another tenant's sales invoice is disputed on that proof.
+     */
+    public function purchaseInvoiceIsDisputed(PurchaseInvoice $invoice): bool
+    {
+        if ($this->registrationIsDisputed($this->findForPurchaseInvoice((string) $invoice->id))) {
+            return true;
+        }
+
+        if (is_string($invoice->linked_dispute_reason) && trim($invoice->linked_dispute_reason) !== '') {
+            return true;
+        }
+
+        $linkedProofId = is_string($invoice->linked_proof_id) && $invoice->linked_proof_id !== ''
+            ? $invoice->linked_proof_id
+            : null;
+        if ($linkedProofId !== null && $this->registrationIsDisputed(
+            InvoiceChainRegistration::query()->where('proof_id', $linkedProofId)->first(),
+        )) {
+            return true;
+        }
+
+        $proofId = $linkedProofId ?? $this->findForPurchaseInvoice((string) $invoice->id)?->proof_id;
+        if (! is_string($proofId) || $proofId === '' || ! $this->isConfigured()) {
+            return false;
+        }
+
+        try {
+            $onChain = $this->invoiceRegistryGateway->invoiceOf($proofId);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $onChain?->disputedAt !== null;
+    }
+
+    /**
+     * A still-posted invoice whose chain seal was revoked is closed for payment.
+     * A linked purchase invoice follows the sales-invoice proof.
+     */
+    public function purchaseInvoiceIsRevoked(PurchaseInvoice $invoice): bool
+    {
+        if ($this->registrationIsRevoked($this->findForPurchaseInvoice((string) $invoice->id))) {
+            return true;
+        }
+
+        $linkedProofId = is_string($invoice->linked_proof_id) && $invoice->linked_proof_id !== ''
+            ? $invoice->linked_proof_id
+            : null;
+        if ($linkedProofId !== null && $this->registrationIsRevoked(
+            InvoiceChainRegistration::query()->where('proof_id', $linkedProofId)->first(),
+        )) {
+            return true;
+        }
+
+        $proofId = $linkedProofId ?? $this->findForPurchaseInvoice((string) $invoice->id)?->proof_id;
+        if (! is_string($proofId) || $proofId === '' || ! $this->isConfigured()) {
+            return false;
+        }
+
+        try {
+            $onChain = $this->invoiceRegistryGateway->invoiceOf($proofId);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $onChain?->revokedAt !== null;
+    }
+
+    private function registrationIsRevoked(?InvoiceChainRegistration $registration): bool
+    {
+        return $registration !== null && (
+            $registration->revoked_at !== null
+            || $registration->chain_status === InvoiceProofVerificationStatus::Revoked
+        );
+    }
+
+    private function registrationIsDisputed(?InvoiceChainRegistration $registration): bool
+    {
+        return $registration !== null && (
+            $registration->disputed_at !== null
+            || $registration->chain_status === InvoiceProofVerificationStatus::Disputed
+        );
+    }
+
     /**
      * Fill empty on-chain party slots from current ERP wallets without changing contentHash.
      */
@@ -742,6 +852,38 @@ class InvoiceChainRegistrationService
         }
 
         return $onChain;
+    }
+
+    /**
+     * A linked purchase invoice is posted only after the supplier has approved the seal.
+     */
+    public function assertLinkedPurchaseCanPost(string $proofId): void
+    {
+        $onChain = $this->assertExternalProofLink($proofId);
+        if ($onChain->status === InvoiceOnChainStatus::SupplierApproved
+            || $onChain->status === InvoiceOnChainStatus::FullyApproved) {
+            return;
+        }
+
+        abort(422, 'The supplier has not approved this invoice yet.', [
+            'X-Error-Code' => 'PURCHASE_INVOICE_LINKED_SUPPLIER_NOT_APPROVED',
+        ]);
+    }
+
+    /**
+     * While the supplier's seal is waiting for this buyer, dispute comes before reverse.
+     * Reverse does not write to that seal.
+     */
+    public function assertLinkedPurchaseCanReverse(string $proofId): void
+    {
+        $onChain = $this->readExternalProof($proofId);
+        if ($onChain->status !== InvoiceOnChainStatus::SupplierApproved) {
+            return;
+        }
+
+        abort(422, 'Dispute this invoice before reversing it.', [
+            'X-Error-Code' => 'PURCHASE_INVOICE_DISPUTE_BEFORE_REVERSE',
+        ]);
     }
 
     /**

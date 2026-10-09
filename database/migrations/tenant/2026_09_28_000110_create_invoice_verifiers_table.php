@@ -14,7 +14,9 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->string('name');
             $table->string('role', 16);
-            $table->string('wallet_address', 42)->unique();
+            $table->string('party_side', 16)->default('supplier');
+            $table->string('wallet_address', 42);
+            $table->unique(['wallet_address', 'party_side']);
             $table->string('email')->nullable();
             $table->string('phone', 32)->nullable();
             $table->text('notes')->nullable();

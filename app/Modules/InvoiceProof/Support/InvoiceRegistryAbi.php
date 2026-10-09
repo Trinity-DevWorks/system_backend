@@ -7,6 +7,7 @@ namespace App\Modules\InvoiceProof\Support;
 use App\Modules\InvoiceProof\DTOs\InvoiceAttestationRecord;
 use App\Modules\InvoiceProof\DTOs\InvoiceOnChainRecord;
 use App\Modules\InvoiceProof\Enums\InvoiceOnChainStatus;
+use App\Modules\InvoiceProof\Enums\InvoicePartySide;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use InvalidArgumentException;
 
@@ -31,19 +32,31 @@ final class InvoiceRegistryAbi
 
     public const ATTESTATION_AT = '0x4ed051db';
 
-    public const SET_VERIFIER = '0x2b70a025';
+    public const SET_VERIFIER = '0x95137fee';
 
     public const REVOKE_INVOICE = '0x3b1da35c';
+
+    public const SEAL_BROKEN_AT = '0x409bd11c';
+
+    public const MARK_SEAL_BROKEN = '0x78c45056';
+
+    public const RESTORE_SEAL = '0x9b480aeb';
 
     public const SET_REPLACEMENT = '0x2ad8ebac';
 
     public const DISPUTE_BY_BUYER = '0x54723105';
+
+    public const DISPUTE_BY_SUPPLIER = '0x037c9a5a';
 
     public const ALREADY_REGISTERED = '3a81d6fc';
 
     public const PARTY_ALREADY_SET = '8cfb1c1a';
 
     public const INVOICE_IS_REVOKED = '049eeccb';
+
+    public const SEAL_ALREADY_BROKEN = '59e1b59d';
+
+    public const SEAL_NOT_BROKEN = '8075b123';
 
     public const INVOICE_IS_DISPUTED = '5b9fb0e0';
 
@@ -75,6 +88,21 @@ final class InvoiceRegistryAbi
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
             .self::padAddress($supplier)
             .self::padAddress($buyer);
+    }
+
+    public static function encodeSealBrokenAt(string $proofId): string
+    {
+        return self::encodeProofIdCall(self::SEAL_BROKEN_AT, $proofId);
+    }
+
+    public static function encodeMarkSealBroken(string $proofId): string
+    {
+        return self::encodeProofIdCall(self::MARK_SEAL_BROKEN, $proofId);
+    }
+
+    public static function encodeRestoreSeal(string $proofId): string
+    {
+        return self::encodeProofIdCall(self::RESTORE_SEAL, $proofId);
     }
 
     public static function encodeRevokeInvoice(string $proofId, ?string $replacementProofId): string
@@ -144,6 +172,21 @@ final class InvoiceRegistryAbi
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($statement))
             .self::padUint(192)
             .$encodedSignature;
+    }
+
+    public static function encodeDisputeBySupplier(
+        string $proofId,
+        string $contentHash,
+        string $reasonHash,
+        string $invoiceNumber,
+        string $statement,
+    ): string {
+        return self::DISPUTE_BY_SUPPLIER
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($contentHash))
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($reasonHash))
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($invoiceNumber))
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($statement));
     }
 
     /**
@@ -235,17 +278,50 @@ final class InvoiceRegistryAbi
         return $typed;
     }
 
+    /**
+     * Typed data for `disputeBySupplier`. `reason_hash` is filled after the supplier types the reason.
+     *
+     * @return array{
+     *     domain: array{name: string, version: string, chain_id: int, verifying_contract: string},
+     *     primary_type: string,
+     *     types: array<string, list<array{name: string, type: string}>>,
+     *     message: array{proof_id: string, content_hash: string, invoice_number: string, statement: string}
+     * }
+     */
+    public static function supplierDisputeTypedData(
+        int $chainId,
+        string $contractAddress,
+        string $proofId,
+        string $contentHash,
+        string $invoiceNumber,
+        string $statement,
+    ): array {
+        $typed = self::partyApprovalTypedData(
+            'SupplierDispute',
+            $chainId,
+            $contractAddress,
+            $proofId,
+            $contentHash,
+            $invoiceNumber,
+            $statement,
+        );
+        array_splice($typed['types']['SupplierDispute'], 2, 0, [['name' => 'reasonHash', 'type' => 'bytes32']]);
+
+        return $typed;
+    }
+
     public static function encodeInvoices(string $proofId): string
     {
         return self::encodeProofIdCall(self::INVOICES, $proofId);
     }
 
-    public static function encodeSetVerifier(string $company, string $verifier, int $role): string
+    public static function encodeSetVerifier(string $company, string $verifier, int $role, int $partySide): string
     {
         return self::SET_VERIFIER
             .self::padAddress($company)
             .self::padAddress($verifier)
-            .self::padUint($role);
+            .self::padUint($role)
+            .self::padUint($partySide);
     }
 
     public static function encodeAttestationCount(string $proofId): string
@@ -269,25 +345,27 @@ final class InvoiceRegistryAbi
     }
 
     /**
-     * Decodes `(address verifier, uint8 role, bytes32 referenceHash, uint256 attestedAt)`.
+     * Decodes `(address verifier, uint8 role, uint8 side, bytes32 referenceHash, uint256 attestedAt)`.
      */
     public static function decodeAttestation(string $data): ?InvoiceAttestationRecord
     {
         $hex = InvoiceProofBytes::strip0x($data);
-        if (strlen($hex) < 256) {
+        if (strlen($hex) < 320) {
             return null;
         }
 
         $role = InvoiceVerifierRole::fromChain((int) hexdec(substr($hex, 64, 64)));
-        if ($role === null) {
+        $side = InvoicePartySide::fromChain((int) hexdec(substr($hex, 128, 64)));
+        if ($role === null || $side === null) {
             return null;
         }
 
         return new InvoiceAttestationRecord(
             verifier: InvoiceProofBytes::address('0x'.substr($hex, 24, 40)),
             role: $role,
-            referenceHash: self::decodeBytes32('0x'.substr($hex, 128, 64)),
-            attestedAt: self::decodeTimestamp(substr($hex, 192, 64)),
+            referenceHash: self::decodeBytes32('0x'.substr($hex, 192, 64)),
+            attestedAt: self::decodeTimestamp(substr($hex, 256, 64)),
+            partySide: $side->value,
         );
     }
 
@@ -357,6 +435,16 @@ final class InvoiceRegistryAbi
     public static function isInvoiceRevokedRevert(string $message): bool
     {
         return str_contains(strtolower($message), self::INVOICE_IS_REVOKED);
+    }
+
+    public static function isSealAlreadyBrokenRevert(string $message): bool
+    {
+        return str_contains(strtolower($message), self::SEAL_ALREADY_BROKEN);
+    }
+
+    public static function isSealNotBrokenRevert(string $message): bool
+    {
+        return str_contains(strtolower($message), self::SEAL_NOT_BROKEN);
     }
 
     public static function isInvoiceDisputedRevert(string $message): bool

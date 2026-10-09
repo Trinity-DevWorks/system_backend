@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\InvoiceProof\Models;
 
+use App\Modules\InvoiceProof\Enums\InvoicePartySide;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use App\Modules\InvoiceProof\Enums\WalletType;
@@ -18,12 +19,14 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * The registrar mirrors each row on InvoiceRegistry for the company Safe.
  *
  * @property InvoiceVerifierRole $role
+ * @property InvoicePartySide $party_side
  * @property InvoiceVerifierChainStatus $chain_status
  * @property WalletType $wallet_type
  */
 #[Fillable([
     'name',
     'role',
+    'party_side',
     'wallet_address',
     'wallet_type',
     'email',
@@ -47,6 +50,7 @@ class InvoiceVerifier extends Model implements AuditableContract
     {
         return [
             'role' => InvoiceVerifierRole::class,
+            'party_side' => InvoicePartySide::class,
             'chain_status' => InvoiceVerifierChainStatus::class,
             'wallet_type' => WalletType::class,
             'chain_synced_at' => 'datetime',

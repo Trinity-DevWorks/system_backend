@@ -122,11 +122,17 @@ Route::middleware([
         ->middleware('throttle:60,1');
     Route::get('proofs/purchases/{purchase_invoice}', [InvoiceProofPortalController::class, 'showPurchase'])
         ->middleware('throttle:60,1');
+    Route::get('proofs/purchases/{purchase_invoice}/pdf', [InvoiceProofPortalController::class, 'pdfPurchase'])
+        ->middleware('throttle:60,1');
     Route::post('proofs/purchases/{purchase_invoice}/unlock', [InvoiceProofPortalController::class, 'unlockPurchase'])
         ->middleware('throttle:60,1');
     Route::post('proofs/purchases/{purchase_invoice}/resume', [InvoiceProofPortalController::class, 'resumePurchase'])
         ->middleware('throttle:60,1');
+    Route::post('proofs/purchases/{purchase_invoice}/dispute', [InvoiceProofPortalController::class, 'disputePurchase'])
+        ->middleware('throttle:60,1');
     Route::get('proofs/{sales_invoice}', [InvoiceProofPortalController::class, 'show'])
+        ->middleware('throttle:60,1');
+    Route::get('proofs/{sales_invoice}/pdf', [InvoiceProofPortalController::class, 'pdf'])
         ->middleware('throttle:60,1');
     Route::post('proofs/{sales_invoice}/unlock', [InvoiceProofPortalController::class, 'unlock'])
         ->middleware('throttle:60,1');
@@ -623,6 +629,8 @@ Route::middleware([
                 ->middleware('check.permission:sales_invoices,add');
             Route::get('sales-invoices/{sales_invoice}', [SalesInvoiceController::class, 'show'])
                 ->middleware('check.permission:sales_invoices,view');
+            Route::get('sales-invoices/{sales_invoice}/pdf', [SalesInvoiceController::class, 'pdf'])
+                ->middleware('check.permission:sales_invoices,view');
             Route::put('sales-invoices/{sales_invoice}', [SalesInvoiceController::class, 'update'])
                 ->middleware('check.permission:sales_invoices,edit');
             Route::delete('sales-invoices/{sales_invoice}', [SalesInvoiceController::class, 'destroy'])
@@ -746,12 +754,16 @@ Route::middleware([
                 ->middleware('check.permission:purchase_invoices,view');
             Route::post('purchase-invoices', [PurchaseInvoiceController::class, 'store'])
                 ->middleware('check.permission:purchase_invoices,add');
+            Route::get('purchase-invoices/linked-offers/{linked_purchase_offer}', [PurchaseInvoiceController::class, 'showLinkedOffer'])
+                ->middleware(['check.permission:purchase_invoices,view', 'check.permission:invoice_proofs,view']);
             Route::post('purchase-invoices/linked-proofs/import', [PurchaseInvoiceController::class, 'importLinkedProof'])
                 ->middleware(['check.permission:purchase_invoices,add', 'check.permission:invoice_proofs,view']);
             Route::get('purchase-invoices/linked-proofs/{proofId}', [PurchaseInvoiceController::class, 'previewLinkedProof'])
                 ->whereUuid('proofId')
                 ->middleware(['check.permission:purchase_invoices,view', 'check.permission:invoice_proofs,view']);
             Route::get('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'show'])
+                ->middleware('check.permission:purchase_invoices,view');
+            Route::get('purchase-invoices/{purchase_invoice}/pdf', [PurchaseInvoiceController::class, 'pdf'])
                 ->middleware('check.permission:purchase_invoices,view');
             Route::put('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'update'])
                 ->middleware('check.permission:purchase_invoices,edit');

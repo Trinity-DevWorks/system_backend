@@ -22,6 +22,7 @@ use App\Modules\InvoiceProof\Serializers\PurchaseInvoiceCanonicalSerializer;
 use App\Modules\InvoiceProof\Serializers\SalesInvoiceCanonicalSerializer;
 use App\Modules\InvoiceProof\Support\BlockchainNetwork;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceHasher;
+use App\Modules\InvoiceProof\Support\CanonicalInvoiceMerkle;
 use App\Modules\InvoiceProof\Support\InvoiceApprovalStatement;
 use App\Modules\InvoiceProof\Support\InvoiceProofBytes;
 use App\Modules\InvoiceProof\Support\InvoiceRegistryAbi;
@@ -100,6 +101,7 @@ class InvoiceProofVerificationService
                 $proof->status,
                 $attestationsRead ? $attestations : null,
             );
+            $this->syncSealBroken((string) $snapshot->id, $proof->status === InvoiceProofVerificationStatus::Tampered);
         }
 
         return $proof;
@@ -157,6 +159,7 @@ class InvoiceProofVerificationService
                 $proof->status,
                 $attestationsRead ? $attestations : null,
             );
+            $this->syncSealBroken((string) $snapshot->id, $proof->status === InvoiceProofVerificationStatus::Tampered);
         }
 
         return $proof;
@@ -208,6 +211,7 @@ class InvoiceProofVerificationService
         $canApproveAsCompany = false;
         $canApproveAsBuyer = false;
         $canDisputeAsBuyer = false;
+        $canDisputeAsSupplier = false;
         $chainId = $chainEnabled ? (int) config('blockchain.chain_id') : null;
         $contractAddress = $chainEnabled ? $this->configuredContractAddress() : null;
         $eip712 = null;
@@ -216,12 +220,21 @@ class InvoiceProofVerificationService
         if ($posted && $status === InvoiceProofVerificationStatus::WaitingCompany && $supplierWallet !== null) {
             $eip712 = $this->partyApprovalTypedData('SupplierApproval', $snapshot, $chainId, $contractAddress);
             $canApproveAsCompany = $eip712 !== null;
+            $disputeEip712 = $this->supplierDisputeTypedData($snapshot, $chainId, $contractAddress);
+            $canDisputeAsSupplier = $disputeEip712 !== null;
         } elseif ($posted && $status === InvoiceProofVerificationStatus::WaitingBuyer && $buyerWallet !== null) {
+            // The buyer posted this invoice, so the remaining step is approval. Dispute stays on a linked supplier bill.
             $eip712 = $this->partyApprovalTypedData('BuyerApproval', $snapshot, $chainId, $contractAddress);
             $canApproveAsBuyer = $eip712 !== null;
-            $disputeEip712 = $this->buyerDisputeTypedData($snapshot, $chainId, $contractAddress);
-            $canDisputeAsBuyer = $disputeEip712 !== null;
         }
+
+        [$tamperReason, $tamperedFields] = $this->tamperDetail(
+            $status,
+            $snapshotIntact,
+            $chainMatches,
+            $snapshot,
+            $liveInvoiceMatches === true ? $this->livePurchaseCanonicalJson($invoice, $snapshot, $company) : null,
+        );
 
         return new InvoiceProofVerificationData(
             status: $status,
@@ -238,6 +251,7 @@ class InvoiceProofVerificationService
             canApproveAsCompany: $canApproveAsCompany,
             canApproveAsBuyer: $canApproveAsBuyer,
             canDisputeAsBuyer: $canDisputeAsBuyer,
+            canDisputeAsSupplier: $canDisputeAsSupplier,
             blockchainNetwork: $chainEnabled ? BlockchainNetwork::key() : null,
             safeTxServiceUrl: $chainEnabled ? BlockchainNetwork::safeTxServiceUrl() : null,
             safeApiKey: $chainEnabled ? BlockchainNetwork::safeApiKey() : null,
@@ -256,6 +270,8 @@ class InvoiceProofVerificationService
                 $invoice->supplier?->wallet_type,
             ),
             buyerWalletType: self::declaredWalletType($buyerWallet, $company?->wallet_address, $company?->wallet_type),
+            tamperReason: $tamperReason,
+            tamperedFields: $tamperedFields,
         );
     }
 
@@ -447,6 +463,14 @@ class InvoiceProofVerificationService
             $canDisputeAsBuyer = $disputeEip712 !== null;
         }
 
+        [$tamperReason, $tamperedFields] = $this->tamperDetail(
+            $status,
+            $snapshotIntact,
+            $chainMatches,
+            $snapshot,
+            $liveInvoiceMatches === true ? $this->liveSalesCanonicalJson($invoice, $snapshot, $company) : null,
+        );
+
         return new InvoiceProofVerificationData(
             status: $status,
             snapshotIntact: $snapshotIntact,
@@ -480,6 +504,8 @@ class InvoiceProofVerificationService
                 $invoice->customer?->wallet_address,
                 $invoice->customer?->wallet_type,
             ),
+            tamperReason: $tamperReason,
+            tamperedFields: $tamperedFields,
         );
     }
 
@@ -538,18 +564,12 @@ class InvoiceProofVerificationService
         ?CompanyProfile $company,
     ): ?bool {
         try {
-            $liveJson = SalesInvoiceCanonicalSerializer::serialize(
-                $invoice,
-                (string) $snapshot->id,
-                $company,
-            )->toJson();
+            $liveJson = $this->liveSalesCanonicalJson($invoice, $snapshot, $company);
         } catch (InvalidArgumentException) {
             return null;
         }
 
-        $liveHash = self::snapshotContentHash($liveJson, $snapshot);
-
-        return $liveHash === null ? null : hash_equals($snapshot->content_hash, $liveHash);
+        return $liveJson === null ? null : $this->hashMatches($liveJson, $snapshot);
     }
 
     private function livePurchaseInvoiceMatches(
@@ -558,7 +578,21 @@ class InvoiceProofVerificationService
         ?CompanyProfile $company,
     ): ?bool {
         try {
-            $liveJson = PurchaseInvoiceCanonicalSerializer::serialize(
+            $liveJson = $this->livePurchaseCanonicalJson($invoice, $snapshot, $company);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+
+        return $liveJson === null ? null : $this->hashMatches($liveJson, $snapshot);
+    }
+
+    private function liveSalesCanonicalJson(
+        SalesInvoice $invoice,
+        InvoiceSnapshot $snapshot,
+        ?CompanyProfile $company,
+    ): ?string {
+        try {
+            return SalesInvoiceCanonicalSerializer::serialize(
                 $invoice,
                 (string) $snapshot->id,
                 $company,
@@ -566,10 +600,94 @@ class InvoiceProofVerificationService
         } catch (InvalidArgumentException) {
             return null;
         }
+    }
 
-        $liveHash = self::snapshotContentHash($liveJson, $snapshot);
+    private function livePurchaseCanonicalJson(
+        PurchaseInvoice $invoice,
+        InvoiceSnapshot $snapshot,
+        ?CompanyProfile $company,
+    ): ?string {
+        try {
+            return PurchaseInvoiceCanonicalSerializer::serialize(
+                $invoice,
+                (string) $snapshot->id,
+                $company,
+            )->toJson();
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+    }
 
-        return $liveHash === null ? null : hash_equals($snapshot->content_hash, $liveHash);
+    private function hashMatches(string $canonicalJson, InvoiceSnapshot $snapshot): ?bool
+    {
+        $hash = self::snapshotContentHash($canonicalJson, $snapshot);
+
+        return $hash === null ? null : hash_equals($snapshot->content_hash, $hash);
+    }
+
+    /**
+     * @return array{0: ?string, 1: list<string>}
+     */
+    private function tamperDetail(
+        InvoiceProofVerificationStatus $status,
+        bool $snapshotIntact,
+        ?bool $chainMatches,
+        InvoiceSnapshot $snapshot,
+        ?string $originalJson,
+    ): array {
+        if ($status !== InvoiceProofVerificationStatus::Tampered) {
+            return [null, []];
+        }
+
+        if (! $snapshotIntact) {
+            $fields = $originalJson === null
+                ? []
+                : self::changedLeafPaths($snapshot->canonical_json, $originalJson, (string) $snapshot->disclosure_secret);
+
+            return ['snapshot', $fields];
+        }
+
+        if ($chainMatches === false) {
+            return ['chain', []];
+        }
+
+        return [null, []];
+    }
+
+    /**
+     * Paths whose stored leaf differs from the document that still matches the seal.
+     *
+     * @return list<string>
+     */
+    private static function changedLeafPaths(string $storedJson, string $originalJson, string $secret): array
+    {
+        try {
+            $stored = CanonicalInvoiceMerkle::build($storedJson, $secret)->leaves();
+            $original = CanonicalInvoiceMerkle::build($originalJson, $secret)->leaves();
+        } catch (InvalidArgumentException) {
+            return [];
+        }
+
+        $originalByPath = [];
+        foreach ($original as $leaf) {
+            $originalByPath[$leaf['path']] = $leaf['value'];
+        }
+
+        $storedByPath = [];
+        $paths = [];
+        foreach ($stored as $leaf) {
+            $storedByPath[$leaf['path']] = $leaf['value'];
+            if (! array_key_exists($leaf['path'], $originalByPath) || $originalByPath[$leaf['path']] !== $leaf['value']) {
+                $paths[] = $leaf['path'];
+            }
+        }
+        foreach ($original as $leaf) {
+            if (! array_key_exists($leaf['path'], $storedByPath)) {
+                $paths[] = $leaf['path'];
+            }
+        }
+
+        return $paths;
     }
 
     /**
@@ -664,6 +782,50 @@ class InvoiceProofVerificationService
                 $snapshot->content_hash,
                 $details['invoice_number'],
                 InvoiceApprovalStatement::dispute($companyName, $details['invoice_number']),
+            );
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array{
+     *     domain: array{name: string, version: string, chain_id: int, verifying_contract: string},
+     *     primary_type: string,
+     *     types: array<string, list<array{name: string, type: string}>>,
+     *     message: array{proof_id: string, content_hash: string, invoice_number: string, statement: string}
+     * }|null
+     */
+    private function supplierDisputeTypedData(
+        InvoiceSnapshot $snapshot,
+        ?int $chainId,
+        ?string $contractAddress,
+    ): ?array {
+        if ($chainId === null || $chainId <= 0 || $contractAddress === null) {
+            return null;
+        }
+
+        $details = $this->approvalDetailsFromSnapshot($snapshot);
+        if ($details === null) {
+            return null;
+        }
+
+        try {
+            $canonical = json_decode($snapshot->canonical_json, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return null;
+        }
+        $buyer = is_array($canonical['buyer'] ?? null) ? $canonical['buyer'] : [];
+        $buyerName = is_string($buyer['name'] ?? null) ? $buyer['name'] : '';
+
+        try {
+            return InvoiceRegistryAbi::supplierDisputeTypedData(
+                $chainId,
+                $contractAddress,
+                (string) $snapshot->id,
+                $snapshot->content_hash,
+                $details['invoice_number'],
+                InvoiceApprovalStatement::dispute($buyerName, $details['invoice_number']),
             );
         } catch (InvalidArgumentException) {
             return null;
@@ -789,6 +951,37 @@ class InvoiceProofVerificationService
         return hash_equals(strtolower($onChainHash), strtolower(InvoiceProofBytes::keccakUtf8($linked)))
             ? $linked
             : null;
+    }
+
+    /**
+     * The registrar records a broken seal so a verifier cannot attest an old file
+     * while the ERP copy no longer matches. A later intact check clears the mark.
+     */
+    private function syncSealBroken(string $proofId, bool $tampered): void
+    {
+        if (! $this->invoiceChainRegistrationService->isConfigured()) {
+            return;
+        }
+
+        try {
+            $marked = $this->invoiceRegistryGateway->sealBrokenAt($proofId) !== null;
+        } catch (Throwable) {
+            return;
+        }
+
+        if ($tampered === $marked) {
+            return;
+        }
+
+        try {
+            if ($tampered) {
+                $this->invoiceRegistryGateway->markSealBroken($proofId);
+            } else {
+                $this->invoiceRegistryGateway->restoreSeal($proofId);
+            }
+        } catch (Throwable) {
+            // The invoice check still stands when the registrar transaction cannot be sent.
+        }
     }
 
     private function configuredContractAddress(): ?string

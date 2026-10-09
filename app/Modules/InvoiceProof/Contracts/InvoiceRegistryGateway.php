@@ -36,15 +36,34 @@ interface InvoiceRegistryGateway
     public function revokeInvoice(string $proofId, ?string $replacementProofId): InvoiceChainReceiptData;
 
     /**
+     * Unix time the registrar marked this seal broken, or null when it is clear
+     * or the chain read failed.
+     */
+    public function sealBrokenAt(string $proofId): ?int;
+
+    /**
+     * Registrar closes attestation because the ERP copy no longer matches the seal.
+     * Succeeds without a transaction when the mark is already set.
+     */
+    public function markSealBroken(string $proofId): InvoiceChainReceiptData;
+
+    /**
+     * Registrar reopens attestation after the ERP copy matches the seal again.
+     * Succeeds without a transaction when the mark is already clear.
+     */
+    public function restoreSeal(string $proofId): InvoiceChainReceiptData;
+
+    /**
      * Registrar fills `replacedBy` on an already revoked proof. Succeeds without a
      * transaction when the chain already points at the same successor.
      */
     public function setReplacement(string $proofId, string $replacementProofId): InvoiceChainReceiptData;
 
     /**
-     * Registrar lists (role > 0) or removes (role 0) a verifier for one company Safe.
+     * Registrar lists (role > 0) or removes (role 0) a verifier for one company and party side.
+     * `$partySide` is 0 for the supplier and 1 for the buyer.
      */
-    public function setVerifier(string $companyAddress, string $verifierAddress, int $role): InvoiceChainReceiptData;
+    public function setVerifier(string $companyAddress, string $verifierAddress, int $role, int $partySide): InvoiceChainReceiptData;
 
     /**
      * Third-party attestations in on-chain order.

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\InvoiceProof\Http\Requests;
 
+use App\Modules\InvoiceProof\Enums\InvoicePartySide;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
+use App\Modules\InvoiceProof\Models\InvoiceVerifier;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Enum;
 
@@ -30,5 +32,16 @@ class UpdateInvoiceVerifierRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:32'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
+    }
+
+    public function withValidator(\Illuminate\Validation\Validator $validator): void
+    {
+        $validator->after(function (\Illuminate\Validation\Validator $validator): void {
+            $verifier = $this->route('invoice_verifier');
+            $side = $verifier instanceof InvoiceVerifier ? $verifier->party_side : null;
+            if ($side === InvoicePartySide::Buyer && $this->input('role') === InvoiceVerifierRole::Financier->value) {
+                $validator->errors()->add('role', 'A purchase verifier cannot be a financier.');
+            }
+        });
     }
 }

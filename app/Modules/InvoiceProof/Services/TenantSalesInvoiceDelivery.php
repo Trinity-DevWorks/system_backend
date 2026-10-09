@@ -6,29 +6,25 @@ namespace App\Modules\InvoiceProof\Services;
 
 use App\Models\Tenant;
 use App\Modules\CompanyProfile\Models\CompanyProfile;
-use App\Modules\Inventory\Purchasing\Services\PurchaseInvoiceService;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\InvoiceProof\Enums\InvoiceProofType;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
 use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Modules\Notification\Services\NotificationDispatcher;
 use App\Modules\Notification\Support\RecipientQuery;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
-use App\Modules\Supplier\Models\Supplier;
-use App\Modules\Supplier\Services\SupplierService;
-use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\Central\TenantCompanyWalletService;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 /**
- * After a sales invoice is on chain, open a draft purchase invoice in the buyer tenant
- * when that buyer's wallet is another company's Safe.
+ * After a sales invoice is on chain, tell the buyer tenant when that buyer's wallet
+ * is another company's Safe. The purchase invoice is created only if the buyer saves it.
  */
 class TenantSalesInvoiceDelivery
 {
     public function __construct(
         private readonly TenantCompanyWalletService $tenantCompanyWallets,
         private readonly InvoiceProofDisclosureService $invoiceProofDisclosureService,
+        private readonly LinkedPurchaseOfferService $linkedPurchaseOfferService,
         private readonly NotificationDispatcher $notificationDispatcher,
     ) {}
 
@@ -79,16 +75,13 @@ class TenantSalesInvoiceDelivery
         string $sellerWalletType,
         string $invoiceNumber,
     ): void {
-        try {
-            $purchase = $this->createDraft($disclosure, $sellerName, $sellerWallet, $sellerWalletType);
-        } catch (Throwable $exception) {
-            Log::warning('Could not open a purchase invoice for a known buyer tenant.', [
-                'message' => $exception->getMessage(),
-            ]);
+        $proofId = strtolower(trim((string) ($disclosure['proof_id'] ?? '')));
+        if ($proofId === '') {
             $this->notify(
                 'purchase_invoice.needs_setup',
                 $sellerName,
                 $invoiceNumber,
+                '/main/purchase-invoices',
                 null,
                 null,
             );
@@ -96,74 +89,45 @@ class TenantSalesInvoiceDelivery
             return;
         }
 
+        $existingId = PurchaseInvoice::query()->where('linked_proof_id', $proofId)->value('id');
+        if ($existingId !== null) {
+            $this->notify(
+                'purchase_invoice.received',
+                $sellerName,
+                $invoiceNumber,
+                '/main/purchase-invoices?drawer='.rawurlencode((string) $existingId).'&mode=edit',
+                'purchase_invoice',
+                (string) $existingId,
+            );
+
+            return;
+        }
+
+        $offer = $this->linkedPurchaseOfferService->store(
+            $disclosure,
+            $sellerName,
+            $sellerWallet,
+            $sellerWalletType,
+            $invoiceNumber,
+        );
+
         $this->notify(
             'purchase_invoice.received',
             $sellerName,
             $invoiceNumber,
-            (string) $purchase->id,
-            (string) ($purchase->invoice_number ?? ''),
+            '/main/purchase-invoices?drawer=new&mode=create&linked_offer='.rawurlencode((string) $offer->id),
+            'linked_purchase_offer',
+            (string) $offer->id,
         );
-    }
-
-    /**
-     * @param  array<string, mixed>  $disclosure
-     */
-    private function createDraft(
-        array $disclosure,
-        string $sellerName,
-        ?string $sellerWallet,
-        string $sellerWalletType,
-    ): \App\Modules\Inventory\Purchasing\Models\PurchaseInvoice {
-        if ($sellerWallet !== null && ! Supplier::query()->where('wallet_address', $sellerWallet)->where('is_active', true)->exists()) {
-            app(SupplierService::class)->create([
-                'name' => $sellerName,
-                'company_name' => $sellerName,
-                'wallet_address' => $sellerWallet,
-                'wallet_type' => $sellerWalletType,
-                'is_active' => true,
-            ]);
-        }
-
-        $warehouse = Warehouse::query()
-            ->where('is_active', true)
-            ->orderByDesc('is_default_purchase')
-            ->orderBy('id')
-            ->first();
-        if ($warehouse === null) {
-            throw new \RuntimeException('The buyer tenant has no warehouse.');
-        }
-
-        $form = app(LinkedPurchaseDisclosureService::class)->import($disclosure);
-        $lines = [];
-        foreach ($form['lines'] as $line) {
-            if (! is_array($line)) {
-                continue;
-            }
-            $line['warehouse_id'] = (int) $warehouse->id;
-            $lines[] = $line;
-        }
-
-        return app(PurchaseInvoiceService::class)->create([
-            'supplier_id' => $form['supplier_id'],
-            'warehouse_id' => (int) $warehouse->id,
-            'currency_id' => $form['currency_id'],
-            'invoice_date' => $form['invoice_date'],
-            'due_on' => $form['due_on'],
-            'exchange_rate' => $form['exchange_rate'],
-            'adjustment' => $form['adjustment'],
-            'notes' => $form['notes'],
-            'linked_proof_id' => $form['proof_id'],
-            'disclosure' => $disclosure,
-            'lines' => $lines,
-        ], null);
     }
 
     private function notify(
         string $type,
         string $sellerName,
         string $invoiceNumber,
-        ?string $purchaseInvoiceId,
-        ?string $purchaseNumber,
+        string $actionPath,
+        ?string $resourceType,
+        ?string $resourceId,
     ): void {
         $this->notificationDispatcher->dispatch(
             $type,
@@ -171,17 +135,14 @@ class TenantSalesInvoiceDelivery
                 'params' => [
                     'company_name' => $sellerName,
                     'invoice_number' => $invoiceNumber !== '' ? $invoiceNumber : '—',
-                    'purchase_number' => $purchaseNumber ?? '',
                 ],
-                'action_path' => $purchaseInvoiceId
-                    ? '/main/purchase-invoices?drawer='.rawurlencode($purchaseInvoiceId).'&mode=edit'
-                    : '/main/purchase-invoices',
-                'resource_type' => 'purchase_invoice',
-                'resource_id' => $purchaseInvoiceId,
+                'action_path' => $actionPath,
+                'resource_type' => $resourceType,
+                'resource_id' => $resourceId,
                 'mail_lines' => $type === 'purchase_invoice.received'
                     ? [
-                        'Invoice :invoice_number from :company_name is ready as purchase invoice :purchase_number.',
-                        'Choose the warehouse if needed, then post it.',
+                        'Invoice :invoice_number from :company_name is waiting.',
+                        'Open it, check the warehouse, then save a draft or leave it.',
                     ]
                     : [
                         'Invoice :invoice_number from :company_name uses this system.',

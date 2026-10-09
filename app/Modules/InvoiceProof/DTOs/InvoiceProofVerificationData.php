@@ -37,6 +37,7 @@ readonly class InvoiceProofVerificationData
         public bool $canApproveAsCompany = false,
         public bool $canApproveAsBuyer = false,
         public bool $canDisputeAsBuyer = false,
+        public bool $canDisputeAsSupplier = false,
         public ?string $blockchainNetwork = null,
         public ?string $safeTxServiceUrl = null,
         public ?string $safeApiKey = null,
@@ -51,6 +52,9 @@ readonly class InvoiceProofVerificationData
         public ?string $disputeReasonHash = null,
         public ?string $disputeReason = null,
         public ?string $replacedBy = null,
+        public ?string $tamperReason = null,
+        /** @var list<string> */
+        public array $tamperedFields = [],
     ) {}
 
     /**
@@ -59,7 +63,7 @@ readonly class InvoiceProofVerificationData
     public function financedBy(): ?string
     {
         foreach ($this->attestations as $attestation) {
-            if ($attestation->role === InvoiceVerifierRole::Financier) {
+            if ($attestation->role === InvoiceVerifierRole::Financier && $attestation->partySide !== 'buyer') {
                 return $attestation->verifier;
             }
         }
@@ -73,7 +77,7 @@ readonly class InvoiceProofVerificationData
     public function financedAt(): ?string
     {
         foreach ($this->attestations as $attestation) {
-            if ($attestation->role === InvoiceVerifierRole::Financier) {
+            if ($attestation->role === InvoiceVerifierRole::Financier && $attestation->partySide !== 'buyer') {
                 return $attestation->toArray()['attested_at'];
             }
         }
@@ -137,6 +141,7 @@ readonly class InvoiceProofVerificationData
             'can_approve_as_company' => $this->canApproveAsCompany,
             'can_approve_as_buyer' => $this->canApproveAsBuyer,
             'can_dispute_as_buyer' => $this->canDisputeAsBuyer,
+            'can_dispute_as_supplier' => $this->canDisputeAsSupplier,
             'blockchain_network' => $this->blockchainNetwork,
             'safe_tx_service_url' => $this->safeTxServiceUrl,
             'safe_api_key' => $this->safeApiKey,
@@ -148,6 +153,8 @@ readonly class InvoiceProofVerificationData
             'dispute_reason_hash' => $this->disputeReasonHash,
             'dispute_reason' => $this->disputeReason,
             'replaced_by' => $this->replacedBy,
+            'tamper_reason' => $this->tamperReason,
+            'tampered_fields' => $this->tamperedFields,
             'attestations' => array_map(
                 static fn (InvoiceAttestationRecord $attestation): array => $attestation->toArray(),
                 $this->attestations,

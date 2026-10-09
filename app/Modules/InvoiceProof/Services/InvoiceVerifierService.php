@@ -9,6 +9,7 @@ use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\InvoiceProof\Contracts\CompanySafeOwnerLookup;
 use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
 use App\Modules\InvoiceProof\DTOs\InvoiceVerifierData;
+use App\Modules\InvoiceProof\Enums\InvoicePartySide;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierChainStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use App\Modules\InvoiceProof\Jobs\SyncInvoiceVerifierOnChainJob;
@@ -56,10 +57,12 @@ class InvoiceVerifierService
         $this->ensureEnabled();
         $this->companySafeSignerGuard->abortIfWalletTypeInvalid($data->walletAddress, $data->walletType);
         $this->assertWalletAllowed((string) $data->walletAddress);
+        $this->assertRoleAllowed($data->partySide, $data->role);
 
         $verifier = InvoiceVerifier::query()->create([
             'name' => $data->name,
             'role' => $data->role,
+            'party_side' => $data->partySide,
             'wallet_address' => $data->walletAddress,
             'wallet_type' => $data->walletType,
             'email' => $data->email,
@@ -77,6 +80,8 @@ class InvoiceVerifierService
     {
         $this->ensureEnabled();
         $this->abortIfRemoving($verifier);
+
+        $this->assertRoleAllowed($verifier->party_side ?? InvoicePartySide::Supplier, $data->role);
 
         $roleChanged = $verifier->role !== $data->role;
         $verifier->update([
@@ -160,6 +165,7 @@ class InvoiceVerifierService
                         $verifier->chain_company_wallet,
                         $verifier->wallet_address,
                         InvoiceVerifierRole::CHAIN_NONE,
+                        ($verifier->party_side ?? InvoicePartySide::Supplier)->toChain(),
                     );
                 }
                 $verifier->delete();
@@ -181,6 +187,7 @@ class InvoiceVerifierService
                 $company,
                 $verifier->wallet_address,
                 $verifier->role->toChain(),
+                ($verifier->party_side ?? InvoicePartySide::Supplier)->toChain(),
             );
 
             $verifier->update([
@@ -226,6 +233,15 @@ class InvoiceVerifierService
         if ($verifier->chain_status === InvoiceVerifierChainStatus::Removing) {
             throw ValidationException::withMessages([
                 'name' => 'This verifier is being removed.',
+            ]);
+        }
+    }
+
+    private function assertRoleAllowed(InvoicePartySide $side, InvoiceVerifierRole $role): void
+    {
+        if ($side === InvoicePartySide::Buyer && $role === InvoiceVerifierRole::Financier) {
+            throw ValidationException::withMessages([
+                'role' => 'A purchase verifier cannot be a financier.',
             ]);
         }
     }

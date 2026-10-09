@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\InvoiceProof\Services;
 
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\InvoiceProof\Enums\InvoiceChainRegistrationStatus;
 use App\Modules\InvoiceProof\Enums\InvoiceProofType;
 use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
@@ -30,7 +31,23 @@ class InvoiceChainStatusLookup
      */
     public function forPurchaseInvoices(iterable $invoiceIds): array
     {
-        return $this->forInvoices(InvoiceProofType::Purchase, $invoiceIds);
+        $result = $this->forInvoices(InvoiceProofType::Purchase, $invoiceIds);
+        if ($result === []) {
+            return $result;
+        }
+
+        $linked = PurchaseInvoice::query()
+            ->whereIn('id', array_keys($result))
+            ->pluck('linked_proof_id', 'id');
+
+        foreach ($result as $id => $row) {
+            $link = $linked[$id] ?? null;
+            if (! is_string($link) || $link === '') {
+                $result[$id]['financed'] = false;
+            }
+        }
+
+        return $result;
     }
 
     public function forSalesInvoices(iterable $invoiceIds): array

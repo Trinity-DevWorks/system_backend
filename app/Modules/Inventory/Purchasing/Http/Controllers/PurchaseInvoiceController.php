@@ -20,14 +20,19 @@ use App\Modules\InvoiceProof\Http\Requests\RecordInvoiceProofDisputeRequest;
 use App\Modules\InvoiceProof\Services\InvoiceChainIssueLookup;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
 use App\Modules\InvoiceProof\Services\InvoiceChainStatusLookup;
+use App\Modules\InvoiceProof\Services\InvoicePdfService;
 use App\Modules\InvoiceProof\Services\InvoiceProofDisclosureService;
 use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
 use App\Modules\InvoiceProof\Services\InvoiceProofVerificationService;
+use App\Modules\InvoiceProof\Models\LinkedPurchaseOffer;
 use App\Modules\InvoiceProof\Services\LinkedPurchaseDisclosureService;
+use App\Modules\InvoiceProof\Services\LinkedPurchaseOfferService;
 use App\Services\PermissionService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use InvalidArgumentException;
 
 class PurchaseInvoiceController extends Controller
 {
@@ -41,6 +46,8 @@ class PurchaseInvoiceController extends Controller
         private readonly InvoiceChainIssueLookup $invoiceChainIssueLookup,
         private readonly InvoiceChainStatusLookup $invoiceChainStatusLookup,
         private readonly LinkedPurchaseDisclosureService $linkedPurchaseDisclosureService,
+        private readonly InvoicePdfService $invoicePdfService,
+        private readonly LinkedPurchaseOfferService $linkedPurchaseOfferService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -251,14 +258,10 @@ class PurchaseInvoiceController extends Controller
                 'Invoice dispute recorded.'
             );
         }
-        $txHash = $request->validated('tx_hash');
-        $data = $this->invoiceProofPortalService->recordPurchaseDispute(
-            $invoice,
-            (string) $request->validated('reason'),
-            is_string($txHash) ? $txHash : null,
-        );
 
-        return ApiResponse::success($data->toArray(), 'Invoice dispute recorded.');
+        abort(422, 'The company that posted this invoice cannot dispute it. Reverse the invoice instead.', [
+            'X-Error-Code' => 'PURCHASE_INVOICE_BUYER_CANNOT_DISPUTE',
+        ]);
     }
 
     public function importLinkedProof(Request $request): JsonResponse
@@ -273,6 +276,14 @@ class PurchaseInvoiceController extends Controller
         return ApiResponse::success(
             $this->linkedPurchaseDisclosureService->import($disclosure),
             'Supplier disclosure imported successfully.'
+        );
+    }
+
+    public function showLinkedOffer(LinkedPurchaseOffer $linkedPurchaseOffer): JsonResponse
+    {
+        return ApiResponse::success(
+            $this->linkedPurchaseOfferService->open($linkedPurchaseOffer),
+            'Supplier invoice fetched successfully.'
         );
     }
 
@@ -312,6 +323,21 @@ class PurchaseInvoiceController extends Controller
             $this->invoiceProofDisclosureService->disclosePurchase($purchaseInvoice, $fields)->toArray(),
             'Invoice proof disclosure created successfully.'
         );
+    }
+
+    public function pdf(PurchaseInvoice $purchaseInvoice): Response
+    {
+        try {
+            $pdf = $this->invoicePdfService->renderPurchase($purchaseInvoice);
+        } catch (InvalidArgumentException) {
+            abort(422, 'This invoice is not ready to download.', [
+                'X-Error-Code' => 'INVOICE_PDF_NOT_READY',
+            ]);
+        }
+
+        $number = is_string($purchaseInvoice->invoice_number) ? $purchaseInvoice->invoice_number : '';
+
+        return $pdf->download($this->invoicePdfService->downloadFilename($number));
     }
 
     private function abortLinkedProofShare(PurchaseInvoice $invoice): void

@@ -11,6 +11,7 @@ use App\Modules\InvoiceProof\Http\Requests\DiscloseInvoiceProofRequest;
 use App\Modules\InvoiceProof\Services\InvoiceChainIssueLookup;
 use App\Modules\InvoiceProof\Services\InvoiceChainRegistrationService;
 use App\Modules\InvoiceProof\Services\InvoiceChainStatusLookup;
+use App\Modules\InvoiceProof\Services\InvoicePdfService;
 use App\Modules\InvoiceProof\Services\InvoiceProofDisclosureService;
 use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
 use App\Modules\InvoiceProof\Services\InvoiceProofVerificationService;
@@ -26,6 +27,8 @@ use App\Services\PermissionService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use InvalidArgumentException;
 
 class SalesInvoiceController extends Controller
 {
@@ -38,6 +41,7 @@ class SalesInvoiceController extends Controller
         private readonly PermissionService $permissionService,
         private readonly InvoiceChainIssueLookup $invoiceChainIssueLookup,
         private readonly InvoiceChainStatusLookup $invoiceChainStatusLookup,
+        private readonly InvoicePdfService $invoicePdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -264,6 +268,21 @@ class SalesInvoiceController extends Controller
             $this->invoiceProofDisclosureService->disclose($salesInvoice, $fields)->toArray(),
             'Invoice proof disclosure created successfully.'
         );
+    }
+
+    public function pdf(SalesInvoice $salesInvoice): Response
+    {
+        try {
+            $pdf = $this->invoicePdfService->renderSales($salesInvoice);
+        } catch (InvalidArgumentException) {
+            abort(422, 'This invoice is not ready to download.', [
+                'X-Error-Code' => 'INVOICE_PDF_NOT_READY',
+            ]);
+        }
+
+        $number = is_string($salesInvoice->invoice_number) ? $salesInvoice->invoice_number : '';
+
+        return $pdf->download($this->invoicePdfService->downloadFilename($number));
     }
 
     public function itemAvailability(Request $request): JsonResponse

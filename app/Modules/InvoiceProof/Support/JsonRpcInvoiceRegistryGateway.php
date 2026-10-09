@@ -123,6 +123,65 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
         throw new RuntimeException('Company approval must be signed in the wallet.');
     }
 
+    public function sealBrokenAt(string $proofId): ?int
+    {
+        $result = $this->call(InvoiceRegistryAbi::encodeSealBrokenAt($proofId));
+
+        if ($result === null) {
+            return null;
+        }
+
+        $timestamp = InvoiceRegistryAbi::decodeUint($result);
+
+        return $timestamp > 0 ? $timestamp : null;
+    }
+
+    public function markSealBroken(string $proofId): InvoiceChainReceiptData
+    {
+        $already = new InvoiceChainReceiptData(
+            txHash: 'seal-already-broken',
+            blockNumber: null,
+            contractAddress: InvoiceProofBytes::address($this->contractAddress),
+        );
+
+        if ($this->sealBrokenAt($proofId) !== null) {
+            return $already;
+        }
+
+        try {
+            return $this->sendFrom($this->registrarAddress, InvoiceRegistryAbi::encodeMarkSealBroken($proofId));
+        } catch (RuntimeException $exception) {
+            if (InvoiceRegistryAbi::isSealAlreadyBrokenRevert($exception->getMessage()) && $this->sealBrokenAt($proofId) !== null) {
+                return $already;
+            }
+
+            throw $exception;
+        }
+    }
+
+    public function restoreSeal(string $proofId): InvoiceChainReceiptData
+    {
+        $already = new InvoiceChainReceiptData(
+            txHash: 'seal-already-clear',
+            blockNumber: null,
+            contractAddress: InvoiceProofBytes::address($this->contractAddress),
+        );
+
+        if ($this->sealBrokenAt($proofId) === null) {
+            return $already;
+        }
+
+        try {
+            return $this->sendFrom($this->registrarAddress, InvoiceRegistryAbi::encodeRestoreSeal($proofId));
+        } catch (RuntimeException $exception) {
+            if (InvoiceRegistryAbi::isSealNotBrokenRevert($exception->getMessage()) && $this->sealBrokenAt($proofId) === null) {
+                return $already;
+            }
+
+            throw $exception;
+        }
+    }
+
     public function revokeInvoice(string $proofId, ?string $replacementProofId): InvoiceChainReceiptData
     {
         $alreadyRevoked = new InvoiceChainReceiptData(
@@ -182,11 +241,11 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
         }
     }
 
-    public function setVerifier(string $companyAddress, string $verifierAddress, int $role): InvoiceChainReceiptData
+    public function setVerifier(string $companyAddress, string $verifierAddress, int $role, int $partySide): InvoiceChainReceiptData
     {
         return $this->sendFrom(
             $this->registrarAddress,
-            InvoiceRegistryAbi::encodeSetVerifier($companyAddress, $verifierAddress, $role),
+            InvoiceRegistryAbi::encodeSetVerifier($companyAddress, $verifierAddress, $role, $partySide),
         );
     }
 

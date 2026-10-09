@@ -123,7 +123,10 @@ class CustomerReceiptService
         $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
 
         return $query->get()
+            ->reject(fn (SalesInvoice $invoice): bool => $this->invoiceChainRegistrationService->salesInvoiceIsDisputed($invoice)
+                || $this->invoiceChainRegistrationService->salesInvoiceIsRevoked($invoice))
             ->map(fn (SalesInvoice $invoice): array => CustomerReceiptResponseData::openInvoice($invoice))
+            ->values()
             ->all();
     }
 
@@ -482,6 +485,10 @@ class CustomerReceiptService
 
         if ($this->invoiceChainRegistrationService->salesInvoiceIsDisputed($invoice)) {
             $this->fail('This invoice is disputed and cannot receive a customer receipt.', 'SALES_INVOICE_DISPUTED');
+        }
+
+        if ($this->invoiceChainRegistrationService->salesInvoiceIsRevoked($invoice)) {
+            $this->fail('This invoice is revoked on the blockchain and cannot receive a customer receipt.', 'SALES_INVOICE_REVOKED');
         }
 
         if ((string) $invoice->customer_id !== (string) $receipt->customer_id) {

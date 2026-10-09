@@ -19,15 +19,23 @@ readonly class InvoiceAttestationRecord
         public ?string $referenceHash,
         public ?int $attestedAt,
         public ?string $verifierName = null,
+        public string $partySide = 'supplier',
     ) {}
 
     public function withVerifierName(?string $verifierName): self
     {
-        return new self($this->verifier, $this->role, $this->referenceHash, $this->attestedAt, $verifierName);
+        return new self(
+            $this->verifier,
+            $this->role,
+            $this->referenceHash,
+            $this->attestedAt,
+            $verifierName,
+            $this->partySide,
+        );
     }
 
     /**
-     * @return array{verifier: string, verifier_name: ?string, role: string, reference_hash: ?string, attested_at: ?string}
+     * @return array{verifier: string, verifier_name: ?string, role: string, party_side: string, reference_hash: ?string, attested_at: ?string}
      */
     public function toArray(): array
     {
@@ -35,6 +43,7 @@ readonly class InvoiceAttestationRecord
             'verifier' => $this->verifier,
             'verifier_name' => $this->verifierName,
             'role' => $this->role->value,
+            'party_side' => $this->partySide === 'buyer' ? 'buyer' : 'supplier',
             'reference_hash' => $this->referenceHash,
             'attested_at' => $this->attestedAt !== null && $this->attestedAt > 0
                 ? Carbon::createFromTimestampUTC($this->attestedAt)->toIso8601String()

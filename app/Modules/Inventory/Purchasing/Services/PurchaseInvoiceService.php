@@ -311,7 +311,7 @@ class PurchaseInvoiceService
             }
 
             if (CompanySetting::current()->invoiceProofsEnabled() && $locked->linked_proof_id !== null) {
-                $this->invoiceChainRegistrationService->assertExternalProofLink((string) $locked->linked_proof_id);
+                $this->invoiceChainRegistrationService->assertLinkedPurchaseCanPost((string) $locked->linked_proof_id);
             } elseif (CompanySetting::current()->invoiceProofsEnabled()) {
                 $snapshot = $this->invoiceSnapshotService->capturePurchaseInvoice($locked->fresh() ?? $locked);
                 $this->invoiceChainRegistrationService->recordPending($snapshot);
@@ -343,6 +343,10 @@ class PurchaseInvoiceService
                 ]);
             }
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+
+            if ($locked->linked_proof_id !== null && CompanySetting::current()->invoiceProofsEnabled()) {
+                $this->invoiceChainRegistrationService->assertLinkedPurchaseCanReverse((string) $locked->linked_proof_id);
+            }
 
             if ($locked->goods_receipt_id === null) {
                 $this->stockMovementService->reverseReference(PurchaseInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);

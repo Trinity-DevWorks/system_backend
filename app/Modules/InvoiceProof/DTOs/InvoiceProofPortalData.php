@@ -65,6 +65,7 @@ readonly class InvoiceProofPortalData
         public bool $canApproveAsBuyer,
         public bool $canApproveAsCompany = false,
         public bool $canDisputeAsBuyer = false,
+        public bool $canDisputeAsSupplier = false,
         public bool $locked = false,
         public ?string $registeredAt = null,
         public ?string $supplierApprovedAt = null,
@@ -81,6 +82,7 @@ readonly class InvoiceProofPortalData
         public ?string $replacedByInvoiceNumber = null,
         public ?array $replacedByInvoice = null,
         public ?array $replacesInvoice = null,
+        public array $attestations = [],
     ) {}
 
     /**
@@ -114,6 +116,7 @@ readonly class InvoiceProofPortalData
 
         $vendorTyped = $asVendor && $proof->canApproveAsCompany;
         $buyerTyped = ! $asVendor && $proof->canApproveAsBuyer;
+        $supplierDispute = $asVendor && $proof->canDisputeAsSupplier;
 
         return new self(
             id: $invoiceId,
@@ -140,15 +143,19 @@ readonly class InvoiceProofPortalData
             supplierWallet: $proof->supplierWallet,
             proofId: $proof->proofId,
             eip712: ($vendorTyped || $buyerTyped) ? $proof->eip712 : null,
-            disputeEip712: (! $asVendor && $proof->canDisputeAsBuyer) ? $proof->disputeEip712 : null,
+            disputeEip712: $supplierDispute
+                ? $proof->disputeEip712
+                : ((! $asVendor && $proof->canDisputeAsBuyer) ? $proof->disputeEip712 : null),
             canApproveAsBuyer: $buyerTyped,
             canApproveAsCompany: $vendorTyped,
             canDisputeAsBuyer: ! $asVendor && $proof->canDisputeAsBuyer,
+            canDisputeAsSupplier: $supplierDispute,
             registeredAt: $proof->registeredAt,
             supplierApprovedAt: $proof->supplierApprovedAt,
             buyerApprovedAt: $proof->buyerApprovedAt,
             otherInvoices: $otherInvoices,
-            financedAt: $proof->financedAt(),
+            financedAt: $asVendor ? null : $proof->financedAt(),
+            attestations: self::portalAttestations($proof, $asVendor),
             revokedAt: $proof->revokedAt,
             disputedAt: $proof->disputedAt,
             disputeReason: self::storedDisputeReason((string) $snapshot->id),
@@ -157,6 +164,31 @@ readonly class InvoiceProofPortalData
             replacedByInvoice: $replacedByInvoice,
             replacesInvoice: $replacesInvoice,
         );
+    }
+
+    /**
+     * Buyer portal shows the supplier's verifiers. Supplier portal shows the buyer's verifiers.
+     * A financier mark belongs only to a supplier appointment.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function portalAttestations(InvoiceProofVerificationData $proof, bool $asVendor): array
+    {
+        $rows = [];
+        foreach ($proof->attestations as $attestation) {
+            $row = $attestation->toArray();
+            $side = $row['party_side'] ?? 'supplier';
+            if ($asVendor) {
+                if ($side !== 'buyer' || ($row['role'] ?? '') === 'financier') {
+                    continue;
+                }
+            } elseif ($side !== 'supplier') {
+                continue;
+            }
+            $rows[] = $row;
+        }
+
+        return $rows;
     }
 
     /**
@@ -325,11 +357,13 @@ readonly class InvoiceProofPortalData
             'can_approve_as_buyer' => $this->canApproveAsBuyer,
             'can_approve_as_company' => $this->canApproveAsCompany,
             'can_dispute_as_buyer' => $this->canDisputeAsBuyer,
+            'can_dispute_as_supplier' => $this->canDisputeAsSupplier,
             'locked' => false,
             'registered_at' => $this->registeredAt,
             'supplier_approved_at' => $this->supplierApprovedAt,
             'buyer_approved_at' => $this->buyerApprovedAt,
             'financed_at' => $this->financedAt,
+            'attestations' => $this->attestations,
             'revoked_at' => $this->revokedAt,
             'disputed_at' => $this->disputedAt,
             'dispute_reason' => $this->disputeReason,

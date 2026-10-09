@@ -168,6 +168,20 @@ class InvoiceProofPortalService
         return $this->show($invoice);
     }
 
+    public function assertBuyerDownload(SalesInvoice $invoice, string $token, string $address): void
+    {
+        $this->assertPortalInvoice($invoice);
+        $invoice->loadMissing('customer');
+        $this->assertSession($token, $address, ProofPortalSession::ROLE_BUYER, $invoice->customer?->wallet_address);
+    }
+
+    public function assertVendorDownload(PurchaseInvoice $invoice, string $token, string $address): void
+    {
+        $this->assertPurchasePortalInvoice($invoice);
+        $invoice->loadMissing('supplier');
+        $this->assertSession($token, $address, ProofPortalSession::ROLE_VENDOR, $invoice->supplier?->wallet_address);
+    }
+
     public function resume(SalesInvoice $invoice, string $token, string $address): InvoiceProofPortalData
     {
         $this->assertPortalInvoice($invoice);
@@ -188,6 +202,19 @@ class InvoiceProofPortalService
         $this->invoiceChainRegistrationService->storeDisputeReason((string) $snapshot->id, $reason, $txHash);
 
         return $this->show($invoice);
+    }
+
+    public function recordPurchaseDispute(PurchaseInvoice $invoice, string $reason, ?string $txHash = null): InvoiceProofPortalData
+    {
+        $this->assertPurchasePortalInvoice($invoice);
+        $snapshot = $this->invoiceSnapshotService->findForPurchaseInvoice((string) $invoice->id);
+        if ($snapshot === null) {
+            abort(404);
+        }
+
+        $this->invoiceChainRegistrationService->storeDisputeReason((string) $snapshot->id, $reason, $txHash);
+
+        return $this->showPurchase($invoice);
     }
 
     /**
@@ -339,19 +366,6 @@ class InvoiceProofPortalService
                 'X-Error-Code' => 'PROOF_WALLET_MISMATCH',
             ]);
         }
-    }
-
-    public function recordPurchaseDispute(PurchaseInvoice $invoice, string $reason, ?string $txHash = null): InvoiceProofPortalData
-    {
-        $this->assertPurchasePortalInvoice($invoice);
-        $snapshot = $this->invoiceSnapshotService->findForPurchaseInvoice((string) $invoice->id);
-        if ($snapshot === null) {
-            abort(404);
-        }
-
-        $this->invoiceChainRegistrationService->storeDisputeReason((string) $snapshot->id, $reason, $txHash);
-
-        return $this->showPurchase($invoice);
     }
 
     public function showPurchase(PurchaseInvoice $invoice): InvoiceProofPortalData

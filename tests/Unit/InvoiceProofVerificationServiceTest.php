@@ -147,6 +147,8 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $this->assertFalse($result->snapshotIntact);
         $this->assertTrue($result->liveInvoiceMatches);
         $this->assertNull($result->chainMatches);
+        $this->assertSame('snapshot', $result->tamperReason);
+        $this->assertContains('lines.0.unit_price', $result->tamperedFields);
     }
 
     public function test_matching_chain_hash_is_verified_when_chain_enabled(): void
@@ -349,6 +351,8 @@ class InvoiceProofVerificationServiceTest extends TestCase
 
         $this->assertSame(InvoiceProofVerificationStatus::Tampered, $result->status);
         $this->assertFalse($result->chainMatches);
+        $this->assertSame('chain', $result->tamperReason);
+        $this->assertSame([], $result->tamperedFields);
     }
 
     public function test_attestations_are_exposed_with_financier(): void
@@ -400,6 +404,7 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $data = '0x'
             .str_repeat('0', 24).'15d34aaf54267db7d7c367839aaf71a00a2c6a65'
             .str_repeat('0', 63).'3'
+            .str_repeat('0', 64)
             .str_repeat('cd', 32)
             .str_pad(dechex(1700000100), 64, '0', STR_PAD_LEFT);
 
@@ -408,18 +413,21 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $this->assertNotNull($record);
         $this->assertSame('0x15d34aaf54267db7d7c367839aaf71a00a2c6a65', $record->verifier);
         $this->assertSame(InvoiceVerifierRole::Financier, $record->role);
+        $this->assertSame('supplier', $record->partySide);
         $this->assertSame(str_repeat('cd', 32), $record->referenceHash);
         $this->assertSame(1700000100, $record->attestedAt);
         $this->assertSame(3, InvoiceRegistryAbi::decodeUint('0x'.str_repeat('0', 63).'3'));
         $this->assertSame(
-            '0x2b70a025'
+            '0x95137fee'
                 .str_repeat('0', 24).'5fbdb2315678afecb367f032d93f642f64180aa3'
                 .str_repeat('0', 24).'15d34aaf54267db7d7c367839aaf71a00a2c6a65'
-                .str_repeat('0', 63).'3',
+                .str_repeat('0', 63).'3'
+                .str_repeat('0', 64),
             InvoiceRegistryAbi::encodeSetVerifier(
                 '0x5FbDB2315678afecb367f032d93F642f64180aa3',
                 '0x15d34aaf54267db7d7c367839aaf71a00a2c6a65',
                 InvoiceVerifierRole::Financier->toChain(),
+                0,
             ),
         );
     }

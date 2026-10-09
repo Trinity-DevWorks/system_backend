@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\InvoiceProof\DTOs;
 
+use App\Modules\InvoiceProof\Enums\InvoicePartySide;
 use App\Modules\InvoiceProof\Enums\InvoiceVerifierRole;
 use App\Modules\InvoiceProof\Enums\WalletType;
 use App\Modules\InvoiceProof\Http\Requests\StoreInvoiceVerifierRequest;
@@ -19,6 +20,7 @@ readonly class InvoiceVerifierData
         public ?string $email,
         public ?string $phone,
         public ?string $notes,
+        public InvoicePartySide $partySide = InvoicePartySide::Supplier,
     ) {}
 
     public static function fromStoreRequest(StoreInvoiceVerifierRequest $request): self
@@ -33,6 +35,7 @@ readonly class InvoiceVerifierData
             email: self::optional($data, 'email'),
             phone: self::optional($data, 'phone'),
             notes: self::optional($data, 'notes'),
+            partySide: InvoicePartySide::from((string) $data['party_side']),
         );
     }
 

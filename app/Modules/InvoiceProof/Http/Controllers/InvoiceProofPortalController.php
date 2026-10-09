@@ -12,15 +12,19 @@ use App\Modules\InvoiceProof\Http\Requests\UnlockInvoiceProofPortalRequest;
 use App\Modules\InvoiceProof\Support\ProofPortalSession;
 use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\InvoiceProof\Services\InvoicePdfService;
 use App\Modules\InvoiceProof\Services\InvoiceProofPortalService;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use InvalidArgumentException;
 
 class InvoiceProofPortalController extends Controller
 {
     public function __construct(
         private readonly InvoiceProofPortalService $invoiceProofPortalService,
+        private readonly InvoicePdfService $invoicePdfService,
     ) {}
 
     public function historyChallenge(): JsonResponse
@@ -97,6 +101,58 @@ class InvoiceProofPortalController extends Controller
         return ApiResponse::success($payload, 'Invoice proof unlocked successfully.');
     }
 
+    public function pdf(Request $request, SalesInvoice $salesInvoice): Response
+    {
+        $this->invoiceProofPortalService->assertValidLink(
+            (string) $salesInvoice->id,
+            $request->query('exp'),
+            $request->query('sig'),
+        );
+        $this->invoiceProofPortalService->assertBuyerDownload(
+            $salesInvoice,
+            (string) $request->query('session', ''),
+            (string) $request->query('address', ''),
+        );
+
+        try {
+            $pdf = $this->invoicePdfService->renderSales($salesInvoice);
+        } catch (InvalidArgumentException) {
+            abort(422, 'This invoice is not ready to download.', [
+                'X-Error-Code' => 'INVOICE_PDF_NOT_READY',
+            ]);
+        }
+
+        return $pdf->download($this->invoicePdfService->downloadFilename(
+            is_string($salesInvoice->invoice_number) ? $salesInvoice->invoice_number : '',
+        ));
+    }
+
+    public function pdfPurchase(Request $request, PurchaseInvoice $purchaseInvoice): Response
+    {
+        $this->invoiceProofPortalService->assertValidLink(
+            (string) $purchaseInvoice->id,
+            $request->query('exp'),
+            $request->query('sig'),
+        );
+        $this->invoiceProofPortalService->assertVendorDownload(
+            $purchaseInvoice,
+            (string) $request->query('session', ''),
+            (string) $request->query('address', ''),
+        );
+
+        try {
+            $pdf = $this->invoicePdfService->renderPurchase($purchaseInvoice);
+        } catch (InvalidArgumentException) {
+            abort(422, 'This invoice is not ready to download.', [
+                'X-Error-Code' => 'INVOICE_PDF_NOT_READY',
+            ]);
+        }
+
+        return $pdf->download($this->invoicePdfService->downloadFilename(
+            is_string($purchaseInvoice->invoice_number) ? $purchaseInvoice->invoice_number : '',
+        ));
+    }
+
     public function dispute(RecordInvoiceProofDisputeRequest $request, SalesInvoice $salesInvoice): JsonResponse
     {
         $this->invoiceProofPortalService->assertValidLink(
@@ -108,6 +164,24 @@ class InvoiceProofPortalController extends Controller
         $txHash = $request->validated('tx_hash');
         $data = $this->invoiceProofPortalService->recordDispute(
             $salesInvoice,
+            (string) $request->validated('reason'),
+            is_string($txHash) ? $txHash : null,
+        );
+
+        return ApiResponse::success($data->toArray(), 'Invoice dispute recorded.');
+    }
+
+    public function disputePurchase(RecordInvoiceProofDisputeRequest $request, PurchaseInvoice $purchaseInvoice): JsonResponse
+    {
+        $this->invoiceProofPortalService->assertValidLink(
+            (string) $purchaseInvoice->id,
+            $request->query('exp'),
+            $request->query('sig'),
+        );
+
+        $txHash = $request->validated('tx_hash');
+        $data = $this->invoiceProofPortalService->recordPurchaseDispute(
+            $purchaseInvoice,
             (string) $request->validated('reason'),
             is_string($txHash) ? $txHash : null,
         );

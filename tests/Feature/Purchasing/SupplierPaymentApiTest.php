@@ -14,6 +14,10 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\ItemType\Models\ItemType;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\InvoiceProof\Enums\InvoiceChainRegistrationStatus;
+use App\Modules\InvoiceProof\Enums\InvoiceProofType;
+use App\Modules\InvoiceProof\Enums\InvoiceProofVerificationStatus;
+use App\Modules\InvoiceProof\Models\InvoiceChainRegistration;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
@@ -25,6 +29,7 @@ use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Enums\WarehouseType;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Concerns\InteractsWithTenant;
 use Tests\TestCase;
@@ -264,6 +269,50 @@ class SupplierPaymentApiTest extends TestCase
             $this->assertSame($this->catalog['eur_id'], (int) $entry->currency_id);
             $this->assertEqualsWithDelta(350.0, (float) $entry->debit, 0.001);
         });
+    }
+
+    public function test_disputed_purchase_invoice_cannot_be_paid(): void
+    {
+        $ownId = $this->postPurchaseInvoice(100);
+        $linkedId = $this->postPurchaseInvoice(80);
+
+        $this->tenant->run(function () use ($ownId, $linkedId): void {
+            InvoiceChainRegistration::query()->create([
+                'proof_id' => (string) Str::uuid(),
+                'invoice_type' => InvoiceProofType::Purchase,
+                'invoice_id' => $ownId,
+                'status' => InvoiceChainRegistrationStatus::Confirmed,
+                'chain_status' => InvoiceProofVerificationStatus::Disputed,
+                'disputed_at' => now(),
+            ]);
+            PurchaseInvoice::query()->whereKey($linkedId)->update([
+                'linked_proof_id' => (string) Str::uuid(),
+                'linked_dispute_reason' => 'Quantity does not match the delivery.',
+            ]);
+        });
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/supplier-payments'), $this->paymentPayload($ownId, '40'))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PURCHASE_INVOICE_DISPUTED');
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/supplier-payments'), $this->paymentPayload($linkedId, '40'))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PURCHASE_INVOICE_DISPUTED');
+
+        $openIds = collect($this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/supplier-payments/open-invoices?'.http_build_query([
+                'supplier_id' => $this->catalog['supplier_id'],
+                'currency_id' => $this->catalog['usd_id'],
+            ])))
+            ->assertOk()
+            ->json('data'))
+            ->pluck('id')
+            ->all();
+
+        $this->assertNotContains($ownId, $openIds);
+        $this->assertNotContains($linkedId, $openIds);
     }
 
     private function postPurchaseInvoice(float $amount, array $overrides = []): string

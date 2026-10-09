@@ -51,12 +51,27 @@ final class DisabledInvoiceRegistryGateway implements InvoiceRegistryGateway
         throw new RuntimeException('Blockchain registration is disabled.');
     }
 
+    public function sealBrokenAt(string $proofId): ?int
+    {
+        return null;
+    }
+
+    public function markSealBroken(string $proofId): InvoiceChainReceiptData
+    {
+        throw new RuntimeException('Blockchain registration is disabled.');
+    }
+
+    public function restoreSeal(string $proofId): InvoiceChainReceiptData
+    {
+        throw new RuntimeException('Blockchain registration is disabled.');
+    }
+
     public function setReplacement(string $proofId, string $replacementProofId): InvoiceChainReceiptData
     {
         throw new RuntimeException('Blockchain registration is disabled.');
     }
 
-    public function setVerifier(string $companyAddress, string $verifierAddress, int $role): InvoiceChainReceiptData
+    public function setVerifier(string $companyAddress, string $verifierAddress, int $role, int $partySide): InvoiceChainReceiptData
     {
         throw new RuntimeException('Blockchain registration is disabled.');
     }
