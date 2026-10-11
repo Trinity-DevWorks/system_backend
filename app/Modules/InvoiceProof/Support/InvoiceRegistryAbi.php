@@ -20,7 +20,7 @@ final class InvoiceRegistryAbi
 
     public const CONTENT_HASH_OF = '0x3dda9d51';
 
-    public const APPROVE_BY_SUPPLIER = '0x79240e14';
+    public const APPROVE_BY_SUPPLIER = '0x97da4ed5';
 
     public const APPROVE_BY_BUYER = '0xd137afbb';
 
@@ -46,7 +46,7 @@ final class InvoiceRegistryAbi
 
     public const DISPUTE_BY_BUYER = '0x54723105';
 
-    public const DISPUTE_BY_SUPPLIER = '0x037c9a5a';
+    public const DISPUTE_BY_SUPPLIER = '0x78129ae0';
 
     public const ALREADY_REGISTERED = '3a81d6fc';
 
@@ -129,12 +129,16 @@ final class InvoiceRegistryAbi
         string $contentHash,
         string $invoiceNumber,
         string $statement,
+        string $signature,
     ): string {
-        return self::APPROVE_BY_SUPPLIER
-            .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
-            .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($contentHash))
-            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($invoiceNumber))
-            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($statement));
+        return self::encodeTypedApproval(
+            self::APPROVE_BY_SUPPLIER,
+            $proofId,
+            $contentHash,
+            $invoiceNumber,
+            $statement,
+            $signature,
+        );
     }
 
     public static function encodeApproveByBuyer(
@@ -180,13 +184,18 @@ final class InvoiceRegistryAbi
         string $reasonHash,
         string $invoiceNumber,
         string $statement,
+        string $signature,
     ): string {
+        $encodedSignature = self::encodeDynamic(InvoiceProofBytes::strip0x($signature));
+
         return self::DISPUTE_BY_SUPPLIER
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($contentHash))
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($reasonHash))
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($invoiceNumber))
-            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($statement));
+            .InvoiceProofBytes::strip0x(InvoiceProofBytes::keccakUtf8($statement))
+            .self::padUint(192)
+            .$encodedSignature;
     }
 
     /**

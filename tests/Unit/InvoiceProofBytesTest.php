@@ -71,9 +71,10 @@ class InvoiceProofBytesTest extends TestCase
         $hash = str_repeat('ab', 32);
 
         $statement = 'Approve invoice INV-0001 from Acme.';
-        $calldata = InvoiceRegistryAbi::encodeApproveBySupplier($proofId, $hash, 'INV-0001', $statement);
+        $signature = '0x112233445566778899001122334455667788990011223344556677889900112233';
+        $calldata = InvoiceRegistryAbi::encodeApproveBySupplier($proofId, $hash, 'INV-0001', $statement, $signature);
 
-        $this->assertStringStartsWith('0x79240e14', $calldata);
+        $this->assertStringStartsWith('0x97da4ed5', $calldata);
         $this->assertStringNotContainsString(bin2hex($statement), $calldata);
         $this->assertStringContainsString(substr(InvoiceProofBytes::keccakUtf8($statement), 2), $calldata);
     }
