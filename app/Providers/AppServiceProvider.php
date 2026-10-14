@@ -9,6 +9,9 @@ use App\Models\Attachment;
 use App\Models\Audit;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Accounting\Models\Account;
+use App\Modules\Accounting\Models\AccountMapping;
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Brand\Models\Brand;
 use App\Modules\Category\Models\Category;
@@ -101,6 +104,9 @@ class AppServiceProvider extends ServiceProvider
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,
             'user' => User::class,
+            'account' => Account::class,
+            'account_mapping' => AccountMapping::class,
+            'journal_entry' => JournalEntry::class,
             'audit' => Audit::class,
             'attachment' => Attachment::class,
             'brand' => Brand::class,

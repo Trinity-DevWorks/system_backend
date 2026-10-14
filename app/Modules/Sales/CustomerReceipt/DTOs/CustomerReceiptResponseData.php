@@ -79,6 +79,7 @@ readonly class CustomerReceiptResponseData
                     'amount' => (string) $allocation->amount,
                     'applied_amount' => (string) $allocation->applied_amount,
                     'applied_exchange_rate' => (string) $allocation->applied_exchange_rate,
+                    'exchange_difference' => (string) $allocation->exchange_difference,
                     'currency_id' => $invoice?->currency_id,
                     'currency' => self::currencyBrief($invoice?->currency),
                     'invoice_number' => $invoice?->invoice_number,

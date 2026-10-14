@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
@@ -19,8 +20,16 @@ use Illuminate\Support\Facades\DB;
 class SupplierService
 {
     public function __construct(
-        private readonly SupplierLedgerService $ledgerService
+        private readonly SupplierLedgerService $ledgerService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
+
+    private function userId(): ?string
+    {
+        $id = auth()->id();
+
+        return $id !== null ? (string) $id : null;
+    }
 
     public function list(): Collection
     {
@@ -152,7 +161,7 @@ class SupplierService
                     $creditStr = isset($row['credit_limit']) ? (string) $row['credit_limit'] : '0';
                     $openingDate = $this->resolveOpeningBalanceDate($row, null);
 
-                    SupplierBalance::query()->create([
+                    $balance = SupplierBalance::query()->create([
                         'supplier_id' => $supplier->id,
                         'currency_id' => $currencyId,
                         'opening_balance' => $openingStr,
@@ -161,6 +170,7 @@ class SupplierService
                     ]);
 
                     $this->ledgerService->postOpeningBalance($supplier, $currencyId, $openingStr, $openingDate);
+                    $this->journalPostingService->supplierOpeningBalance($balance->refresh(), $this->userId());
                 }
             }
 
@@ -242,6 +252,7 @@ class SupplierService
 
             if ($newOpening !== $prevOpening || $newOpeningDate !== $prevOpeningDate) {
                 $this->ledgerService->replaceOpeningBalancePosting($supplier, $currencyId, $newOpening, $newOpeningDate);
+                $this->journalPostingService->replaceSupplierOpeningBalance($balanceRow->refresh(), $this->userId());
             }
         }
     }

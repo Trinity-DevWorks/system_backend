@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\PaymentMethod\Services;
 
+use App\Modules\Accounting\Enums\AccountType;
+use App\Modules\Accounting\Models\Account;
 use App\Modules\PaymentMethod\DTOs\PaymentMethodData;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Support\ListPagination;
@@ -15,6 +17,8 @@ use Illuminate\Support\Facades\DB;
 class PaymentMethodService
 {
     private const CACHE_LIST = 'payment_methods.list';
+
+    private const RELATIONS = ['currency:id,code,name', 'account:id,code,name'];
 
     /**
      * @return Collection<int, PaymentMethod>
@@ -29,7 +33,7 @@ class PaymentMethodService
                 ->orderBy('name')
                 ->get()
         );
-        $collection->load(['currency:id,code,name']);
+        $collection->load(self::RELATIONS);
 
         return $collection;
     }
@@ -37,7 +41,7 @@ class PaymentMethodService
     public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
     {
         $query = PaymentMethod::query()
-            ->with(['currency:id,code,name'])
+            ->with(self::RELATIONS)
             ->orderByDesc('is_default')
             ->orderBy('name');
 
@@ -54,13 +58,15 @@ class PaymentMethodService
     public function create(PaymentMethodData $data): PaymentMethod
     {
         return DB::transaction(function () use ($data): PaymentMethod {
+            $this->assertAccount($data->accountId);
+
             if ($data->isDefault) {
                 PaymentMethod::query()->where('is_default', true)->update(['is_default' => false]);
             }
 
             $created = PaymentMethod::query()->create($data->toArray());
             TenantReferenceCache::forget(self::CACHE_LIST);
-            $created->load(['currency:id,code,name']);
+            $created->load(self::RELATIONS);
 
             return $created;
         });
@@ -69,6 +75,10 @@ class PaymentMethodService
     public function update(PaymentMethod $paymentMethod, PaymentMethodData $data): PaymentMethod
     {
         return DB::transaction(function () use ($paymentMethod, $data): PaymentMethod {
+            if ($data->accountId !== null && $data->accountId !== $paymentMethod->account_id) {
+                $this->assertAccount($data->accountId);
+            }
+
             if ($data->isDefault) {
                 PaymentMethod::query()
                     ->where('is_default', true)
@@ -78,9 +88,8 @@ class PaymentMethodService
 
             $paymentMethod->update($data->toArray());
             TenantReferenceCache::forget(self::CACHE_LIST);
-            $paymentMethod->load(['currency:id,code,name']);
 
-            return $paymentMethod->refresh();
+            return $paymentMethod->refresh()->load(self::RELATIONS);
         });
     }
 
@@ -88,5 +97,19 @@ class PaymentMethodService
     {
         $paymentMethod->delete();
         TenantReferenceCache::forget(self::CACHE_LIST);
+    }
+
+    private function assertAccount(?int $accountId): void
+    {
+        if ($accountId === null) {
+            return;
+        }
+
+        $account = Account::query()->find($accountId);
+        if ($account === null || $account->is_group || ! $account->is_active || $account->type !== AccountType::Asset) {
+            abort(422, 'The payment method account must be an active asset posting account.', [
+                'X-Error-Code' => 'PAYMENT_METHOD_ACCOUNT_INVALID',
+            ]);
+        }
     }
 }

@@ -43,6 +43,8 @@ class SupplierPayment extends Model implements AuditableContract
     use Auditable;
     use HasUuids;
 
+    public const REFERENCE_TYPE = 'supplier_payment';
+
     /**
      * @return array<string, string>
      */

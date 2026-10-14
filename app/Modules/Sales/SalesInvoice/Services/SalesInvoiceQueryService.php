@@ -50,7 +50,7 @@ class SalesInvoiceQueryService
             ->with([
                 'customer:id,customer_code,name,phone,status,is_system',
                 'warehouse:id,name,shortcut_name,is_active',
-                'currency:id,code,name',
+                'currency:id,code,name,symbol',
                 'createdByUser:id,name,email',
                 'postedByUser:id,name,email',
             ])

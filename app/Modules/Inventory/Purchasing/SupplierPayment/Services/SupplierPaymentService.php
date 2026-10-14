@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\SupplierPayment\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
+use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
@@ -18,6 +20,7 @@ use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\CurrencyCashRound;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
@@ -33,6 +36,7 @@ class SupplierPaymentService
         private readonly SupplierLedgerService $supplierLedgerService,
         private readonly ExchangeRateService $exchangeRateService,
         private readonly WarehouseService $warehouseService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -209,6 +213,8 @@ class SupplierPaymentService
                 $this->fail('Payment amount must be greater than zero.', 'SUPPLIER_PAYMENT_AMOUNT_INVALID');
             }
 
+            $this->applyCashRounding($locked);
+            $locked->refresh();
             $this->refreshAppliedAmounts($locked);
 
             $allocations = SupplierPaymentAllocation::query()
@@ -263,6 +269,8 @@ class SupplierPaymentService
                 );
             }
 
+            $this->journalPostingService->supplierPayment($locked, $userId);
+
             $locked->update([
                 'status' => SupplierPaymentStatus::Posted,
                 'posted_by' => $userId,
@@ -273,9 +281,9 @@ class SupplierPaymentService
         });
     }
 
-    public function reverse(SupplierPayment $payment): SupplierPayment
+    public function reverse(SupplierPayment $payment, ?string $userId = null): SupplierPayment
     {
-        return DB::transaction(function () use ($payment): SupplierPayment {
+        return DB::transaction(function () use ($payment, $userId): SupplierPayment {
             $locked = SupplierPayment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== SupplierPaymentStatus::Posted) {
                 $this->fail('Only a posted supplier payment can be reversed.', 'SUPPLIER_PAYMENT_NOT_POSTED');
@@ -327,6 +335,8 @@ class SupplierPaymentService
                     now()->toDateString(),
                 );
             }
+
+            $this->journalPostingService->reverse(SupplierPayment::REFERENCE_TYPE, (string) $locked->id, $userId);
 
             $locked->update(['status' => SupplierPaymentStatus::Reversed]);
 
@@ -402,6 +412,7 @@ class SupplierPaymentService
                 'amount' => $row['amount'],
                 'applied_amount' => $row['applied_amount'],
                 'applied_exchange_rate' => $row['applied_exchange_rate'],
+                'exchange_difference' => $row['exchange_difference'],
             ]);
         }
         $payment->touch();
@@ -424,8 +435,41 @@ class SupplierPaymentService
         }
     }
 
+    private function applyCashRounding(SupplierPayment $payment): void
+    {
+        $currency = Currency::query()->find((int) $payment->currency_id);
+        $rounded = CurrencyCashRound::round(
+            (string) $payment->amount,
+            $currency?->smallest_unit,
+            $currency?->round_limit,
+        );
+        if (PaymentAllocation::same($rounded, $payment->amount)) {
+            return;
+        }
+        if (! PaymentAllocation::isPositive($rounded)) {
+            $this->fail('Payment amount must be greater than zero.', 'SUPPLIER_PAYMENT_AMOUNT_INVALID');
+        }
+
+        $allocations = SupplierPaymentAllocation::query()
+            ->where('supplier_payment_id', $payment->id)
+            ->orderBy('id')
+            ->get();
+        $nextAmounts = PaymentAllocation::amountsForRoundedHeader(
+            $allocations->map(fn (SupplierPaymentAllocation $row): string => (string) $row->amount)->all(),
+            $rounded,
+        );
+        if ($nextAmounts === null) {
+            $this->fail('Cash rounding cannot be applied to these allocations.', 'SUPPLIER_PAYMENT_ALLOCATION_MISMATCH');
+        }
+
+        foreach ($allocations->values() as $index => $allocation) {
+            $allocation->update(['amount' => $nextAmounts[$index]]);
+        }
+        $payment->update(['amount' => $rounded]);
+    }
+
     /**
-     * @return array{applied_amount: string, applied_exchange_rate: string}
+     * @return array{applied_amount: string, applied_exchange_rate: string, exchange_difference: string}
      */
     private function appliedSettlement(SupplierPayment $payment, PurchaseInvoice $invoice, string $amount): array
     {
@@ -438,14 +482,19 @@ class SupplierPaymentService
                 null,
                 'SUPPLIER_PAYMENT',
             );
-        $applied = PaymentAllocation::toInvoiceCurrency($amount, (string) $payment->exchange_rate, $invoiceRate, $sameCurrency);
-        if (! PaymentAllocation::isPositive($applied)) {
-            $this->fail('Allocation does not settle any of the invoice balance.', 'SUPPLIER_PAYMENT_INVOICE_NOT_OPEN');
-        }
+        $converted = PaymentAllocation::toInvoiceCurrency($amount, (string) $payment->exchange_rate, $invoiceRate, $sameCurrency);
+        $invoiceCurrency = Currency::query()->find((int) $invoice->currency_id);
+        $settled = PaymentAllocation::settle(
+            $converted,
+            (string) $invoice->net_to_pay,
+            $invoiceCurrency?->allowed_difference_in_payment,
+            'SUPPLIER_PAYMENT_INVOICE_NOT_OPEN',
+        );
 
         return [
-            'applied_amount' => $applied,
+            'applied_amount' => $settled['applied_amount'],
             'applied_exchange_rate' => $invoiceRate,
+            'exchange_difference' => $settled['exchange_difference'],
         ];
     }
 

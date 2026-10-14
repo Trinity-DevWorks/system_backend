@@ -5,20 +5,25 @@ declare(strict_types=1);
 namespace App\Modules\Supplier\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ExportLedgerStatementRequest;
 use App\Http\Responses\ApiResponse;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Supplier\DTOs\SupplierLedgerEntryResponseData;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierLedgerEntry;
 use App\Modules\Supplier\Services\SupplierLedgerService;
+use App\Support\Export\LedgerStatementDocument;
+use App\Support\Export\TabularExportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response;
 
 class SupplierLedgerController extends Controller
 {
     public function __construct(
-        private readonly SupplierLedgerService $ledgerService
+        private readonly SupplierLedgerService $ledgerService,
+        private readonly TabularExportService $tabularExportService,
     ) {}
 
     public function index(Request $request, Supplier $supplier): JsonResponse
@@ -58,6 +63,54 @@ class SupplierLedgerController extends Controller
             $payload,
             'Ledger entries fetched successfully.'
         );
+    }
+
+    public function export(ExportLedgerStatementRequest $request, Supplier $supplier): Response
+    {
+        $validated = $request->validated();
+        app()->setLocale((string) ($validated['locale'] ?? 'en'));
+
+        $currencyId = isset($validated['currency_id']) ? (int) $validated['currency_id'] : null;
+        $dateFrom = isset($validated['date_from']) ? (string) $validated['date_from'] : null;
+        $dateTo = isset($validated['date_to']) ? (string) $validated['date_to'] : null;
+        $statement = $this->ledgerService->fullStatement($supplier, $currencyId, $dateFrom, $dateTo);
+
+        $entries = [];
+        foreach ($statement['entries'] as $entry) {
+            $type = $entry->reference_type instanceof \BackedEnum ? $entry->reference_type->value : (string) $entry->reference_type;
+            $key = $entry->reference_id !== null ? $type.'|'.$entry->reference_id : null;
+            $entries[] = SupplierLedgerEntryResponseData::fromModel(
+                $entry,
+                $key !== null ? ($statement['document_numbers'][$key] ?? null) : null,
+                $statement['running_balances'][(int) $entry->id] ?? null,
+                isset($statement['reversed'][(int) $entry->id]),
+            )->toArray();
+        }
+
+        $currencyLabel = null;
+        if ($currencyId !== null) {
+            foreach ($statement['summaries'] as $summary) {
+                if ((int) $summary['currency_id'] === $currencyId) {
+                    $currencyLabel = $summary['currency_code'];
+
+                    break;
+                }
+            }
+        }
+
+        $document = LedgerStatementDocument::make(
+            partyKind: 'supplier',
+            partyName: (string) $supplier->name,
+            partyCode: $supplier->supplier_code !== null ? (string) $supplier->supplier_code : null,
+            currencyLabel: $currencyLabel !== null ? (string) $currencyLabel : null,
+            dateFrom: $dateFrom,
+            dateTo: $dateTo,
+            showCurrency: $currencyId === null,
+            entries: $entries,
+            summaries: $statement['summaries'],
+        );
+
+        return $this->tabularExportService->download($document, (string) $validated['format']);
     }
 
     public function balance(Supplier $supplier): JsonResponse

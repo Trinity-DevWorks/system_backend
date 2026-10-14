@@ -141,5 +141,21 @@ return [
             'label' => 'Supplier Payment Management',
             'actions' => [...$crud, 'reverse'],
         ],
+        'accounts' => [
+            'label' => 'Chart of Accounts',
+            'actions' => $crud,
+        ],
+        'account_mappings' => [
+            'label' => 'Account Mappings',
+            'actions' => $viewEdit,
+        ],
+        'journal_entries' => [
+            'label' => 'Journal Entries',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'accounting_reports' => [
+            'label' => 'Accounting Reports',
+            'actions' => ['view', 'export'],
+        ],
     ],
 ];

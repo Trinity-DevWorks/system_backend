@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Sales\CustomerReceipt\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
+use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Customer\Enums\LedgerReferenceType;
 use App\Modules\Customer\Models\Customer;
@@ -18,6 +20,7 @@ use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\CurrencyCashRound;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
@@ -33,6 +36,7 @@ class CustomerReceiptService
         private readonly CustomerLedgerService $customerLedgerService,
         private readonly ExchangeRateService $exchangeRateService,
         private readonly WarehouseService $warehouseService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -211,6 +215,8 @@ class CustomerReceiptService
                 $this->fail('Receipt amount must be greater than zero.', 'CUSTOMER_RECEIPT_AMOUNT_INVALID');
             }
 
+            $this->applyCashRounding($locked);
+            $locked->refresh();
             $this->refreshAppliedAmounts($locked);
 
             $allocations = CustomerReceiptAllocation::query()
@@ -265,6 +271,8 @@ class CustomerReceiptService
                 );
             }
 
+            $this->journalPostingService->customerReceipt($locked, $userId);
+
             $locked->update([
                 'status' => CustomerReceiptStatus::Posted,
                 'posted_by' => $userId,
@@ -275,9 +283,9 @@ class CustomerReceiptService
         });
     }
 
-    public function reverse(CustomerReceipt $receipt): CustomerReceipt
+    public function reverse(CustomerReceipt $receipt, ?string $userId = null): CustomerReceipt
     {
-        return DB::transaction(function () use ($receipt): CustomerReceipt {
+        return DB::transaction(function () use ($receipt, $userId): CustomerReceipt {
             $locked = CustomerReceipt::query()->whereKey($receipt->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== CustomerReceiptStatus::Posted) {
                 $this->fail('Only a posted customer receipt can be reversed.', 'CUSTOMER_RECEIPT_NOT_POSTED');
@@ -329,6 +337,8 @@ class CustomerReceiptService
                     now()->toDateString(),
                 );
             }
+
+            $this->journalPostingService->reverse(CustomerReceipt::REFERENCE_TYPE, (string) $locked->id, $userId);
 
             $locked->update(['status' => CustomerReceiptStatus::Reversed]);
 
@@ -404,6 +414,7 @@ class CustomerReceiptService
                 'amount' => $row['amount'],
                 'applied_amount' => $row['applied_amount'],
                 'applied_exchange_rate' => $row['applied_exchange_rate'],
+                'exchange_difference' => $row['exchange_difference'],
             ]);
         }
         $receipt->touch();
@@ -427,8 +438,41 @@ class CustomerReceiptService
         }
     }
 
+    private function applyCashRounding(CustomerReceipt $receipt): void
+    {
+        $currency = Currency::query()->find((int) $receipt->currency_id);
+        $rounded = CurrencyCashRound::round(
+            (string) $receipt->amount,
+            $currency?->smallest_unit,
+            $currency?->round_limit,
+        );
+        if (PaymentAllocation::same($rounded, $receipt->amount)) {
+            return;
+        }
+        if (! PaymentAllocation::isPositive($rounded)) {
+            $this->fail('Receipt amount must be greater than zero.', 'CUSTOMER_RECEIPT_AMOUNT_INVALID');
+        }
+
+        $allocations = CustomerReceiptAllocation::query()
+            ->where('customer_receipt_id', $receipt->id)
+            ->orderBy('id')
+            ->get();
+        $nextAmounts = PaymentAllocation::amountsForRoundedHeader(
+            $allocations->map(fn (CustomerReceiptAllocation $row): string => (string) $row->amount)->all(),
+            $rounded,
+        );
+        if ($nextAmounts === null) {
+            $this->fail('Cash rounding cannot be applied to these allocations.', 'CUSTOMER_RECEIPT_ALLOCATION_MISMATCH');
+        }
+
+        foreach ($allocations->values() as $index => $allocation) {
+            $allocation->update(['amount' => $nextAmounts[$index]]);
+        }
+        $receipt->update(['amount' => $rounded]);
+    }
+
     /**
-     * @return array{applied_amount: string, applied_exchange_rate: string}
+     * @return array{applied_amount: string, applied_exchange_rate: string, exchange_difference: string}
      */
     private function appliedSettlement(CustomerReceipt $receipt, SalesInvoice $invoice, string $amount): array
     {
@@ -441,14 +485,19 @@ class CustomerReceiptService
                 null,
                 'CUSTOMER_RECEIPT',
             );
-        $applied = PaymentAllocation::toInvoiceCurrency($amount, (string) $receipt->exchange_rate, $invoiceRate, $sameCurrency);
-        if (! PaymentAllocation::isPositive($applied)) {
-            $this->fail('Allocation does not settle any of the invoice balance.', 'CUSTOMER_RECEIPT_INVOICE_NOT_OPEN');
-        }
+        $converted = PaymentAllocation::toInvoiceCurrency($amount, (string) $receipt->exchange_rate, $invoiceRate, $sameCurrency);
+        $invoiceCurrency = Currency::query()->find((int) $invoice->currency_id);
+        $settled = PaymentAllocation::settle(
+            $converted,
+            (string) $invoice->net_to_pay,
+            $invoiceCurrency?->allowed_difference_in_receipt,
+            'CUSTOMER_RECEIPT_INVOICE_NOT_OPEN',
+        );
 
         return [
-            'applied_amount' => $applied,
+            'applied_amount' => $settled['applied_amount'],
             'applied_exchange_rate' => $invoiceRate,
+            'exchange_difference' => $settled['exchange_difference'],
         ];
     }
 

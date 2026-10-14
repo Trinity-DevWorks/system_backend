@@ -38,7 +38,7 @@ class PurchaseInvoiceQueryService
             ->with([
                 'supplier:id,supplier_code,name,is_active',
                 'warehouse:id,name,shortcut_name',
-                'currency:id,code,name',
+                'currency:id,code,name,symbol',
                 'goodsReceipt:id,grn_number',
             ]);
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Sales\SalesInvoice\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\ExchangeRateService;
@@ -42,6 +43,7 @@ class SalesInvoiceService
         private readonly CustomerLedgerService $customerLedgerService,
         private readonly StockMovementService $stockMovementService,
         private readonly ExchangeRateService $exchangeRateService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -218,6 +220,8 @@ class SalesInvoiceService
                 $this->postLineStock($locked, $line, $userId);
             }
 
+            $this->journalPostingService->salesInvoice($locked, $userId);
+
             $locked->update([
                 'status' => SalesInvoiceStatus::Posted,
                 'posted_by' => $userId,
@@ -258,6 +262,8 @@ class SalesInvoiceService
                     now()->toDateString(),
                 );
             }
+
+            $this->journalPostingService->reverse(SalesInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
 
             $locked->update(['status' => SalesInvoiceStatus::Reversed]);
 

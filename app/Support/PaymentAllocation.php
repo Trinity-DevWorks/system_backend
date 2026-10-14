@@ -93,6 +93,78 @@ final class PaymentAllocation
         return self::normalize($value);
     }
 
+    /**
+     * Move allocation amounts so they add up to a cash-rounded header.
+     * The whole change stays on the last line that remains positive.
+     *
+     * @param  list<mixed>  $amounts
+     * @return list<string>|null
+     */
+    public static function amountsForRoundedHeader(array $amounts, string $roundedHeader): ?array
+    {
+        if ($amounts === []) {
+            return null;
+        }
+
+        $next = array_map(static fn (mixed $amount): string => self::normalize($amount), $amounts);
+        $target = self::normalize($roundedHeader);
+        $delta = bcsub($target, self::sum($next), 4);
+        if (bccomp($delta, '0', 4) === 0) {
+            return $next;
+        }
+
+        for ($index = count($next) - 1; $index >= 0; $index--) {
+            $candidate = bcadd($next[$index], $delta, 4);
+            if (bccomp($candidate, '0', 4) > 0) {
+                $next[$index] = self::normalize($candidate);
+
+                return $next;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Amount posted to the invoice and the party ledger, plus the signed gap.
+     * A gap inside the invoice currency's allowed difference closes the invoice.
+     * exchange_difference = cash value in invoice currency − amount posted.
+     *
+     * @return array{applied_amount: string, exchange_difference: string}
+     */
+    public static function settle(string $converted, string $open, mixed $allowedDifference, string $exceedCode): array
+    {
+        $converted = self::normalize($converted);
+        $open = self::normalize($open);
+        if (! self::isPositive($converted) || ! self::isPositive($open)) {
+            abort(422, 'Allocation does not settle any of the invoice balance.', ['X-Error-Code' => $exceedCode]);
+        }
+
+        $gap = bcsub($open, $converted, 4);
+        $tolerance = ($allowedDifference === null || $allowedDifference === '')
+            ? self::normalize(0)
+            : self::normalize($allowedDifference);
+        $absGap = bccomp($gap, '0', 4) < 0 ? bcsub('0', $gap, 4) : $gap;
+        if (bccomp($absGap, $tolerance, 4) <= 0) {
+            return [
+                'applied_amount' => $open,
+                'exchange_difference' => self::normalize(bcsub($converted, $open, 4)),
+            ];
+        }
+
+        if (bccomp($gap, '0', 4) < 0) {
+            return [
+                'applied_amount' => $converted,
+                'exchange_difference' => self::normalize(0),
+            ];
+        }
+
+        return [
+            'applied_amount' => $converted,
+            'exchange_difference' => self::normalize(0),
+        ];
+    }
+
     private static function positiveRate(mixed $rate): string
     {
         $normalized = number_format((float) $rate, ExchangeRateSnapshot::SCALE, '.', '');

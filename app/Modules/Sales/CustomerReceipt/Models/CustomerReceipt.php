@@ -43,6 +43,8 @@ class CustomerReceipt extends Model implements AuditableContract
     use Auditable;
     use HasUuids;
 
+    public const REFERENCE_TYPE = 'customer_receipt';
+
     /**
      * @return array<string, string>
      */

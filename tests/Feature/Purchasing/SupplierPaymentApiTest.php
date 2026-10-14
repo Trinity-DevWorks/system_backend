@@ -14,6 +14,8 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\ItemType\Models\ItemType;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
+use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPaymentAllocation;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
@@ -263,6 +265,79 @@ class SupplierPaymentApiTest extends TestCase
             $this->assertNotNull($entry);
             $this->assertSame($this->catalog['eur_id'], (int) $entry->currency_id);
             $this->assertEqualsWithDelta(350.0, (float) $entry->debit, 0.001);
+        });
+    }
+
+    public function test_cash_rounding_reduces_the_amount_when_the_gap_is_outside_the_allowed_difference(): void
+    {
+        $this->tenant->run(function (): void {
+            Currency::query()->whereKey($this->catalog['eur_id'])->update([
+                'smallest_unit' => 10,
+                'round_limit' => 5,
+            ]);
+            app(ExchangeRateService::class)->setPairRate($this->catalog['usd_id'], $this->catalog['eur_id'], 1);
+        });
+
+        $invoiceId = $this->postPurchaseInvoice(14.2, [
+            'currency_id' => $this->catalog['eur_id'],
+            'exchange_rate' => 1,
+        ]);
+        $paymentId = $this->createAndPostPayment($this->paymentPayload($invoiceId, '14.2', [
+            'currency_id' => $this->catalog['eur_id'],
+            'exchange_rate' => 1,
+        ]));
+
+        $this->tenant->run(function () use ($invoiceId, $paymentId): void {
+            $invoice = PurchaseInvoice::query()->findOrFail($invoiceId);
+            $this->assertEqualsWithDelta(10.0, (float) $invoice->paid_total, 0.001);
+            $this->assertEqualsWithDelta(4.2, (float) $invoice->net_to_pay, 0.001);
+
+            $payment = SupplierPayment::query()->findOrFail($paymentId);
+            $this->assertEqualsWithDelta(10.0, (float) $payment->amount, 0.001);
+            $allocation = SupplierPaymentAllocation::query()->where('supplier_payment_id', $paymentId)->first();
+            $this->assertNotNull($allocation);
+            $this->assertEqualsWithDelta(10.0, (float) $allocation->amount, 0.001);
+            $this->assertEqualsWithDelta(0.0, (float) $allocation->exchange_difference, 0.001);
+
+            $balance = app(SupplierLedgerService::class)->balanceInCurrency(
+                Supplier::query()->findOrFail($this->catalog['supplier_id']),
+                $this->catalog['eur_id'],
+            );
+            $this->assertEqualsWithDelta(4.2, (float) $balance, 0.001);
+        });
+    }
+
+    public function test_allowed_payment_difference_closes_the_invoice_and_stores_the_exchange_difference(): void
+    {
+        $this->tenant->run(function (): void {
+            Currency::query()->whereKey($this->catalog['eur_id'])->update([
+                'allowed_difference_in_payment' => 0.05,
+            ]);
+            app(ExchangeRateService::class)->setPairRate($this->catalog['usd_id'], $this->catalog['eur_id'], 3.5);
+        });
+
+        $invoiceId = $this->postPurchaseInvoice(100.02, [
+            'currency_id' => $this->catalog['eur_id'],
+            'exchange_rate' => 3.5,
+        ]);
+        $paymentId = $this->createAndPostPayment($this->paymentPayload($invoiceId, '28.58'));
+
+        $this->tenant->run(function () use ($invoiceId, $paymentId): void {
+            $invoice = PurchaseInvoice::query()->findOrFail($invoiceId);
+            $this->assertEqualsWithDelta(100.02, (float) $invoice->paid_total, 0.001);
+            $this->assertEqualsWithDelta(0.0, (float) $invoice->net_to_pay, 0.001);
+
+            $allocation = SupplierPaymentAllocation::query()->where('supplier_payment_id', $paymentId)->first();
+            $this->assertNotNull($allocation);
+            $this->assertEqualsWithDelta(28.58, (float) $allocation->amount, 0.001);
+            $this->assertEqualsWithDelta(100.02, (float) $allocation->applied_amount, 0.001);
+            $this->assertEqualsWithDelta(0.01, (float) $allocation->exchange_difference, 0.001);
+
+            $balance = app(SupplierLedgerService::class)->balanceInCurrency(
+                Supplier::query()->findOrFail($this->catalog['supplier_id']),
+                $this->catalog['eur_id'],
+            );
+            $this->assertEqualsWithDelta(0.0, (float) $balance, 0.001);
         });
     }
 

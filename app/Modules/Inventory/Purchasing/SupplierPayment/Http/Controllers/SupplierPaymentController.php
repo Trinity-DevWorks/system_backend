@@ -119,9 +119,13 @@ class SupplierPaymentController extends Controller
         );
     }
 
-    public function reverse(SupplierPayment $supplierPayment): JsonResponse
+    public function reverse(Request $request, SupplierPayment $supplierPayment): JsonResponse
     {
-        $payment = $this->supplierPaymentService->reverse($supplierPayment);
+        $userId = $request->user()?->id;
+        $payment = $this->supplierPaymentService->reverse(
+            $supplierPayment,
+            $userId !== null ? (string) $userId : null,
+        );
 
         return ApiResponse::success(
             SupplierPaymentResponseData::fromModel($payment),

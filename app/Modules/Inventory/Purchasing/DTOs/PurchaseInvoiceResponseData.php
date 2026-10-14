@@ -76,6 +76,7 @@ readonly class PurchaseInvoiceResponseData
                 'id' => $invoice->currency->id,
                 'code' => $invoice->currency->code,
                 'name' => $invoice->currency->name,
+                'symbol' => $invoice->currency->symbol,
             ] : null,
             'payment_method' => $invoice->paymentMethod ? [
                 'id' => $invoice->paymentMethod->id,

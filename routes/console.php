@@ -7,9 +7,12 @@ use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Jobs\BootstrapTenantWalkInCustomer;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Accounting\Services\AccountingBackfillService;
+use App\Modules\Accounting\Services\ChartOfAccountsService;
 use App\Modules\Branch\Services\BranchService;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
+use App\Services\ModuleEntitlementService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -300,3 +303,48 @@ Artisan::command('notifications:prune {--days= : Override configured retention d
 
     $this->info("Done. Retention={$days} day(s). Total deleted={$total}.");
 })->purpose('Delete expired read notifications from tenant inboxes');
+
+/*
+|--------------------------------------------------------------------------
+| accounting:seed-chart / accounting:backfill
+|--------------------------------------------------------------------------
+|
+| seed-chart inserts missing template accounts and unmapped roles; it never overwrites.
+| backfill posts journal entries for documents posted before accounting existed.
+|
+*/
+$accountingTenants = function (array $ids) {
+    $query = Tenant::query();
+    if ($ids !== []) {
+        $query->whereIn('id', $ids);
+    }
+
+    return $query->cursor();
+};
+
+Artisan::command('accounting:seed-chart {--tenant=* : Tenant ids (default: all)} {--template= : Template key from config/chart_of_accounts.php}', function () use ($accountingTenants): void {
+    $template = $this->option('template') ?: null;
+    $command = $this;
+
+    foreach ($accountingTenants((array) $this->option('tenant')) as $tenant) {
+        $result = $tenant->run(fn (): array => app(ChartOfAccountsService::class)->seedFromTemplate($template));
+        $command->info("Tenant [{$tenant->id}]: template {$result['template']}, {$result['accounts_created']} account(s), {$result['mappings_created']} mapping(s) created.");
+    }
+})->purpose('Seed the chart of accounts and account mappings for tenants');
+
+Artisan::command('accounting:backfill {--tenant=* : Tenant ids (default: all)}', function () use ($accountingTenants): void {
+    $command = $this;
+
+    foreach ($accountingTenants((array) $this->option('tenant')) as $tenant) {
+        $created = $tenant->run(fn (): ?int => app(ModuleEntitlementService::class)->tenantHas((string) $tenant->id, 'accounting')
+            ? app(AccountingBackfillService::class)->run()
+            : null);
+
+        if ($created === null) {
+            $command->warn("Skipped tenant [{$tenant->id}] — accounting module not enabled.");
+
+            continue;
+        }
+        $command->info("Tenant [{$tenant->id}]: {$created} journal entr(y/ies) created.");
+    }
+})->purpose('Create journal entries for documents posted before accounting was enabled');
