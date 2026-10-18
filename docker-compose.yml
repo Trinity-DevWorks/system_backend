@@ -72,7 +72,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOG_CHANNEL: stderr
-      SANCTUM_STATEFUL_DOMAINS: localhost,localhost:3000,127.0.0.1,app.localhost,app.localhost:3000,tenant.localhost,tenant.localhost:3000
+      SANCTUM_STATEFUL_DOMAINS: localhost,localhost:3000,127.0.0.1,app.localhost,app.localhost:3000,pepsico.localhost,pepsico.localhost:3000,nestle.localhost,nestle.localhost:3000,carrefour.localhost,carrefour.localhost:3000
     volumes:
       # Persist tenant files / uploads across restarts
       - app_storage:/var/www/html/storage/app

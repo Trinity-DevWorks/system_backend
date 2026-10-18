@@ -12,7 +12,7 @@ class DatabaseSeeder extends Seeder
      * Seed the application's database.
      *
      * Central `users` holds optional global accounts (see central migrations).
-     * Tenant app users (e.g. tenant@gmail.com) come from {@see TenantSeeder}.
+     * Tenant app users (Spinneys, Kassatly Chtaura, Liban Lait) come from {@see TenantSeeder}.
      *
      * Note: Do not use WithoutModelEvents on this seeder.
      * Stancl assigns tenant UUIDs in a `creating` listener; suppressing model events breaks that.

@@ -118,7 +118,7 @@ readonly class InvoiceProofVerificationData
      *     supplier_approved_at: ?string,
      *     buyer_approved_at: ?string,
      *     revoked_at: ?string,
-     *     attestations: list<array{verifier: string, verifier_name: ?string, role: string, reference_hash: ?string, attested_at: ?string}>,
+     *     attestations: list<array{verifier: string, verifier_name: ?string, role: string, party_side: string, reference_hash: ?string, attested_at: ?string}>,
      *     financed_by: ?string
      * }
      */

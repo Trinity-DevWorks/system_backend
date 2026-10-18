@@ -79,14 +79,24 @@ docker compose exec app php artisan db:seed --force
 curl -s http://localhost:8080/api/health
 ```
 
-Demo tenant (`TenantSeeder`): open **http://tenant.localhost:3000**, login `tenant@gmail.com` / `12345678`.
+Demo companies (`TenantSeeder`): password `12345678` for every user.
+
+| Company | URL | Owner |
+|---------|-----|--------|
+| Spinneys | http://spinneys.localhost:3000 | `spinneys.owner@gmail.com` |
+| Kassatly Chtaura | http://kassatly.localhost:3000 | `kassatly.owner@gmail.com` |
+| Liban Lait | http://libanlait.localhost:3000 | `libanlait.owner@gmail.com` |
+
+Each company also has admin, user, and employee logins on `@gmail.com` (`spinneys.admin@gmail.com`, `spinneys.user@gmail.com`, `spinneys.employee@gmail.com`, and the same pattern for the other companies). User and Employee are extra roles. Items, currencies, and posted opening-stock balances are the same in all three so a sales invoice can be linked as a purchase invoice. Wallet addresses are not seeded.
 
 Central domains default to `app.localhost,localhost,127.0.0.1` (see `CENTRAL_DOMAIN`).  
-Tenant APIs are identified by **hostname** (e.g. `tenant.localhost`). Map hosts in `/etc/hosts`:
+Tenant APIs are identified by **hostname**. Map hosts in `/etc/hosts`:
 
 ```text
 127.0.0.1 app.localhost
-127.0.0.1 tenant.localhost
+127.0.0.1 spinneys.localhost
+127.0.0.1 kassatly.localhost
+127.0.0.1 libanlait.localhost
 ```
 
 ### Frontend “Network Error”

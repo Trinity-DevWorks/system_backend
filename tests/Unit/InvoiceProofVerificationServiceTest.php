@@ -9,6 +9,8 @@ use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
+use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\InvoiceProof\Contracts\InvoiceRegistryGateway;
 use App\Modules\InvoiceProof\DTOs\InvoiceAttestationRecord;
@@ -31,6 +33,7 @@ use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
 use Carbon\Carbon;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -336,6 +339,54 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $this->assertNull($result->chainMatches);
     }
 
+    public function test_linked_purchase_rpc_failure_is_pending_chain(): void
+    {
+        $invoice = $this->linkedPurchaseInvoice();
+        $snapshots = $this->createMock(InvoiceSnapshotService::class);
+        $snapshots->method('findForPurchaseInvoice')->willReturn(null);
+        $chain = $this->createMock(InvoiceChainRegistrationService::class);
+        $chain->method('isConfigured')->willReturn(true);
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->willThrowException(new RuntimeException('rpc unavailable'));
+
+        $service = new InvoiceProofVerificationService(
+            $snapshots,
+            $chain,
+            $gateway,
+            $this->createMock(InvoiceChainStatusRecorder::class),
+        );
+
+        $result = $service->verifyPurchaseInvoice($invoice, $this->company());
+
+        $this->assertSame(InvoiceProofVerificationStatus::PendingChain, $result->status);
+        $this->assertNull($result->snapshotIntact);
+        $this->assertNull($result->chainMatches);
+        $this->assertSame(self::PROOF_ID, $result->proofId);
+    }
+
+    public function test_linked_purchase_empty_chain_read_is_not_registered(): void
+    {
+        $invoice = $this->linkedPurchaseInvoice();
+        $snapshots = $this->createMock(InvoiceSnapshotService::class);
+        $snapshots->method('findForPurchaseInvoice')->willReturn(null);
+        $chain = $this->createMock(InvoiceChainRegistrationService::class);
+        $chain->method('isConfigured')->willReturn(true);
+        $gateway = $this->createMock(InvoiceRegistryGateway::class);
+        $gateway->method('invoiceOf')->willReturn(null);
+
+        $service = new InvoiceProofVerificationService(
+            $snapshots,
+            $chain,
+            $gateway,
+            $this->createMock(InvoiceChainStatusRecorder::class),
+        );
+
+        $result = $service->verifyPurchaseInvoice($invoice, $this->company());
+
+        $this->assertSame(InvoiceProofVerificationStatus::NotRegistered, $result->status);
+        $this->assertFalse($result->chainMatches);
+    }
+
     public function test_different_chain_hash_is_tampered(): void
     {
         $invoice = $this->salesInvoice();
@@ -374,6 +425,7 @@ class InvoiceProofVerificationServiceTest extends TestCase
             'verifier' => '0x90f79bf6eb2c4f870365e785982e1f101e93b906',
             'verifier_name' => null,
             'role' => 'auditor',
+            'party_side' => 'supplier',
             'reference_hash' => null,
             'attested_at' => '2023-11-14T22:13:20+00:00',
         ], $payload['attestations'][0]);
@@ -631,6 +683,20 @@ class InvoiceProofVerificationServiceTest extends TestCase
         $line->setRelation('itemUom', $itemUom);
 
         return $line;
+    }
+
+    private function linkedPurchaseInvoice(): PurchaseInvoice
+    {
+        $invoice = new PurchaseInvoice;
+        $invoice->id = '22222222-2222-4222-8222-222222222222';
+        $invoice->invoice_number = 'PI-0001';
+        $invoice->linked_proof_id = self::PROOF_ID;
+        $invoice->status = PurchaseInvoiceStatus::Posted;
+        $invoice->grand_total = 22.0;
+        $invoice->setRelation('supplier', null);
+        $invoice->setRelation('currency', null);
+
+        return $invoice;
     }
 
     private function company(): CompanyProfile

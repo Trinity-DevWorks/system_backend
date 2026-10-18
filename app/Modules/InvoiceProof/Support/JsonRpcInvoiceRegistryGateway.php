@@ -54,6 +54,7 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
         string $contentHash,
         string $supplierAddress,
         string $buyerAddress,
+        bool $buyerDisputeAllowed,
     ): InvoiceChainReceiptData {
         $existing = $this->invoiceOf($proofId);
         if ($existing !== null) {
@@ -73,6 +74,7 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
             $contentHash,
             $supplierAddress,
             $buyerAddress,
+            $buyerDisputeAllowed,
         );
 
         try {

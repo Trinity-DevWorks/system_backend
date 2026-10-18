@@ -19,6 +19,7 @@ interface InvoiceRegistryGateway
         string $contentHash,
         string $supplierAddress,
         string $buyerAddress,
+        bool $buyerDisputeAllowed,
     ): InvoiceChainReceiptData;
 
     public function setParties(

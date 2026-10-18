@@ -35,10 +35,21 @@ class InvoiceProofBytesTest extends TestCase
             str_repeat('ab', 32),
             '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
             '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
+            true,
         );
 
         $this->assertStringStartsWith(InvoiceRegistryAbi::REGISTER_INVOICE, $data);
-        $this->assertSame(10 + 64 + 64 + 64 + 64, strlen($data));
+        $this->assertSame(10 + 64 + 64 + 64 + 64 + 64, strlen($data));
+        $this->assertStringEndsWith(str_repeat('0', 63).'1', $data);
+
+        $purchase = InvoiceRegistryAbi::encodeRegisterInvoice(
+            '11111111-1111-4111-8111-111111111111',
+            str_repeat('ab', 32),
+            '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+            '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
+            false,
+        );
+        $this->assertStringEndsWith(str_repeat('0', 64), $purchase);
     }
 
     public function test_set_parties_calldata_starts_with_selector(): void

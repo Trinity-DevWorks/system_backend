@@ -29,6 +29,7 @@ final class DisabledInvoiceRegistryGateway implements InvoiceRegistryGateway
         string $contentHash,
         string $supplierAddress,
         string $buyerAddress,
+        bool $buyerDisputeAllowed,
     ): InvoiceChainReceiptData {
         throw new RuntimeException('Blockchain registration is disabled.');
     }

@@ -16,7 +16,7 @@ use InvalidArgumentException;
  */
 final class InvoiceRegistryAbi
 {
-    public const REGISTER_INVOICE = '0x8c80e273';
+    public const REGISTER_INVOICE = '0x213f6bb5';
 
     public const CONTENT_HASH_OF = '0x3dda9d51';
 
@@ -74,12 +74,14 @@ final class InvoiceRegistryAbi
         string $contentHash,
         string $supplier,
         string $buyer,
+        bool $buyerDisputeAllowed,
     ): string {
         return self::REGISTER_INVOICE
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::proofIdToBytes32($proofId))
             .InvoiceProofBytes::strip0x(InvoiceProofBytes::contentHashToBytes32($contentHash))
             .self::padAddress($supplier)
-            .self::padAddress($buyer);
+            .self::padAddress($buyer)
+            .self::padUint($buyerDisputeAllowed ? 1 : 0);
     }
 
     public static function encodeSetParties(string $proofId, string $supplier, string $buyer): string

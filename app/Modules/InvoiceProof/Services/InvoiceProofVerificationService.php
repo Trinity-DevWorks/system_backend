@@ -280,10 +280,12 @@ class InvoiceProofVerificationService
         $proofId = (string) $invoice->linked_proof_id;
         $chainEnabled = $this->invoiceChainRegistrationService->isConfigured();
         $onChain = null;
+        $chainRead = false;
         $attestations = [];
         if ($chainEnabled) {
             try {
                 $onChain = $this->invoiceRegistryGateway->invoiceOf($proofId);
+                $chainRead = true;
             } catch (Throwable) {
                 $onChain = null;
             }
@@ -296,9 +298,14 @@ class InvoiceProofVerificationService
             }
         }
 
-        $status = $onChain === null
-            ? InvoiceProofVerificationStatus::NotRegistered
-            : self::statusFromChain($onChain);
+        // A failed RPC is not evidence that the supplier seal is unregistered.
+        if ($chainEnabled && ! $chainRead) {
+            $status = InvoiceProofVerificationStatus::PendingChain;
+        } elseif ($onChain === null) {
+            $status = InvoiceProofVerificationStatus::NotRegistered;
+        } else {
+            $status = self::statusFromChain($onChain);
+        }
         $supplierWallet = WalletAddress::nonZeroOrNull($onChain?->supplierAddress);
         $buyerWallet = WalletAddress::nonZeroOrNull($onChain?->buyerAddress);
         $chainId = $chainEnabled ? (int) config('blockchain.chain_id') : null;
@@ -341,9 +348,9 @@ class InvoiceProofVerificationService
 
         return new InvoiceProofVerificationData(
             status: $status,
-            snapshotIntact: $onChain !== null,
+            snapshotIntact: $onChain !== null ? true : null,
             liveInvoiceMatches: null,
-            chainMatches: $onChain !== null,
+            chainMatches: $chainRead ? $onChain !== null : null,
             chainId: $chainId,
             contractAddress: $contractAddress,
             supplierWallet: $supplierWallet,

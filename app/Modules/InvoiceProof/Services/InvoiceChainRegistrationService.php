@@ -201,6 +201,7 @@ class InvoiceChainRegistrationService
                 $snapshot->content_hash,
                 $supplier,
                 $buyer,
+                ! $this->isPurchaseSnapshot($snapshot),
             );
             $this->markConfirmed($registration, $receipt);
         } catch (Throwable $exception) {
