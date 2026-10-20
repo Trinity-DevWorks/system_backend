@@ -63,6 +63,7 @@ class UpdateItemRequest extends FormRequest
             'costing_method' => ['sometimes', 'nullable', Rule::enum(InventoryCostingMethod::class)],
             'allow_sale' => ['sometimes', 'boolean'],
             'allow_purchase' => ['sometimes', 'boolean'],
+            'allow_return' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }

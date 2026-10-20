@@ -3,7 +3,10 @@
 namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Models\User;
+use App\Modules\Inventory\Stock\Enums\StockTransferStatus;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
+use App\Modules\Inventory\Stock\Support\StockTransferLineQuantity;
+use App\Modules\Inventory\Stock\Support\StockTransferRules;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Support\Collection;
 
@@ -12,8 +15,8 @@ readonly class StockTransferResponseData
     public static function fromModel(StockTransfer $transfer, bool $includeLines = true): array
     {
         $transfer->loadMissing([
-            'fromWarehouse:id,name,shortcut_name,is_active',
-            'toWarehouse:id,name,shortcut_name,is_active',
+            'fromWarehouse:id,name,shortcut_name,is_active,manager_id',
+            'toWarehouse:id,name,shortcut_name,is_active,manager_id',
             'createdByUser:id,name,email',
             'dispatchedByUser:id,name,email',
             'receivedByUser:id,name,email',
@@ -38,13 +41,48 @@ readonly class StockTransferResponseData
             'updated_at' => (string) $transfer->updated_at,
         ];
 
+        $hasOpen = false;
+        $hasAllocated = false;
         if ($includeLines) {
             $transfer->loadMissing([
                 'lines.item',
                 'lines.itemUom.uom',
+                'lines.lot',
+                'receipts.lines.item',
+                'receipts.lines.lot',
+                'receipts.createdByUser',
+                'receipts.postedByUser',
+                'closures.lines.item',
+                'closures.lines.lot',
+                'closures.lines.reason',
+                'closures.createdByUser',
             ]);
             $payload['lines'] = StockTransferLineResponseData::collectionToArray($transfer->lines);
+            $payload['receipts'] = StockTransferReceiptResponseData::collectionToArray($transfer->receipts);
+            $payload['closures'] = StockTransferClosureResponseData::collectionToArray($transfer->closures);
+            $hasOpen = StockTransferLineQuantity::hasOpenQuantity($transfer);
+            $hasAllocated = StockTransferLineQuantity::hasAllocatedQuantities($transfer);
+        } else {
+            $hasOpen = in_array($transfer->status, StockTransferStatus::receivable(), true);
+            $hasAllocated = $transfer->status === StockTransferStatus::PartiallyReceived
+                || $transfer->status === StockTransferStatus::Received;
         }
+
+        $fromVisible = StockTransferRules::isWarehouseVisible((int) $transfer->from_warehouse_id);
+        $toVisible = StockTransferRules::isWarehouseVisible((int) $transfer->to_warehouse_id);
+        $receivable = in_array($transfer->status, StockTransferStatus::receivable(), true);
+
+        $payload['can_receive'] = $toVisible
+            && $receivable
+            && $hasOpen
+            && StockTransferRules::isDestinationWarehouseManager($transfer);
+        $payload['can_cancel_transit'] = $fromVisible
+            && $transfer->status === StockTransferStatus::InTransit
+            && ! $hasAllocated
+            && StockTransferRules::canCancelTransitActor($transfer);
+        $payload['can_close_open'] = $fromVisible
+            && $transfer->status === StockTransferStatus::PartiallyReceived
+            && $hasOpen;
 
         return $payload;
     }

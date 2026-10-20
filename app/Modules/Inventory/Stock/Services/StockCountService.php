@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
@@ -25,6 +26,7 @@ class StockCountService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -218,11 +220,31 @@ class StockCountService
                 ));
             }
 
+            $this->journalPostingService->stockCount($locked, $userId);
+
             $locked->update([
                 'status' => StockCountStatus::Posted,
                 'posted_by' => $userId,
                 'posted_at' => now(),
             ]);
+
+            return $this->find($locked->id);
+        });
+    }
+
+    public function reverse(StockCount $document, ?string $userId): StockCount
+    {
+        return DB::transaction(function () use ($document, $userId): StockCount {
+            $locked = StockCount::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== StockCountStatus::Posted) {
+                abort(422, 'Only a posted stock count can be reversed.', [
+                    'X-Error-Code' => 'STOCK_COUNT_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->stockMovementService->reverseReference(StockCount::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->journalPostingService->reverse(StockCount::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $locked->update(['status' => StockCountStatus::Reversed]);
 
             return $this->find($locked->id);
         });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
@@ -30,6 +31,7 @@ class ProductionService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -309,13 +311,34 @@ class ProductionService
                 userId: $userId,
                 lotId: $locked->lot_id ? (int) $locked->lot_id : null,
                 productionId: (string) $locked->id,
+                valueDelta: bccomp($producedBase, '0', 6) > 0 ? $consumedValue : null,
             ));
+
+            $this->journalPostingService->production($locked, $userId);
 
             $locked->update([
                 'status' => ProductionStatus::Posted,
                 'posted_by' => $userId,
                 'posted_at' => now(),
             ]);
+
+            return $this->find($locked->id);
+        });
+    }
+
+    public function reverse(Production $document, ?string $userId): Production
+    {
+        return DB::transaction(function () use ($document, $userId): Production {
+            $locked = Production::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== ProductionStatus::Posted) {
+                abort(422, 'Only a posted production can be reversed.', [
+                    'X-Error-Code' => 'PRODUCTION_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->stockMovementService->reverseReference(Production::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->journalPostingService->reverse(Production::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $locked->update(['status' => ProductionStatus::Reversed]);
 
             return $this->find($locked->id);
         });

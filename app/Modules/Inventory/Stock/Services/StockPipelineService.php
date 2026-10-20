@@ -16,6 +16,12 @@ use Illuminate\Support\Facades\DB;
 
 class StockPipelineService
 {
+    private const OPEN_TRANSFER_BASE_SQL =
+        '(stock_transfer_lines.base_quantity'
+        .' - stock_transfer_lines.received_base_quantity'
+        .' - stock_transfer_lines.returned_base_quantity'
+        .' - stock_transfer_lines.written_off_base_quantity)';
+
     /**
      * @param  Collection<int, StockBalance>  $balances
      * @return array<string, array{on_order_qty: string, in_transit_in_qty: string, in_transit_out_qty: string, projected_qty: string}>
@@ -140,7 +146,11 @@ class StockPipelineService
                         ->join('stock_transfers', 'stock_transfers.id', '=', 'stock_transfer_lines.stock_transfer_id')
                         ->whereColumn('stock_transfer_lines.item_id', 'stock_balances.item_id')
                         ->whereColumn('stock_transfers.to_warehouse_id', 'stock_balances.warehouse_id')
-                        ->where('stock_transfers.status', StockTransferStatus::InTransit->value);
+                        ->whereIn('stock_transfers.status', [
+                            StockTransferStatus::InTransit->value,
+                            StockTransferStatus::PartiallyReceived->value,
+                        ])
+                        ->whereRaw(self::OPEN_TRANSFER_BASE_SQL.' > 0');
                 })
                 ->orWhereExists(function ($exists): void {
                     $exists->selectRaw('1')
@@ -148,7 +158,11 @@ class StockPipelineService
                         ->join('stock_transfers', 'stock_transfers.id', '=', 'stock_transfer_lines.stock_transfer_id')
                         ->whereColumn('stock_transfer_lines.item_id', 'stock_balances.item_id')
                         ->whereColumn('stock_transfers.from_warehouse_id', 'stock_balances.warehouse_id')
-                        ->where('stock_transfers.status', StockTransferStatus::InTransit->value);
+                        ->whereIn('stock_transfers.status', [
+                            StockTransferStatus::InTransit->value,
+                            StockTransferStatus::PartiallyReceived->value,
+                        ])
+                        ->whereRaw(self::OPEN_TRANSFER_BASE_SQL.' > 0');
                 });
         });
     }
@@ -193,10 +207,13 @@ class StockPipelineService
             ->select([
                 'stock_transfer_lines.item_id',
                 "stock_transfers.{$warehouseColumn}",
-                DB::raw('SUM(stock_transfer_lines.base_quantity) as quantity'),
+                DB::raw('SUM(GREATEST('.self::OPEN_TRANSFER_BASE_SQL.', 0)) as quantity'),
             ])
             ->join('stock_transfers', 'stock_transfers.id', '=', 'stock_transfer_lines.stock_transfer_id')
-            ->where('stock_transfers.status', StockTransferStatus::InTransit->value)
+            ->whereIn('stock_transfers.status', [
+                StockTransferStatus::InTransit->value,
+                StockTransferStatus::PartiallyReceived->value,
+            ])
             ->groupBy('stock_transfer_lines.item_id', "stock_transfers.{$warehouseColumn}");
     }
 

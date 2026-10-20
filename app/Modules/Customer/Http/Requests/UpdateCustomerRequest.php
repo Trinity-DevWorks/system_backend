@@ -25,6 +25,14 @@ class UpdateCustomerRequest extends FormRequest
             return;
         }
 
+        if ($this->exists('account_number')) {
+            $accountNumber = $this->input('account_number');
+            if (is_string($accountNumber)) {
+                $trimmed = trim($accountNumber);
+                $this->merge(['account_number' => $trimmed === '' ? null : $trimmed]);
+            }
+        }
+
         $status = $this->has('status')
             ? $this->input('status')
             : ($customer->status instanceof CustomerStatus
@@ -55,6 +63,7 @@ class UpdateCustomerRequest extends FormRequest
         $customerId = is_object($customer) ? $customer->id : $customer;
 
         return [
+            'account_number' => ['sometimes', 'nullable', 'string', 'max:128', Rule::unique('customers', 'account_number')->ignore($customerId)],
             'name' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'nullable', 'email', 'max:255', Rule::unique('customers', 'email')->ignore($customerId)],
             'phone' => ['sometimes', 'nullable', 'string', 'max:32'],
@@ -78,6 +87,16 @@ class UpdateCustomerRequest extends FormRequest
             'is_vat_registered' => ['sometimes', 'boolean'],
             'vat_number' => ['sometimes', 'nullable', 'string', 'max:128'],
             'notes' => ['sometimes', 'nullable', 'string'],
+            'addresses' => ['sometimes', 'array'],
+            'addresses.*.id' => ['nullable', 'integer'],
+            'addresses.*.address_type' => ['required_with:addresses', 'string', 'in:billing,shipping'],
+            'addresses.*.address_line_1' => ['required_with:addresses', 'string', 'max:255'],
+            'addresses.*.address_line_2' => ['nullable', 'string', 'max:255'],
+            'addresses.*.city' => ['required_with:addresses', 'string', 'max:120'],
+            'addresses.*.state' => ['required_with:addresses', 'string', 'max:120'],
+            'addresses.*.country' => ['required_with:addresses', 'string', 'max:100'],
+            'addresses.*.phone' => ['nullable', 'string', 'max:32'],
+            'addresses.*.is_default' => ['nullable', 'boolean'],
             'credit_limit' => ['prohibited'],
             'opening_balance' => ['prohibited'],
             'customer_code' => ['prohibited'],

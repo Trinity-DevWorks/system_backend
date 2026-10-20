@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Jobs\BootstrapTenantChartOfAccounts;
 use App\Jobs\BootstrapTenantDefaultBranch;
 use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantUnitCatalog;
@@ -35,6 +36,7 @@ class TenancyServiceProvider extends ServiceProvider
                     BootstrapTenantDefaultBranch::class,
                     BootstrapTenantItemTypes::class,
                     BootstrapTenantUnitCatalog::class,
+                    BootstrapTenantChartOfAccounts::class,
                     BootstrapTenantWalkInCustomer::class,
                 ])->send(function (Events\TenantCreated $event) {
                     return $event->tenant;

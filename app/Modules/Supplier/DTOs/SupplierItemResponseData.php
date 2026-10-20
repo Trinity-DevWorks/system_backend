@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\DTOs;
 
-use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierItem;
@@ -17,7 +16,6 @@ readonly class SupplierItemResponseData
         $row->loadMissing([
             'supplier:id,supplier_code,name,is_active',
             'item:id,item_code,name,allow_purchase,is_active',
-            'currency:id,code,name,symbol,iso_code',
         ]);
 
         return [
@@ -26,12 +24,10 @@ readonly class SupplierItemResponseData
             'item_id' => $row->item_id,
             'supplier_item_code' => $row->supplier_item_code,
             'last_purchase_price' => $row->last_purchase_price !== null ? (string) $row->last_purchase_price : null,
-            'currency_id' => $row->currency_id,
             'lead_time_days' => $row->lead_time_days,
             'is_preferred' => (bool) $row->is_preferred,
             'supplier' => self::supplierBrief($row->supplier),
             'item' => self::itemBrief($row->item),
-            'currency' => self::currencyBrief($row->currency),
             'created_at' => (string) $row->created_at,
             'updated_at' => (string) $row->updated_at,
         ];
@@ -81,24 +77,6 @@ readonly class SupplierItemResponseData
             'name' => $item->name,
             'allow_purchase' => (bool) $item->allow_purchase,
             'is_active' => (bool) $item->is_active,
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    private static function currencyBrief(?Currency $currency): ?array
-    {
-        if (! $currency) {
-            return null;
-        }
-
-        return [
-            'id' => $currency->id,
-            'code' => $currency->code,
-            'name' => $currency->name,
-            'symbol' => $currency->symbol,
-            'iso_code' => $currency->iso_code,
         ];
     }
 }

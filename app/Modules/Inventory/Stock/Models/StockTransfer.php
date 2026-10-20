@@ -97,4 +97,20 @@ class StockTransfer extends Model implements AuditableContract
     {
         return $this->hasMany(StockTransferLine::class);
     }
+
+    /**
+     * @return HasMany<StockTransferReceipt, $this>
+     */
+    public function receipts(): HasMany
+    {
+        return $this->hasMany(StockTransferReceipt::class);
+    }
+
+    /**
+     * @return HasMany<StockTransferClosure, $this>
+     */
+    public function closures(): HasMany
+    {
+        return $this->hasMany(StockTransferClosure::class);
+    }
 }

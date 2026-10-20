@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
@@ -11,6 +12,7 @@ use App\Modules\Inventory\Stock\Enums\StockAdjustmentStatus;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockAdjustmentLine;
 use App\Modules\Inventory\Stock\Models\StockAdjustmentReason;
+use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentRules;
 use App\Modules\Warehouse\Services\WarehouseService;
@@ -25,6 +27,7 @@ class StockAdjustmentService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -191,6 +194,9 @@ class StockAdjustmentService
                 $itemUomId = $line->item_uom_id ? (int) $line->item_uom_id : null;
                 $unitCost = StockAdjustmentQuantity::resolveBaseUnitCost($item, $line->unit_cost, $itemUomId);
                 $lineNote = $line->notes ? $referenceNote.' — '.$line->notes : $referenceNote;
+                $inboundValue = bccomp((string) $line->base_quantity, '0', 6) > 0
+                    ? InventoryCostingMath::extended($line->quantity, $line->unit_cost)
+                    : null;
 
                 if ($item->track_lots && ! $line->lot_id) {
                     abort(422, 'Enter a lot number when adjusting a lot-tracked item.', [
@@ -208,14 +214,35 @@ class StockAdjustmentService
                     userId: $userId,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
                     stockAdjustmentId: (string) $locked->id,
+                    valueDelta: $inboundValue,
                 ));
             }
+
+            $this->journalPostingService->stockAdjustment($locked, $userId);
 
             $locked->update([
                 'status' => StockAdjustmentStatus::Posted,
                 'posted_by' => $userId,
                 'posted_at' => now(),
             ]);
+
+            return $this->find($locked->id);
+        });
+    }
+
+    public function reverse(StockAdjustment $document, ?string $userId): StockAdjustment
+    {
+        return DB::transaction(function () use ($document, $userId): StockAdjustment {
+            $locked = StockAdjustment::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== StockAdjustmentStatus::Posted) {
+                abort(422, 'Only a posted stock adjustment can be reversed.', [
+                    'X-Error-Code' => 'STOCK_ADJUSTMENT_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->stockMovementService->reverseReference(StockAdjustment::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->journalPostingService->reverse(StockAdjustment::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $locked->update(['status' => StockAdjustmentStatus::Reversed]);
 
             return $this->find($locked->id);
         });

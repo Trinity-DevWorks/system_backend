@@ -22,7 +22,7 @@ $crud = ['view', 'add', 'edit', 'delete'];
 $viewEdit = ['view', 'edit'];
 
 return [
-    'actions' => ['view', 'add', 'edit', 'delete', 'import', 'export'],
+    'actions' => ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse', 'reopen'],
 
     'resources' => [
         'notifications' => [
@@ -88,7 +88,7 @@ return [
         ],
         'stock' => [
             'label' => 'Stock Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'reverse'],
         ],
         'salesmen' => [
             'label' => 'Salesman Management',
@@ -116,6 +116,30 @@ return [
             'label' => 'Customer Management',
             'actions' => $crud,
         ],
+        'sales_quotations' => [
+            'label' => 'Sales Quotation Management',
+            'actions' => $crud,
+        ],
+        'sales_orders' => [
+            'label' => 'Sales Order Management',
+            'actions' => $crud,
+        ],
+        'sales_invoices' => [
+            'label' => 'Sales Invoice Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'customer_receipts' => [
+            'label' => 'Customer Receipt Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'sales_credit_notes' => [
+            'label' => 'Sales Credit Note Management',
+            'actions' => [...$crud, 'reverse', 'export'],
+        ],
+        'customer_refunds' => [
+            'label' => 'Customer Refund Management',
+            'actions' => [...$crud, 'reverse', 'export'],
+        ],
 
         'supplier_groups' => [
             'label' => 'Supplier Group Management',
@@ -124,6 +148,46 @@ return [
         'suppliers' => [
             'label' => 'Supplier Management',
             'actions' => $crud,
+        ],
+        'purchase_invoices' => [
+            'label' => 'Purchase Invoice Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'supplier_payments' => [
+            'label' => 'Supplier Payment Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'purchase_debit_notes' => [
+            'label' => 'Purchase Debit Note Management',
+            'actions' => [...$crud, 'reverse', 'export'],
+        ],
+        'supplier_refunds' => [
+            'label' => 'Supplier Refund Management',
+            'actions' => [...$crud, 'reverse', 'export'],
+        ],
+        'accounts' => [
+            'label' => 'Chart of Accounts',
+            'actions' => $crud,
+        ],
+        'account_mappings' => [
+            'label' => 'Account Mappings',
+            'actions' => $viewEdit,
+        ],
+        'journal_entries' => [
+            'label' => 'Journal Entries',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'accounting_reports' => [
+            'label' => 'Accounting Reports',
+            'actions' => ['view', 'export'],
+        ],
+        'vat_settlements' => [
+            'label' => 'VAT Settlements',
+            'actions' => ['view', 'add', 'reverse'],
+        ],
+        'accounting_periods' => [
+            'label' => 'Accounting Periods',
+            'actions' => ['view', 'edit', 'reopen'],
         ],
     ],
 ];

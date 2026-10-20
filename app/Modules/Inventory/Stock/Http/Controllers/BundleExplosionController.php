@@ -109,4 +109,18 @@ class BundleExplosionController extends Controller
             'Bundle explosion posted successfully.'
         );
     }
+
+    public function reverse(Request $request, BundleExplosion $bundle_explosion): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $document = $this->bundleExplosionService->reverse(
+            $bundle_explosion,
+            $userId !== null ? (string) $userId : null
+        );
+
+        return ApiResponse::success(
+            BundleExplosionResponseData::fromModel($document),
+            'Bundle explosion reversed successfully.'
+        );
+    }
 }

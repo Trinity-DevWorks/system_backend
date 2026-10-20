@@ -45,6 +45,7 @@ class StoreItemRequest extends FormRequest
             'costing_method' => ['nullable', Rule::enum(InventoryCostingMethod::class)],
             'allow_sale' => ['nullable', 'boolean'],
             'allow_purchase' => ['nullable', 'boolean'],
+            'allow_return' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
         ];
     }

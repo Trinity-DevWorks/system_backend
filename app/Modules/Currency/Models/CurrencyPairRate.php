@@ -28,7 +28,7 @@ class CurrencyPairRate extends Model
     protected function casts(): array
     {
         return [
-            'rate' => 'decimal:6',
+            'rate' => 'decimal:12',
             'effective_from' => 'datetime',
         ];
     }

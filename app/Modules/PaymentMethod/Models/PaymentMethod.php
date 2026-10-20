@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\PaymentMethod\Models;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
 use Database\Factories\PaymentMethodFactory;
@@ -20,6 +21,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'name',
     'type',
     'currency_id',
+    'account_id',
     'requires_reference',
     'supports_change',
     'is_default',
@@ -42,6 +44,7 @@ class PaymentMethod extends Model implements AuditableContract
     {
         return [
             'type' => PaymentMethodType::class,
+            'account_id' => 'integer',
             'requires_reference' => 'boolean',
             'supports_change' => 'boolean',
             'is_default' => 'boolean',
@@ -55,5 +58,13 @@ class PaymentMethod extends Model implements AuditableContract
     public function currency(): BelongsTo
     {
         return $this->belongsTo(Currency::class);
+    }
+
+    /**
+     * @return BelongsTo<Account, $this>
+     */
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class);
     }
 }

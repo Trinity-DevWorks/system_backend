@@ -34,6 +34,7 @@ return new class extends Migration
             $table->string('costing_method', 32)->nullable();
             $table->boolean('allow_sale')->default(true);
             $table->boolean('allow_purchase')->default(true);
+            $table->boolean('allow_return')->default(true);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->softDeletes();

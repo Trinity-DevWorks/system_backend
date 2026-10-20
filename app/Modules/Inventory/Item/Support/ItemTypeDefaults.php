@@ -10,7 +10,7 @@ namespace App\Modules\Inventory\Item\Support;
 final class ItemTypeDefaults
 {
     /**
-     * @return array{track_inventory: bool, allow_sale: bool, allow_purchase: bool}
+     * @return array{track_inventory: bool, allow_sale: bool, allow_purchase: bool, allow_return: bool}
      */
     public static function flagsForCode(string $code): array
     {
@@ -19,36 +19,43 @@ final class ItemTypeDefaults
                 'track_inventory' => true,
                 'allow_sale' => true,
                 'allow_purchase' => true,
+                'allow_return' => true,
             ],
             'SERVICE' => [
                 'track_inventory' => false,
                 'allow_sale' => true,
                 'allow_purchase' => false,
+                'allow_return' => true,
             ],
             'INGREDIENT' => [
                 'track_inventory' => true,
                 'allow_sale' => false,
                 'allow_purchase' => true,
+                'allow_return' => true,
             ],
             'PRODUCE' => [
                 'track_inventory' => true,
                 'allow_sale' => true,
                 'allow_purchase' => false,
+                'allow_return' => true,
             ],
             'BUNDLE' => [
                 'track_inventory' => false,
                 'allow_sale' => true,
                 'allow_purchase' => false,
+                'allow_return' => true,
             ],
             'NON_INVENTORY' => [
                 'track_inventory' => false,
                 'allow_sale' => true,
                 'allow_purchase' => true,
+                'allow_return' => true,
             ],
             default => [
                 'track_inventory' => true,
                 'allow_sale' => true,
                 'allow_purchase' => true,
+                'allow_return' => true,
             ],
         };
     }

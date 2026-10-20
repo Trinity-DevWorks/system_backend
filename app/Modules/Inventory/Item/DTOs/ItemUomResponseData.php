@@ -2,7 +2,6 @@
 
 namespace App\Modules\Inventory\Item\DTOs;
 
-use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use Illuminate\Support\Collection;
@@ -11,13 +10,12 @@ readonly class ItemUomResponseData
 {
     public static function fromModel(ItemUom $row): array
     {
-        $row->loadMissing(['uom:id,code,name,unit_group_id', 'currency:id,code,name,symbol,iso_code']);
+        $row->loadMissing(['uom:id,code,name,unit_group_id']);
 
         return [
             'id' => $row->id,
             'item_id' => $row->item_id,
             'uom' => self::uomBrief($row->uom),
-            'currency' => self::currencyBrief($row->currency),
             'conversion_factor' => (string) $row->conversion_factor,
             'barcode' => $row->barcode,
             'selling_price' => $row->selling_price !== null ? (string) $row->selling_price : null,
@@ -59,24 +57,6 @@ readonly class ItemUomResponseData
             'code' => $uom->code,
             'name' => $uom->name,
             'unit_group_id' => $uom->unit_group_id,
-        ];
-    }
-
-    /**
-     * @return array{id:int,code:string,name:string,symbol:?string,iso_code:string}|null
-     */
-    private static function currencyBrief(?Currency $currency): ?array
-    {
-        if (! $currency) {
-            return null;
-        }
-
-        return [
-            'id' => $currency->id,
-            'code' => $currency->code,
-            'name' => $currency->name,
-            'symbol' => $currency->symbol,
-            'iso_code' => $currency->iso_code,
         ];
     }
 }

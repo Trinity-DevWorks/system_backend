@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Supplier\Services;
 
 use App\Modules\CompanySetting\Support\PriceMath;
-use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Supplier\DTOs\SupplierItemData;
 use App\Modules\Supplier\Models\Supplier;
@@ -21,7 +20,6 @@ class SupplierItemService
             ->where('supplier_id', $supplier->id)
             ->with([
                 'item:id,item_code,name,allow_purchase,is_active',
-                'currency:id,code,name,symbol,iso_code',
             ])
             ->orderByDesc('is_preferred')
             ->orderBy('id')
@@ -34,7 +32,6 @@ class SupplierItemService
             ->where('item_id', $item->id)
             ->with([
                 'supplier:id,supplier_code,name,is_active',
-                'currency:id,code,name,symbol,iso_code',
             ])
             ->orderByDesc('is_preferred')
             ->orderBy('id')
@@ -54,7 +51,7 @@ class SupplierItemService
             return SupplierItem::query()->create([
                 'supplier_id' => $supplier->id,
                 ...$data->toArray(),
-            ])->load(['item', 'currency']);
+            ])->load(['item']);
         });
     }
 
@@ -67,7 +64,7 @@ class SupplierItemService
 
             $row->update($data->toArray());
 
-            return $row->refresh()->load(['item', 'currency', 'supplier']);
+            return $row->refresh()->load(['item', 'supplier']);
         });
     }
 
@@ -77,8 +74,7 @@ class SupplierItemService
     }
 
     /**
-     * Snapshot last purchase price from a posted goods receipt.
-     * Updates an existing supplier-item link, or creates one using the primary currency.
+     * Snapshot the last purchase price (primary currency, base UOM) from a posted inbound document.
      */
     public function rememberLastPurchasePrice(string $supplierId, string $itemId, string $price): void
     {
@@ -99,16 +95,10 @@ class SupplierItemService
             return;
         }
 
-        $primary = Currency::getPrimary();
-        if (! $primary) {
-            return;
-        }
-
         SupplierItem::query()->create([
             'supplier_id' => $supplierId,
             'item_id' => $itemId,
             'last_purchase_price' => $normalized,
-            'currency_id' => (int) $primary->id,
             'lead_time_days' => 0,
             'is_preferred' => false,
         ]);

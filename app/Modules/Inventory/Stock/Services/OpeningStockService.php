@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Enums\OpeningStockStatus;
 use App\Modules\Inventory\Stock\Models\OpeningStock;
 use App\Modules\Inventory\Stock\Models\OpeningStockLine;
+use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\OpeningStockRules;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Warehouse\Services\WarehouseService;
@@ -24,6 +26,7 @@ class OpeningStockService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -170,6 +173,7 @@ class OpeningStockService
                 $itemUomId = $line->item_uom_id ? (int) $line->item_uom_id : null;
                 $unitCost = StockAdjustmentQuantity::resolveBaseUnitCost($item, $line->unit_cost, $itemUomId);
                 $lineNote = $line->notes ? $referenceNote.' — '.$line->notes : $referenceNote;
+                $inboundValue = InventoryCostingMath::extended($line->quantity, $line->unit_cost);
 
                 if ($item->track_lots && ! $line->lot_id) {
                     abort(422, 'Enter a lot number when adding stock for a lot-tracked item.', [
@@ -187,14 +191,35 @@ class OpeningStockService
                     userId: $userId,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
                     openingStockId: (string) $locked->id,
+                    valueDelta: $inboundValue,
                 ));
             }
+
+            $this->journalPostingService->openingStock($locked, $userId);
 
             $locked->update([
                 'status' => OpeningStockStatus::Posted,
                 'posted_by' => $userId,
                 'posted_at' => now(),
             ]);
+
+            return $this->find($locked->id);
+        });
+    }
+
+    public function reverse(OpeningStock $document, ?string $userId): OpeningStock
+    {
+        return DB::transaction(function () use ($document, $userId): OpeningStock {
+            $locked = OpeningStock::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== OpeningStockStatus::Posted) {
+                abort(422, 'Only a posted opening stock document can be reversed.', [
+                    'X-Error-Code' => 'OPENING_STOCK_NOT_POSTED',
+                ]);
+            }
+            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->stockMovementService->reverseReference(OpeningStock::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->journalPostingService->reverse(OpeningStock::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $locked->update(['status' => OpeningStockStatus::Reversed]);
 
             return $this->find($locked->id);
         });

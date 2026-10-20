@@ -69,6 +69,7 @@ class UserService
     {
         return User::query()
             ->select(['id', 'name', 'email'])
+            ->with(['branches:id'])
             ->orderBy('name')
             ->get();
     }

@@ -9,6 +9,10 @@ use App\Models\Attachment;
 use App\Models\Audit;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Accounting\Models\Account;
+use App\Modules\Accounting\Models\AccountMapping;
+use App\Modules\Accounting\Models\FiscalYear;
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Brand\Models\Brand;
 use App\Modules\Category\Models\Category;
@@ -26,8 +30,13 @@ use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\Inventory\Purchasing\Models\PurchaseInvoiceLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
+use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNote;
+use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
+use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefund;
 use App\Modules\Inventory\Stock\Models\BundleExplosion;
 use App\Modules\Inventory\Stock\Models\BundleExplosionLine;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
@@ -41,13 +50,26 @@ use App\Modules\Inventory\Stock\Models\StockAdjustmentReason;
 use App\Modules\Inventory\Stock\Models\StockCount;
 use App\Modules\Inventory\Stock\Models\StockCountLine;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
+use App\Modules\Inventory\Stock\Models\StockTransferClosure;
+use App\Modules\Inventory\Stock\Models\StockTransferClosureLine;
 use App\Modules\Inventory\Stock\Models\StockTransferLine;
+use App\Modules\Inventory\Stock\Models\StockTransferReceipt;
+use App\Modules\Inventory\Stock\Models\StockTransferReceiptLine;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
+use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
+use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
+use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
+use App\Modules\Sales\SalesOrder\Models\SalesOrder;
+use App\Modules\Sales\SalesOrder\Models\SalesOrderLine;
+use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
+use App\Modules\Sales\SalesQuotation\Models\SalesQuotationLine;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
@@ -91,6 +113,10 @@ class AppServiceProvider extends ServiceProvider
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,
             'user' => User::class,
+            'account' => Account::class,
+            'account_mapping' => AccountMapping::class,
+            'journal_entry' => JournalEntry::class,
+            'fiscal_year' => FiscalYear::class,
             'audit' => Audit::class,
             'attachment' => Attachment::class,
             'brand' => Brand::class,
@@ -102,6 +128,15 @@ class AppServiceProvider extends ServiceProvider
             'customer_address' => CustomerAddress::class,
             'customer_balance' => CustomerBalance::class,
             'salesman' => Salesman::class,
+            'sales_quotation' => SalesQuotation::class,
+            'sales_quotation_line' => SalesQuotationLine::class,
+            'sales_order' => SalesOrder::class,
+            'sales_order_line' => SalesOrderLine::class,
+            'sales_invoice' => SalesInvoice::class,
+            'sales_credit_note' => SalesCreditNote::class,
+            'customer_receipt' => CustomerReceipt::class,
+            'customer_refund' => CustomerRefund::class,
+            'sales_invoice_line' => SalesInvoiceLine::class,
             'supplier' => Supplier::class,
             'supplier_group' => SupplierGroup::class,
             'supplier_address' => SupplierAddress::class,
@@ -120,10 +155,19 @@ class AppServiceProvider extends ServiceProvider
             'recipe_item' => RecipeItem::class,
             'stock_transfer' => StockTransfer::class,
             'stock_transfer_line' => StockTransferLine::class,
+            'stock_transfer_receipt' => StockTransferReceipt::class,
+            'stock_transfer_receipt_line' => StockTransferReceiptLine::class,
+            'stock_transfer_closure' => StockTransferClosure::class,
+            'stock_transfer_closure_line' => StockTransferClosureLine::class,
             'purchase_order' => PurchaseOrder::class,
             'purchase_order_line' => PurchaseOrderLine::class,
             'goods_receipt' => GoodsReceipt::class,
             'goods_receipt_line' => GoodsReceiptLine::class,
+            'purchase_invoice' => PurchaseInvoice::class,
+            'purchase_debit_note' => PurchaseDebitNote::class,
+            'supplier_payment' => SupplierPayment::class,
+            'supplier_refund' => SupplierRefund::class,
+            'purchase_invoice_line' => PurchaseInvoiceLine::class,
             'opening_stock' => OpeningStock::class,
             'opening_stock_line' => OpeningStockLine::class,
             'stock_adjustment' => StockAdjustment::class,

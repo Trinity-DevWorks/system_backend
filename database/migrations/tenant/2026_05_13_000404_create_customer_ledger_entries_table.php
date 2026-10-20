@@ -18,7 +18,7 @@ return new class extends Migration
             $table->decimal('credit', 20, 4)->default(0);
             /** opening_balance | invoice | payment | … */
             $table->string('reference_type', 64)->index();
-            $table->unsignedBigInteger('reference_id')->nullable()->index();
+            $table->uuid('reference_id')->nullable()->index();
             $table->date('transaction_date')->index();
             $table->timestamps();
 

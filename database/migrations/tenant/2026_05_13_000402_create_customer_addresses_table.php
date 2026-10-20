@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('city');
             $table->string('state');
             $table->string('country', 100);
+            $table->string('phone', 32)->nullable();
             $table->boolean('is_default')->default(false);
             $table->timestamps();
 

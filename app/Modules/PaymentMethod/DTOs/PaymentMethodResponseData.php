@@ -18,6 +18,9 @@ readonly class PaymentMethodResponseData
         public ?int $currencyId,
         public ?string $currencyCode,
         public ?string $currencyName,
+        public ?int $accountId,
+        public ?string $accountCode,
+        public ?string $accountName,
         public bool $requiresReference,
         public bool $supportsChange,
         public bool $isDefault,
@@ -34,6 +37,7 @@ readonly class PaymentMethodResponseData
             : PaymentMethodType::from((string) $paymentMethod->type);
 
         $currency = $paymentMethod->relationLoaded('currency') ? $paymentMethod->currency : null;
+        $account = $paymentMethod->relationLoaded('account') ? $paymentMethod->account : null;
 
         return new self(
             id: $paymentMethod->id,
@@ -43,6 +47,9 @@ readonly class PaymentMethodResponseData
             currencyId: $paymentMethod->currency_id,
             currencyCode: $currency?->code,
             currencyName: $currency?->name,
+            accountId: $paymentMethod->account_id,
+            accountCode: $account?->code,
+            accountName: $account?->name,
             requiresReference: (bool) $paymentMethod->requires_reference,
             supportsChange: (bool) $paymentMethod->supports_change,
             isDefault: (bool) $paymentMethod->is_default,
@@ -78,6 +85,9 @@ readonly class PaymentMethodResponseData
             'currency_id' => $this->currencyId,
             'currency_code' => $this->currencyCode,
             'currency_name' => $this->currencyName,
+            'account_id' => $this->accountId,
+            'account_code' => $this->accountCode,
+            'account_name' => $this->accountName,
             'requires_reference' => $this->requiresReference,
             'supports_change' => $this->supportsChange,
             'is_default' => $this->isDefault,

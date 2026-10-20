@@ -46,17 +46,24 @@ return [
         ],
         'sales' => [
             'name' => 'Sales / CRM',
-            'description' => 'Customers, customer groups, and salesmen.',
+            'description' => 'Customers, customer groups, salesmen, quotations, sales orders, sales invoices, credit notes, customer receipts, and customer refunds.',
             'is_core' => false,
             'sort_order' => 40,
-            'resources' => ['customer_groups', 'customers', 'salesmen'],
+            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_quotations', 'sales_orders', 'sales_invoices', 'sales_credit_notes', 'customer_receipts', 'customer_refunds'],
         ],
         'purchasing' => [
             'name' => 'Purchasing',
-            'description' => 'Suppliers and supplier groups.',
+            'description' => 'Suppliers, supplier groups, purchase invoices, debit notes, supplier payments, and supplier refunds.',
             'is_core' => false,
             'sort_order' => 50,
-            'resources' => ['supplier_groups', 'suppliers'],
+            'resources' => ['supplier_groups', 'suppliers', 'purchase_invoices', 'purchase_debit_notes', 'supplier_payments', 'supplier_refunds'],
+        ],
+        'accounting' => [
+            'name' => 'Accounting',
+            'description' => 'Chart of accounts, journal entries, financial statements, VAT, and fiscal years.',
+            'is_core' => false,
+            'sort_order' => 60,
+            'resources' => ['accounts', 'account_mappings', 'journal_entries', 'accounting_reports', 'vat_settlements', 'accounting_periods'],
         ],
     ],
 

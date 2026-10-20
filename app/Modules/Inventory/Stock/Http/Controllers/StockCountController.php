@@ -116,4 +116,18 @@ class StockCountController extends Controller
             'Stock count posted successfully.'
         );
     }
+
+    public function reverse(Request $request, StockCount $stock_count): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $document = $this->stockCountService->reverse(
+            $stock_count,
+            $userId !== null ? (string) $userId : null
+        );
+
+        return ApiResponse::success(
+            StockCountResponseData::fromModel($document),
+            'Stock count reversed successfully.'
+        );
+    }
 }

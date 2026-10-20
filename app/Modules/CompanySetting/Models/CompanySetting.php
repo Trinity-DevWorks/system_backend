@@ -39,6 +39,9 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'inventory_costing_method',
     'price_rounding_mode',
     'price_decimal_places',
+    'fiscal_year_start_month',
+    'books_closed_through',
+    'chart_template',
 ])]
 class CompanySetting extends Model implements AuditableContract
 {
@@ -89,7 +92,24 @@ class CompanySetting extends Model implements AuditableContract
             'inventory_costing_method' => InventoryCostingMethod::class,
             'price_rounding_mode' => PriceRoundingMode::class,
             'price_decimal_places' => 'integer',
+            'fiscal_year_start_month' => 'integer',
+            'books_closed_through' => 'date',
         ];
+    }
+
+    /**
+     * Last date that still rejects new postings, or null when the books are open.
+     */
+    public function booksClosedThrough(): ?string
+    {
+        $value = $this->books_closed_through;
+        if ($value === null) {
+            return null;
+        }
+
+        return $value instanceof \DateTimeInterface
+            ? $value->format('Y-m-d')
+            : substr((string) $value, 0, 10);
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Customer\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Customer\Enums\CustomerStatus;
 use App\Modules\Customer\Models\Customer;
@@ -20,8 +21,16 @@ use Illuminate\Support\Facades\DB;
 class CustomerService
 {
     public function __construct(
-        private readonly CustomerLedgerService $ledgerService
+        private readonly CustomerLedgerService $ledgerService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
+
+    private function userId(): ?string
+    {
+        $id = auth()->id();
+
+        return $id !== null ? (string) $id : null;
+    }
 
     public function listForTable(): Collection
     {
@@ -47,7 +56,7 @@ class CustomerService
             ->get();
     }
 
-    public function paginateForTable(?string $search, int $perPage): LengthAwarePaginator
+    public function paginateForTable(?string $search, int $perPage, array $filters = []): LengthAwarePaginator
     {
         $query = Customer::query()
             ->select([
@@ -69,10 +78,14 @@ class CustomerService
             ])
             ->orderBy('name');
 
+        if (! empty($filters['exclude_blacklisted'])) {
+            $query->where('status', '!=', CustomerStatus::Blacklisted->value);
+        }
+
         ListPagination::applySearch(
             $query,
             $search,
-            ['customer_code', 'name', 'phone', 'email'],
+            ['customer_code', 'account_number', 'name', 'phone', 'email'],
             [
                 'customerGroup' => ['name'],
                 'salesman' => ['full_name', 'salesman_code'],
@@ -103,6 +116,7 @@ class CustomerService
                 'payment_terms_id' => $validated['payment_terms_id'] ?? null,
                 'vat_group_id' => $validated['vat_group_id'] ?? null,
                 'customer_code' => SequentialCodeGenerator::next(Customer::class, 'customer_code', 'CUST-', 6),
+                'account_number' => $validated['account_number'] ?? null,
                 'name' => $validated['name'],
                 'email' => $validated['email'] ?? null,
                 'phone' => $validated['phone'] ?? null,
@@ -128,11 +142,13 @@ class CustomerService
                     }
                     CustomerAddress::query()->create([
                         'customer_id' => $customer->id,
+                        'address_type' => $row['address_type'] ?? 'shipping',
                         'address_line_1' => $row['address_line_1'],
                         'address_line_2' => $row['address_line_2'] ?? null,
                         'city' => $row['city'],
                         'state' => $row['state'],
                         'country' => $row['country'],
+                        'phone' => isset($row['phone']) && $row['phone'] !== '' ? (string) $row['phone'] : null,
                         'is_default' => $isDefault,
                     ]);
                 }
@@ -158,7 +174,7 @@ class CustomerService
                     $creditStr = isset($row['credit_limit']) ? (string) $row['credit_limit'] : '0';
                     $openingDate = $this->resolveOpeningBalanceDate($row, null);
 
-                    CustomerBalance::query()->create([
+                    $balance = CustomerBalance::query()->create([
                         'customer_id' => $customer->id,
                         'currency_id' => $currencyId,
                         'opening_balance' => $openingStr,
@@ -167,6 +183,7 @@ class CustomerService
                     ]);
 
                     $this->ledgerService->postOpeningBalance($customer, $currencyId, $openingStr, $openingDate);
+                    $this->journalPostingService->customerOpeningBalance($balance->refresh(), $this->userId());
                 }
             }
 
@@ -190,7 +207,8 @@ class CustomerService
             $customer = $this->lockCustomerForBalanceWrites($customer);
 
             $currencyBalances = $patch['currency_balances'] ?? null;
-            $scalar = collect($patch)->except(['currency_balances', 'is_system'])->all();
+            $addresses = array_key_exists('addresses', $patch) ? $patch['addresses'] : null;
+            $scalar = collect($patch)->except(['currency_balances', 'is_system', 'addresses'])->all();
 
             if ($customer->is_system && array_key_exists('status', $scalar)) {
                 $next = $scalar['status'] instanceof CustomerStatus
@@ -211,6 +229,10 @@ class CustomerService
 
             if (is_array($currencyBalances)) {
                 $this->syncCurrencyBalances($customer, $currencyBalances);
+            }
+
+            if (is_array($addresses)) {
+                $this->syncAddresses($customer, $addresses);
             }
         });
 
@@ -256,6 +278,7 @@ class CustomerService
 
             if ($newOpening !== $prevOpening || $newOpeningDate !== $prevOpeningDate) {
                 $this->ledgerService->replaceOpeningBalancePosting($customer, $currencyId, $newOpening, $newOpeningDate);
+                $this->journalPostingService->replaceCustomerOpeningBalance($balanceRow->refresh(), $this->userId());
             }
         }
     }
@@ -321,6 +344,67 @@ class CustomerService
         }
 
         $customer->delete();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function syncAddresses(Customer $customer, array $rows): void
+    {
+        $keepIds = [];
+
+        foreach ($rows as $row) {
+            $payload = [
+                'address_type' => (string) ($row['address_type'] ?? 'shipping'),
+                'address_line_1' => $row['address_line_1'],
+                'address_line_2' => $row['address_line_2'] ?? null,
+                'city' => $row['city'],
+                'state' => $row['state'],
+                'country' => $row['country'],
+                'phone' => isset($row['phone']) && $row['phone'] !== '' ? (string) $row['phone'] : null,
+                'is_default' => (bool) ($row['is_default'] ?? false),
+            ];
+
+            $id = isset($row['id']) ? (int) $row['id'] : 0;
+            $existing = $id > 0 ? $customer->addresses()->whereKey($id)->first() : null;
+
+            if ($existing instanceof CustomerAddress) {
+                $existing->update($payload);
+                $keepIds[] = $existing->id;
+            } else {
+                $created = $customer->addresses()->create($payload);
+                $keepIds[] = $created->id;
+            }
+        }
+
+        $query = $customer->addresses();
+        if ($keepIds !== []) {
+            $query->whereNotIn('id', $keepIds);
+        }
+        $query->delete();
+
+        foreach (['billing', 'shipping'] as $type) {
+            $defaults = $customer->addresses()
+                ->where('address_type', $type)
+                ->where('is_default', true)
+                ->orderBy('id')
+                ->get();
+
+            if ($defaults->count() > 1) {
+                $keep = (int) $defaults->first()->id;
+                $customer->addresses()
+                    ->where('address_type', $type)
+                    ->where('is_default', true)
+                    ->where('id', '!=', $keep)
+                    ->update(['is_default' => false]);
+            } elseif ($defaults->isEmpty()) {
+                $customer->addresses()
+                    ->where('address_type', $type)
+                    ->orderBy('id')
+                    ->first()
+                    ?->update(['is_default' => true]);
+            }
+        }
     }
 
     public function normalizeDefaultAddresses(Customer $customer): void

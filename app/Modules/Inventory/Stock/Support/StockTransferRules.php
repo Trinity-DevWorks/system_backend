@@ -35,8 +35,14 @@ final class StockTransferRules
             abort(422, 'Stock transfer is already received.', ['X-Error-Code' => 'STOCK_TRANSFER_ALREADY_RECEIVED']);
         }
 
-        if ($transfer->status !== StockTransferStatus::InTransit) {
+        if (! in_array($transfer->status, StockTransferStatus::receivable(), true)) {
             abort(422, 'Only in-transit transfers can be received.', ['X-Error-Code' => 'STOCK_TRANSFER_RECEIVE_NOT_ALLOWED']);
+        }
+
+        if (! StockTransferLineQuantity::hasOpenQuantity($transfer)) {
+            abort(422, 'This stock transfer has no remaining quantity to receive.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_NO_OPEN_QUANTITY',
+            ]);
         }
     }
 
@@ -50,8 +56,123 @@ final class StockTransferRules
             abort(422, 'Received transfers cannot be cancelled.', ['X-Error-Code' => 'STOCK_TRANSFER_CANCEL_NOT_ALLOWED']);
         }
 
-        if (! in_array($transfer->status, [StockTransferStatus::Draft, StockTransferStatus::InTransit], true)) {
+        if ($transfer->status === StockTransferStatus::PartiallyReceived
+            || ($transfer->status === StockTransferStatus::InTransit
+                && StockTransferLineQuantity::hasAllocatedQuantities($transfer))) {
+            abort(422, 'Cannot cancel a transfer with received or closed quantities.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_HAS_RECEIPTS',
+            ]);
+        }
+
+        if ($transfer->status !== StockTransferStatus::InTransit) {
             abort(422, 'This stock transfer cannot be cancelled.', ['X-Error-Code' => 'STOCK_TRANSFER_CANCEL_NOT_ALLOWED']);
+        }
+    }
+
+    public static function assertCloseable(StockTransfer $transfer): void
+    {
+        if ($transfer->status !== StockTransferStatus::PartiallyReceived) {
+            abort(422, 'Only partially received transfers can close remaining quantity.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_CLOSE_NOT_ALLOWED',
+            ]);
+        }
+
+        if (! StockTransferLineQuantity::hasOpenQuantity($transfer)) {
+            abort(422, 'This stock transfer has no remaining quantity to close.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_NO_OPEN_QUANTITY',
+            ]);
+        }
+    }
+
+    public static function assertReceiveSide(StockTransfer $transfer): void
+    {
+        if (! self::isWarehouseVisible((int) $transfer->to_warehouse_id)) {
+            abort(403, 'Only the destination warehouse can receive this transfer.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_RECEIVE_SIDE_FORBIDDEN',
+            ]);
+        }
+
+        if (! self::isDestinationWarehouseManager($transfer)) {
+            abort(403, 'Only the destination warehouse manager can receive this transfer.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_RECEIVE_MANAGER_FORBIDDEN',
+            ]);
+        }
+    }
+
+    public static function assertCanCancelTransit(StockTransfer $transfer): void
+    {
+        if (! self::isWarehouseVisible((int) $transfer->from_warehouse_id)) {
+            abort(403, 'Only the source warehouse can cancel or close remaining quantity.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_SOURCE_SIDE_FORBIDDEN',
+            ]);
+        }
+
+        if (! self::canCancelTransitActor($transfer)) {
+            abort(403, 'Only the dispatcher or the source warehouse manager can cancel this transfer.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_CANCEL_ACTOR_FORBIDDEN',
+            ]);
+        }
+    }
+
+    /**
+     * Receive is limited to the user assigned as manager on the destination warehouse.
+     */
+    public static function isDestinationWarehouseManager(StockTransfer $transfer, mixed $userId = null): bool
+    {
+        return self::isCurrentUserWarehouseManager(
+            self::relatedWarehouse($transfer, 'toWarehouse', 'to_warehouse_id'),
+            $userId,
+        );
+    }
+
+    /**
+     * Cancel in-transit: the user who dispatched, or the source warehouse manager.
+     */
+    public static function canCancelTransitActor(StockTransfer $transfer, mixed $userId = null): bool
+    {
+        return self::isDispatcher($transfer, $userId)
+            || self::isCurrentUserWarehouseManager(
+                self::relatedWarehouse($transfer, 'fromWarehouse', 'from_warehouse_id'),
+                $userId,
+            );
+    }
+
+    public static function isDispatcher(StockTransfer $transfer, mixed $userId = null): bool
+    {
+        $userId ??= auth()->id();
+        if ($userId === null || $userId === '') {
+            return false;
+        }
+
+        $dispatchedBy = $transfer->dispatched_by;
+        if ($dispatchedBy === null || $dispatchedBy === '') {
+            return false;
+        }
+
+        return (string) $dispatchedBy === (string) $userId;
+    }
+
+    public static function isCurrentUserWarehouseManager(?Warehouse $warehouse, mixed $userId = null): bool
+    {
+        $userId ??= auth()->id();
+        if ($userId === null || $userId === '' || $warehouse === null) {
+            return false;
+        }
+
+        $managerId = $warehouse->manager_id;
+        if ($managerId === null || $managerId === '') {
+            return false;
+        }
+
+        return (string) $managerId === (string) $userId;
+    }
+
+    public static function assertSourceSide(StockTransfer $transfer): void
+    {
+        if (! self::isWarehouseVisible((int) $transfer->from_warehouse_id)) {
+            abort(403, 'Only the source warehouse can cancel or close remaining quantity.', [
+                'X-Error-Code' => 'STOCK_TRANSFER_SOURCE_SIDE_FORBIDDEN',
+            ]);
         }
     }
 
@@ -73,19 +194,41 @@ final class StockTransferRules
 
     public static function assertTransferVisible(StockTransfer $transfer): void
     {
-        $warehouseService = app(WarehouseService::class);
-        $from = $transfer->relationLoaded('fromWarehouse')
-            ? $transfer->fromWarehouse
-            : Warehouse::query()->find($transfer->from_warehouse_id);
-        $to = $transfer->relationLoaded('toWarehouse')
-            ? $transfer->toWarehouse
-            : Warehouse::query()->find($transfer->to_warehouse_id);
+        $fromVisible = self::isWarehouseVisible((int) $transfer->from_warehouse_id);
+        $toVisible = self::isWarehouseVisible((int) $transfer->to_warehouse_id);
 
-        if ($from instanceof Warehouse) {
-            $warehouseService->assertVisible($from);
+        if (! $fromVisible && ! $toVisible) {
+            abort(403, 'This transfer is not available in the active branch.', [
+                'X-Error-Code' => 'WAREHOUSE_BRANCH_FORBIDDEN',
+            ]);
         }
-        if ($to instanceof Warehouse) {
-            $warehouseService->assertVisible($to);
+    }
+
+    public static function isWarehouseVisible(int $warehouseId): bool
+    {
+        $ids = app(WarehouseService::class)->visibleWarehouseIds();
+        if ($ids === null) {
+            return true;
         }
+
+        return in_array($warehouseId, $ids, true);
+    }
+
+    private static function relatedWarehouse(StockTransfer $transfer, string $relation, string $idColumn): ?Warehouse
+    {
+        if ($transfer->relationLoaded($relation)) {
+            $warehouse = $transfer->getRelation($relation);
+
+            return $warehouse instanceof Warehouse ? $warehouse : null;
+        }
+
+        $warehouseId = (int) $transfer->getAttribute($idColumn);
+        if ($warehouseId < 1) {
+            return null;
+        }
+
+        $warehouse = Warehouse::query()->find($warehouseId);
+
+        return $warehouse instanceof Warehouse ? $warehouse : null;
     }
 }

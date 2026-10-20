@@ -34,6 +34,43 @@ final class InventoryCostingMath
         return bcmul($qty, $unitCost, self::MONEY_SCALE);
     }
 
+    /**
+     * Half-up money amount. Used for a document total (quantity × price in that unit)
+     * so the currency amount is not rebuilt from a rounded piece cost.
+     */
+    public static function extended(mixed $quantity, mixed $unitCost): string
+    {
+        $qty = self::qty(is_numeric($quantity) ? abs((float) $quantity) : 0);
+        $cost = self::moneyRound($unitCost);
+        $raw = bcmul($qty, $cost, 8);
+        $half = '0.00005';
+        $shifted = bccomp($raw, '0', 8) < 0
+            ? bcsub($raw, $half, 8)
+            : bcadd($raw, $half, 8);
+
+        return bcadd($shifted, '0', self::MONEY_SCALE);
+    }
+
+    /**
+     * Keep unit cost at the stock storage scale (4). Currency decimals apply to totals, not to one piece.
+     */
+    public static function moneyRound(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return self::money(0);
+        }
+        if (is_float($value) || is_int($value)) {
+            $value = number_format((float) $value, 8, '.', '');
+        }
+        $raw = is_numeric(trim((string) $value)) ? bcadd(trim((string) $value), '0', 8) : '0';
+        $half = '0.00005';
+        $shifted = bccomp($raw, '0', 8) < 0
+            ? bcsub($raw, $half, 8)
+            : bcadd($raw, $half, 8);
+
+        return bcadd($shifted, '0', self::MONEY_SCALE);
+    }
+
     public static function unitCostFromValue(string $qty, string $value): string
     {
         if (bccomp($qty, '0', self::QTY_SCALE) === 0) {
@@ -41,6 +78,26 @@ final class InventoryCostingMath
         }
 
         return bcdiv($value, $qty, self::MONEY_SCALE);
+    }
+
+    /**
+     * Part of a money total. The part that uses up the remaining quantity takes whatever value is left,
+     * so the slices add back to the original amount.
+     */
+    public static function remainingSlice(string $remainingValue, string $sliceQty, string $remainingQty): string
+    {
+        $remainingQty = self::qty($remainingQty);
+        $sliceQty = self::qty($sliceQty);
+        if (bccomp($remainingQty, '0', self::QTY_SCALE) <= 0 || bccomp($sliceQty, '0', self::QTY_SCALE) <= 0) {
+            return self::money(0);
+        }
+        if (bccomp($sliceQty, $remainingQty, self::QTY_SCALE) >= 0) {
+            return self::moneyRound($remainingValue);
+        }
+
+        $raw = bcdiv(bcmul(self::moneyRound($remainingValue), $sliceQty, 12), $remainingQty, 12);
+
+        return self::moneyRound($raw);
     }
 
     /**

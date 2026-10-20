@@ -11,9 +11,8 @@ readonly class ItemBarcodeResponseData
     public static function fromModel(ItemBarcode $barcode): array
     {
         $barcode->loadMissing([
-            'itemUom:id,item_id,uom_id,currency_id,conversion_factor,is_base',
+            'itemUom:id,item_id,uom_id,conversion_factor,is_base',
             'itemUom.uom:id,code,name',
-            'itemUom.currency:id,code,symbol',
         ]);
 
         return [
@@ -49,7 +48,7 @@ readonly class ItemBarcodeResponseData
             return null;
         }
 
-        $itemUom->loadMissing(['uom:id,code,name', 'currency:id,code,symbol']);
+        $itemUom->loadMissing(['uom:id,code,name']);
 
         return [
             'id' => $itemUom->id,
@@ -57,11 +56,6 @@ readonly class ItemBarcodeResponseData
                 'id' => $itemUom->uom->id,
                 'code' => $itemUom->uom->code,
                 'name' => $itemUom->uom->name,
-            ] : null,
-            'currency' => $itemUom->currency ? [
-                'id' => $itemUom->currency->id,
-                'code' => $itemUom->currency->code,
-                'symbol' => $itemUom->currency->symbol,
             ] : null,
             'conversion_factor' => (string) $itemUom->conversion_factor,
             'is_base' => (bool) $itemUom->is_base,

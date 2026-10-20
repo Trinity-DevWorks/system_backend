@@ -14,7 +14,6 @@ return new class extends Migration
             $table->foreignUuid('item_id')->constrained('items')->restrictOnDelete();
             $table->string('supplier_item_code', 100)->nullable();
             $table->decimal('last_purchase_price', 14, 4)->nullable();
-            $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             $table->unsignedInteger('lead_time_days')->default(0);
             $table->boolean('is_preferred')->default(false);
             $table->timestamps();

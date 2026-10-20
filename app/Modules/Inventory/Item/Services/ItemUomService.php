@@ -12,6 +12,17 @@ use Illuminate\Support\Facades\DB;
 
 class ItemUomService
 {
+    /** Stored scale for item_uoms.conversion_factor (decimal 24,12). */
+    private const CONVERSION_SCALE = 12;
+
+    /** Extra digits used while dividing so round-trips stay stable. */
+    private const CONVERSION_CALC_SCALE = 24;
+
+    /**
+     * Snap near-integer noise from truncated legacy 6-dp factors (e.g. 12.000048 → 12).
+     */
+    private const CONVERSION_INTEGER_SNAP = '0.0001';
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -20,16 +31,18 @@ class ItemUomService
         return DB::transaction(function () use ($item, $data): ItemUom {
             $item->refresh();
             $uom = UnitOfMeasurement::query()->findOrFail((int) $data['uom_id']);
-            $currencyId = $this->resolveCurrencyId($data['currency_id'] ?? null);
+
+            if (Currency::getPrimary() === null) {
+                abort(422, 'Set a primary currency before adding item unit prices.', ['X-Error-Code' => 'PRIMARY_CURRENCY_REQUIRED']);
+            }
 
             $this->assertUomInItemUnitGroup($item, $uom);
 
             if (ItemUom::query()
                 ->where('item_id', $item->id)
                 ->where('uom_id', $uom->id)
-                ->where('currency_id', $currencyId)
                 ->exists()) {
-                abort(422, 'This unit and currency combination already exists for the item.', ['X-Error-Code' => 'ITEM_UOM_ALREADY_EXISTS']);
+                abort(422, 'This unit already exists for the item.', ['X-Error-Code' => 'ITEM_UOM_ALREADY_EXISTS']);
             }
 
             $hasBase = $this->itemHasBase($item);
@@ -43,15 +56,18 @@ class ItemUomService
                 }
             }
 
+            $conversionFactor = $isBase
+                ? $this->identityConversionFactor()
+                : $this->normalizeConversionFactor($data['conversion_factor']);
+
             if ($isBase) {
-                $this->assertBaseConversionFactor((float) $data['conversion_factor']);
+                $this->assertBaseConversionFactor($conversionFactor);
             }
 
             $row = ItemUom::query()->create([
                 'item_id' => $item->id,
                 'uom_id' => $uom->id,
-                'currency_id' => $currencyId,
-                'conversion_factor' => $isBase ? 1 : (float) $data['conversion_factor'],
+                'conversion_factor' => $conversionFactor,
                 'barcode' => $this->normalizeBarcode($data['barcode'] ?? null),
                 'selling_price' => $this->normalizeOptionalPrice($data['selling_price'] ?? null),
                 'cost_price' => $this->normalizeOptionalPrice($data['cost_price'] ?? null),
@@ -68,13 +84,13 @@ class ItemUomService
                 $this->clearOtherBaseFlags($item->id, $row->id);
             }
             if ($row->is_default_sale) {
-                $this->clearOtherDefaultSaleFlags($item->id, $currencyId, $row->id);
+                $this->clearOtherDefaultSaleFlags($item->id, $row->id);
             }
             if ($row->is_default_purchase) {
-                $this->clearOtherDefaultPurchaseFlags($item->id, $currencyId, $row->id);
+                $this->clearOtherDefaultPurchaseFlags($item->id, $row->id);
             }
 
-            return $row->load(['uom', 'currency']);
+            return $row->load(['uom']);
         });
     }
 
@@ -89,37 +105,34 @@ class ItemUomService
 
         return DB::transaction(function () use ($item, $itemUom, $data): ItemUom {
             $item->refresh();
-            $currencyId = array_key_exists('currency_id', $data)
-                ? $this->resolveCurrencyId($data['currency_id'])
-                : (int) $itemUom->currency_id;
-
-            if ($currencyId !== (int) $itemUom->currency_id) {
-                if (ItemUom::query()
-                    ->where('item_id', $item->id)
-                    ->where('uom_id', $itemUom->uom_id)
-                    ->where('currency_id', $currencyId)
-                    ->where('id', '!=', $itemUom->id)
-                    ->exists()) {
-                    abort(422, 'This unit and currency combination already exists for the item.', ['X-Error-Code' => 'ITEM_UOM_ALREADY_EXISTS']);
-                }
-            }
 
             $isBase = array_key_exists('is_base', $data) ? (bool) $data['is_base'] : (bool) $itemUom->is_base;
             $conversionFactor = array_key_exists('conversion_factor', $data)
-                ? (float) $data['conversion_factor']
-                : (float) $itemUom->conversion_factor;
+                ? $this->normalizeConversionFactor($data['conversion_factor'])
+                : $this->conversionFactorToString($itemUom->conversion_factor);
+
+            $uom = UnitOfMeasurement::query()->findOrFail((int) $itemUom->uom_id);
+            $needsRebase = $isBase && (
+                ! $itemUom->is_base
+                || ($item->base_uom_id !== null && (int) $item->base_uom_id !== (int) $uom->id)
+            );
 
             if ($isBase) {
-                $uom = UnitOfMeasurement::query()->findOrFail((int) $itemUom->uom_id);
-                $this->assertBaseConversionFactor($conversionFactor);
-                $this->syncItemBaseUom($item, $uom);
-                $conversionFactor = 1;
+                if ($needsRebase) {
+                    // Rebase from the row's stored factor (physical size vs current base), then force identity.
+                    $this->rebaseItemUomsToNewBase($item, $itemUom);
+                    $conversionFactor = $this->identityConversionFactor();
+                    $itemUom->refresh();
+                } else {
+                    $this->assertBaseConversionFactor($conversionFactor);
+                    $this->syncItemBaseUom($item, $uom);
+                    $conversionFactor = $this->identityConversionFactor();
+                }
             } elseif ($itemUom->is_base && array_key_exists('is_base', $data) && ! $data['is_base']) {
                 abort(422, 'Base unit of measurement cannot be detached.', ['X-Error-Code' => 'ITEM_BASE_UOM_DETACH_FORBIDDEN']);
             }
 
             $itemUom->update([
-                'currency_id' => $currencyId,
                 'conversion_factor' => $conversionFactor,
                 'barcode' => array_key_exists('barcode', $data)
                     ? $this->normalizeBarcode($data['barcode'])
@@ -154,13 +167,13 @@ class ItemUomService
                 $this->clearOtherBaseFlags($item->id, $itemUom->id);
             }
             if ($itemUom->is_default_sale) {
-                $this->clearOtherDefaultSaleFlags($item->id, $currencyId, $itemUom->id);
+                $this->clearOtherDefaultSaleFlags($item->id, $itemUom->id);
             }
             if ($itemUom->is_default_purchase) {
-                $this->clearOtherDefaultPurchaseFlags($item->id, $currencyId, $itemUom->id);
+                $this->clearOtherDefaultPurchaseFlags($item->id, $itemUom->id);
             }
 
-            return $itemUom->load(['uom', 'currency']);
+            return $itemUom->load(['uom']);
         });
     }
 
@@ -184,7 +197,7 @@ class ItemUomService
     {
         return ItemUom::query()
             ->where('item_id', $item->id)
-            ->with(['uom:id,code,name,unit_group_id', 'currency:id,code,name,symbol,iso_code'])
+            ->with(['uom:id,code,name,unit_group_id'])
             ->orderByDesc('is_base')
             ->orderBy('id')
             ->get();
@@ -205,31 +218,147 @@ class ItemUomService
     private function syncItemBaseUom(Item $item, UnitOfMeasurement $uom): void
     {
         $this->assertUomInItemUnitGroup($item, $uom);
+        $item->update(['base_uom_id' => $uom->id]);
+    }
 
-        if ($item->base_uom_id !== null && (int) $item->base_uom_id !== (int) $uom->id) {
-            abort(422, 'Item already has a base unit of measurement.', ['X-Error-Code' => 'ITEM_BASE_UOM_ALREADY_SET']);
+    /**
+     * Promote an existing item-UOM row to base and rescale every conversion factor so
+     * physical quantities stay equivalent: new_factor = old_factor / old_factor_of_new_base.
+     */
+    private function rebaseItemUomsToNewBase(Item $item, ItemUom $newBaseRow): void
+    {
+        $uom = UnitOfMeasurement::query()->findOrFail((int) $newBaseRow->uom_id);
+        $this->assertUomInItemUnitGroup($item, $uom);
+
+        $divisor = $this->conversionFactorToString($newBaseRow->conversion_factor);
+        if (bccomp($divisor, '0', self::CONVERSION_CALC_SCALE) !== 1) {
+            abort(422, 'Cannot change base unit: the new base conversion factor must be greater than zero.', [
+                'X-Error-Code' => 'ITEM_BASE_UOM_REBASE_INVALID_FACTOR',
+            ]);
+        }
+
+        $rows = ItemUom::query()
+            ->where('item_id', $item->id)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($rows as $row) {
+            if ((int) $row->id === (int) $newBaseRow->id) {
+                $row->update([
+                    'conversion_factor' => $this->identityConversionFactor(),
+                    'is_base' => true,
+                ]);
+
+                continue;
+            }
+
+            $oldFactor = $this->conversionFactorToString($row->conversion_factor);
+            $row->update([
+                'conversion_factor' => $this->divideConversionFactors($oldFactor, $divisor),
+                'is_base' => false,
+            ]);
         }
 
         $item->update(['base_uom_id' => $uom->id]);
     }
 
-    private function resolveCurrencyId(mixed $currencyId): int
+    private function identityConversionFactor(): string
     {
-        if ($currencyId !== null && $currencyId !== '') {
-            return (int) $currencyId;
-        }
-
-        $primary = Currency::getPrimary();
-        if (! $primary) {
-            abort(422, 'Set a primary currency before adding item unit prices.', ['X-Error-Code' => 'PRIMARY_CURRENCY_REQUIRED']);
-        }
-
-        return (int) $primary->id;
+        return bcadd('1', '0', self::CONVERSION_SCALE);
     }
 
-    private function assertBaseConversionFactor(float $conversionFactor): void
+    private function normalizeConversionFactor(mixed $value): string
     {
-        if ($conversionFactor !== 1.0) {
+        return $this->finalizeConversionFactor($this->conversionFactorToString($value));
+    }
+
+    private function conversionFactorToString(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return $this->identityConversionFactor();
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '' || ! is_numeric($trimmed)) {
+                abort(422, 'Conversion factor must be a positive number.', [
+                    'X-Error-Code' => 'ITEM_BASE_UOM_REBASE_INVALID_FACTOR',
+                ]);
+            }
+
+            return $trimmed;
+        }
+
+        if (is_int($value)) {
+            return (string) $value;
+        }
+
+        if (is_float($value)) {
+            // Avoid scientific notation; keep enough digits for decimal:12 storage.
+            return rtrim(rtrim(sprintf('%.14F', $value), '0'), '.') ?: '0';
+        }
+
+        $asString = trim((string) $value);
+        if ($asString === '' || ! is_numeric($asString)) {
+            abort(422, 'Conversion factor must be a positive number.', [
+                'X-Error-Code' => 'ITEM_BASE_UOM_REBASE_INVALID_FACTOR',
+            ]);
+        }
+
+        return $asString;
+    }
+
+    private function divideConversionFactors(string $numerator, string $denominator): string
+    {
+        $quotient = bcdiv($numerator, $denominator, self::CONVERSION_CALC_SCALE);
+
+        return $this->finalizeConversionFactor($quotient);
+    }
+
+    /**
+     * Round half-up to storage scale, then snap tiny integer noise from prior 6-dp truncation.
+     */
+    private function finalizeConversionFactor(string $value): string
+    {
+        $rounded = $this->bcRoundHalfUp($value, self::CONVERSION_SCALE);
+        $nearestInt = $this->bcRoundHalfUp($rounded, 0);
+        $distance = $this->bcAbs(bcsub($rounded, $nearestInt, self::CONVERSION_CALC_SCALE));
+
+        if (bccomp($distance, self::CONVERSION_INTEGER_SNAP, self::CONVERSION_CALC_SCALE) <= 0
+            && bccomp($nearestInt, '0', 0) === 1) {
+            return bcadd($nearestInt, '0', self::CONVERSION_SCALE);
+        }
+
+        return $rounded;
+    }
+
+    private function bcRoundHalfUp(string $value, int $scale): string
+    {
+        if (bccomp($value, '0', self::CONVERSION_CALC_SCALE) < 0) {
+            return bcmul(
+                $this->bcRoundHalfUp(bcmul($value, '-1', self::CONVERSION_CALC_SCALE), $scale),
+                '-1',
+                $scale
+            );
+        }
+
+        $half = $scale > 0
+            ? '0.'.str_repeat('0', $scale).'5'
+            : '0.5';
+
+        return bcadd($value, $half, $scale);
+    }
+
+    private function bcAbs(string $value): string
+    {
+        return bccomp($value, '0', self::CONVERSION_CALC_SCALE) < 0
+            ? bcmul($value, '-1', self::CONVERSION_CALC_SCALE)
+            : $value;
+    }
+
+    private function assertBaseConversionFactor(string $conversionFactor): void
+    {
+        if (bccomp($conversionFactor, '1', self::CONVERSION_SCALE) !== 0) {
             abort(422, 'Base unit conversion factor must be 1.', ['X-Error-Code' => 'ITEM_BASE_UOM_INVALID_CONVERSION']);
         }
     }
@@ -253,20 +382,18 @@ class ItemUomService
             ->update(['is_base' => false]);
     }
 
-    private function clearOtherDefaultSaleFlags(string $itemId, int $currencyId, int $exceptId): void
+    private function clearOtherDefaultSaleFlags(string $itemId, int $exceptId): void
     {
         ItemUom::query()
             ->where('item_id', $itemId)
-            ->where('currency_id', $currencyId)
             ->where('id', '!=', $exceptId)
             ->update(['is_default_sale' => false]);
     }
 
-    private function clearOtherDefaultPurchaseFlags(string $itemId, int $currencyId, int $exceptId): void
+    private function clearOtherDefaultPurchaseFlags(string $itemId, int $exceptId): void
     {
         ItemUom::query()
             ->where('item_id', $itemId)
-            ->where('currency_id', $currencyId)
             ->where('id', '!=', $exceptId)
             ->update(['is_default_purchase' => false]);
     }

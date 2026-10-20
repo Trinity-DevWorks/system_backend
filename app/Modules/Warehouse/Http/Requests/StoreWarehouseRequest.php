@@ -30,7 +30,7 @@ class StoreWarehouseRequest extends FormRequest
             'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
             'address' => ['nullable', 'string', 'max:2000'],
             'description' => ['nullable', 'string', 'max:5000'],
-            'manager_id' => ['nullable', 'uuid', 'exists:users,id'],
+            'manager_id' => ['required', 'uuid', 'exists:users,id'],
             'is_active' => ['required', 'boolean'],
             'is_default' => ['required', 'boolean'],
             'is_default_sales' => ['required', 'boolean'],

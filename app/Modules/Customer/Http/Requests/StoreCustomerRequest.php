@@ -18,6 +18,12 @@ class StoreCustomerRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $accountNumber = $this->input('account_number');
+        if (is_string($accountNumber)) {
+            $trimmed = trim($accountNumber);
+            $this->merge(['account_number' => $trimmed === '' ? null : $trimmed]);
+        }
+
         if (! $this->boolean('is_vat_registered')) {
             $this->merge([
                 'is_vat_registered' => false,
@@ -46,6 +52,7 @@ class StoreCustomerRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'account_number' => ['nullable', 'string', 'max:128', 'unique:customers,account_number'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', 'unique:customers,email'],
             'phone' => ['nullable', 'string', 'max:32'],
@@ -71,11 +78,14 @@ class StoreCustomerRequest extends FormRequest
             'notes' => ['nullable', 'string'],
 
             'addresses' => ['nullable', 'array'],
+            'addresses.*.id' => ['nullable', 'integer'],
+            'addresses.*.address_type' => ['required_with:addresses', 'string', 'in:billing,shipping'],
             'addresses.*.address_line_1' => ['required_with:addresses', 'string', 'max:255'],
             'addresses.*.address_line_2' => ['nullable', 'string', 'max:255'],
             'addresses.*.city' => ['required_with:addresses', 'string', 'max:120'],
             'addresses.*.state' => ['required_with:addresses', 'string', 'max:120'],
             'addresses.*.country' => ['required_with:addresses', 'string', 'max:100'],
+            'addresses.*.phone' => ['nullable', 'string', 'max:32'],
             'addresses.*.is_default' => ['nullable', 'boolean'],
 
             'contacts' => ['nullable', 'array'],

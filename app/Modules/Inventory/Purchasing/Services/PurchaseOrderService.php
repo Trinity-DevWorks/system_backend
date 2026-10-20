@@ -14,6 +14,7 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseOrderMaxStockGuard;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -97,9 +98,8 @@ class PurchaseOrderService
                 'expected_date' => $this->normalizeDate($data['expected_date'] ?? null),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
+                'po_number' => SequentialCodeGenerator::next(PurchaseOrder::class, 'po_number', 'PO-'),
             ]);
-
-            $order->update(['po_number' => $this->formatPoNumber()]);
 
             if (! empty($data['lines'])) {
                 $this->replaceLines($order, $data['lines']);
@@ -328,13 +328,6 @@ class PurchaseOrderService
     private function assertOrderWarehouseVisible(PurchaseOrder $order): void
     {
         $this->warehouseService->assertVisibleById((int) $order->warehouse_id);
-    }
-
-    private function formatPoNumber(): string
-    {
-        $seq = PurchaseOrder::query()->count();
-
-        return 'PO-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
     }
 
     private function normalizeNotes(mixed $value): ?string

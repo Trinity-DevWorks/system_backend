@@ -6,6 +6,8 @@ namespace App\Modules\Inventory\Stock\Support;
 
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
+use App\Modules\Inventory\Stock\Models\StockTransfer;
+use App\Modules\Inventory\Stock\Models\StockTransferLine;
 
 final class StockTransferLineQuantity
 {
@@ -48,5 +50,79 @@ final class StockTransferLineQuantity
             'base_quantity' => $baseQuantity,
             'item_uom_id' => (int) $itemUom->id,
         ];
+    }
+
+    public static function openQuantity(StockTransferLine $line): string
+    {
+        $open = bcsub((string) $line->quantity, self::allocatedQuantity($line), 6);
+
+        return bccomp($open, '0', 6) < 0 ? '0.000000' : $open;
+    }
+
+    public static function openBaseQuantity(StockTransferLine $line): string
+    {
+        $open = bcsub((string) $line->base_quantity, self::allocatedBaseQuantity($line), 6);
+
+        return bccomp($open, '0', 6) < 0 ? '0.000000' : $open;
+    }
+
+    public static function allocatedQuantity(StockTransferLine $line): string
+    {
+        $allocated = bcadd((string) $line->received_quantity, (string) $line->returned_quantity, 6);
+
+        return bcadd($allocated, (string) $line->written_off_quantity, 6);
+    }
+
+    public static function allocatedBaseQuantity(StockTransferLine $line): string
+    {
+        $allocated = bcadd((string) $line->received_base_quantity, (string) $line->returned_base_quantity, 6);
+
+        return bcadd($allocated, (string) $line->written_off_base_quantity, 6);
+    }
+
+    public static function baseForQuantity(StockTransferLine $line, string $quantity): string
+    {
+        $openQty = self::openQuantity($line);
+        if (bccomp($quantity, $openQty, 6) === 0) {
+            return self::openBaseQuantity($line);
+        }
+
+        $lineQty = (string) $line->quantity;
+        if (bccomp($lineQty, '0', 6) <= 0) {
+            return '0.000000';
+        }
+
+        return bcmul($quantity, bcdiv((string) $line->base_quantity, $lineQty, 8), 6);
+    }
+
+    public static function hasOpenQuantity(StockTransfer $transfer): bool
+    {
+        $lines = $transfer->relationLoaded('lines')
+            ? $transfer->lines
+            : $transfer->lines()->get();
+
+        foreach ($lines as $line) {
+            if (bccomp(self::openQuantity($line), '0', 6) > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function hasAllocatedQuantities(StockTransfer $transfer): bool
+    {
+        $lines = $transfer->relationLoaded('lines')
+            ? $transfer->lines
+            : $transfer->lines()->get();
+
+        foreach ($lines as $line) {
+            if (bccomp(self::allocatedQuantity($line), '0', 6) > 0
+                || bccomp(self::allocatedBaseQuantity($line), '0', 6) > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

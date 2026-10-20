@@ -28,6 +28,9 @@ class GoodsReceiptController extends Controller
         $filters = [
             'status' => $request->string('status')->toString() ?: null,
             'purchase_order_id' => $request->string('purchase_order_id')->toString() ?: null,
+            'supplier_id' => $request->string('supplier_id')->toString() ?: null,
+            'available_for_invoice' => $request->boolean('available_for_invoice'),
+            'except_purchase_invoice_id' => $request->string('except_purchase_invoice_id')->toString() ?: null,
             'warehouse_id' => $request->integer('warehouse_id') ?: null,
             'search' => ListPagination::search($request),
             'from' => $request->string('from')->toString() ?: null,
@@ -107,6 +110,20 @@ class GoodsReceiptController extends Controller
         return ApiResponse::success(
             GoodsReceiptResponseData::fromModel($receipt),
             'Goods receipt posted successfully.'
+        );
+    }
+
+    public function reverse(Request $request, GoodsReceipt $goods_receipt): JsonResponse
+    {
+        $userId = $request->user()?->id;
+        $receipt = $this->goodsReceiptService->reverse(
+            $goods_receipt,
+            $userId !== null ? (string) $userId : null
+        );
+
+        return ApiResponse::success(
+            GoodsReceiptResponseData::fromModel($receipt),
+            'Goods receipt reversed successfully.'
         );
     }
 }

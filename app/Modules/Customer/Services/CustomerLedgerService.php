@@ -8,7 +8,10 @@ use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Customer\Enums\LedgerReferenceType;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerLedgerEntry;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class CustomerLedgerService
 {
@@ -20,7 +23,7 @@ class CustomerLedgerService
         return $this->balanceInCurrencyForCustomerId($customer->id, $currencyId);
     }
 
-    public function balanceInCurrencyForCustomerId(int $customerId, int $currencyId): string
+    public function balanceInCurrencyForCustomerId(string $customerId, int $currencyId): string
     {
         $raw = CustomerLedgerEntry::query()
             ->where('customer_id', $customerId)
@@ -52,7 +55,7 @@ class CustomerLedgerService
 
     /**
      * @param  list<int>  $customerIds
-     * @return array<int, array<int, string>> customer_id => currency_id => balance
+     * @return array<string, array<int, string>> customer_id => currency_id => balance
      */
     public function balancesGroupedByCustomerAndCurrency(array $customerIds): array
     {
@@ -68,7 +71,7 @@ class CustomerLedgerService
 
         $out = [];
         foreach ($rows as $row) {
-            $cid = (int) $row->customer_id;
+            $cid = (string) $row->customer_id;
             $curId = (int) $row->currency_id;
             $out[$cid][$curId] = $this->formatMoney($row->bal);
         }
@@ -107,7 +110,7 @@ class CustomerLedgerService
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
-        ?int $referenceId,
+        ?string $referenceId,
         string $transactionDate
     ): CustomerLedgerEntry {
         $d = (float) $debit;
@@ -126,10 +129,90 @@ class CustomerLedgerService
     {
         return CustomerLedgerEntry::query()
             ->where('customer_id', $customer->id)
-            ->with('currency:id,code')
+            ->with('currency:id,code,symbol')
             ->orderByDesc('transaction_date')
             ->orderByDesc('id')
             ->paginate($perPage);
+    }
+
+    /**
+     * Statement, oldest first. Omit currency to include every currency.
+     * Balance = debit − credit, tracked separately per currency.
+     * Running balance continues across pages and includes activity before date_from.
+     *
+     * @return array{
+     *     paginator: LengthAwarePaginator<int, CustomerLedgerEntry>,
+     *     summary: array{opening_balance: string, period_debit: string, period_credit: string, closing_balance: string}|null,
+     *     summaries: list<array{currency_id: int, currency_code: ?string, currency_symbol: ?string, opening_balance: string, period_debit: string, period_credit: string, closing_balance: string}>,
+     *     running_balances: array<int, string>,
+     *     reversed: array<int, true>,
+     *     document_numbers: array<string, string>
+     * }
+     */
+    public function statement(
+        Customer $customer,
+        ?int $currencyId,
+        ?string $dateFrom,
+        ?string $dateTo,
+        int $perPage = 25,
+    ): array {
+        $partyId = (string) $customer->id;
+        $paginator = $this->orderedStatementEntries($partyId, $currencyId, $dateFrom, $dateTo)->paginate($perPage);
+
+        $summaries = $this->currencySummaries($partyId, $currencyId, $dateFrom, $dateTo);
+
+        return [
+            'paginator' => $paginator,
+            'summary' => $currencyId === null ? null : $this->flatSummary($summaries, $currencyId),
+            'summaries' => $summaries,
+            'running_balances' => $this->runningBalances($partyId, $dateFrom, $dateTo, $paginator->getCollection(), $summaries),
+            'reversed' => $this->reversalIds($partyId, $currencyId, $paginator->getCollection()),
+            'document_numbers' => $this->documentNumbers($paginator->getCollection()),
+        ];
+    }
+
+    /**
+     * Same statement as {@see statement()} with every in-range row, for export and print.
+     *
+     * @return array{
+     *     entries: Collection<int, CustomerLedgerEntry>,
+     *     summaries: list<array{currency_id: int, currency_code: ?string, currency_symbol: ?string, opening_balance: string, period_debit: string, period_credit: string, closing_balance: string}>,
+     *     running_balances: array<int, string>,
+     *     reversed: array<int, true>,
+     *     document_numbers: array<string, string>
+     * }
+     */
+    public function fullStatement(
+        Customer $customer,
+        ?int $currencyId,
+        ?string $dateFrom,
+        ?string $dateTo,
+    ): array {
+        $partyId = (string) $customer->id;
+        $entries = $this->orderedStatementEntries($partyId, $currencyId, $dateFrom, $dateTo)->get();
+        $summaries = $this->currencySummaries($partyId, $currencyId, $dateFrom, $dateTo);
+
+        return [
+            'entries' => $entries,
+            'summaries' => $summaries,
+            'running_balances' => $this->runningBalances($partyId, $dateFrom, $dateTo, $entries, $summaries),
+            'reversed' => $this->reversalIds($partyId, $currencyId, $entries),
+            'document_numbers' => $this->documentNumbers($entries),
+        ];
+    }
+
+    /**
+     * @return Builder<CustomerLedgerEntry>
+     */
+    private function orderedStatementEntries(string $partyId, ?int $currencyId, ?string $dateFrom, ?string $dateTo): Builder
+    {
+        $range = $this->scopedEntries($partyId, $currencyId);
+        $this->applyDateRange($range, $dateFrom, $dateTo);
+
+        return $range
+            ->with('currency:id,code,symbol')
+            ->orderBy('transaction_date')
+            ->orderBy('id');
     }
 
     private function deleteOpeningEntries(Customer $customer, int $currencyId): void
@@ -147,7 +230,7 @@ class CustomerLedgerService
         string $debit,
         string $credit,
         LedgerReferenceType $referenceType,
-        ?int $referenceId,
+        ?string $referenceId,
         string $transactionDate
     ): CustomerLedgerEntry {
         return CustomerLedgerEntry::query()->create([
@@ -164,5 +247,294 @@ class CustomerLedgerService
     private function formatMoney(mixed $value): string
     {
         return PriceMath::normalize($value);
+    }
+
+    private function combine(string $left, string $right): string
+    {
+        return $this->formatMoney(bcadd($left, $right, 6));
+    }
+
+    /**
+     * @return Builder<CustomerLedgerEntry>
+     */
+    private function scopedEntries(string $customerId, ?int $currencyId): Builder
+    {
+        $query = CustomerLedgerEntry::query()->where('customer_id', $customerId);
+        if ($currencyId !== null) {
+            $query->where('currency_id', $currencyId);
+        }
+
+        return $query;
+    }
+
+    private function signedSumSql(): string
+    {
+        return 'COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0)';
+    }
+
+    private function rowDelta(CustomerLedgerEntry $entry): string
+    {
+        return bcsub((string) $entry->debit, (string) $entry->credit, 6);
+    }
+
+    private function closingBalance(string $opening, string $debit, string $credit): string
+    {
+        return $this->combine($opening, bcsub($debit, $credit, 6));
+    }
+
+    /**
+     * @param  Builder<CustomerLedgerEntry>  $query
+     */
+    private function applyDateRange(Builder $query, ?string $dateFrom, ?string $dateTo): void
+    {
+        if ($dateFrom !== null) {
+            $query->where('transaction_date', '>=', $dateFrom);
+        }
+        if ($dateTo !== null) {
+            $query->where('transaction_date', '<=', $dateTo);
+        }
+    }
+
+    /**
+     * @param  Builder<CustomerLedgerEntry>  $query
+     */
+    private function signedBalance(Builder $query): string
+    {
+        $raw = (clone $query)
+            ->selectRaw('COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as bal')
+            ->value('bal');
+
+        return $this->formatMoney($raw);
+    }
+
+    /**
+     * The second stored row for a document in one currency is the reversal.
+     * One receipt can post an original row in each invoice currency, so currency is part of the key.
+     * Opening balance has no reference id.
+     *
+     * @param  Collection<int, CustomerLedgerEntry>  $page
+     * @return array<int, true>
+     */
+    private function reversalIds(string $customerId, ?int $currencyId, Collection $page): array
+    {
+        $referenceIds = $page->pluck('reference_id')->filter()->unique()->values();
+        if ($referenceIds->isEmpty()) {
+            return [];
+        }
+
+        $rows = CustomerLedgerEntry::query()
+            ->where('customer_id', $customerId)
+            ->when($currencyId !== null, fn (Builder $query) => $query->where('currency_id', $currencyId))
+            ->whereIn('reference_id', $referenceIds->all())
+            ->orderBy('transaction_date')
+            ->orderBy('id')
+            ->get(['id', 'currency_id', 'reference_type', 'reference_id']);
+
+        $seen = [];
+        $reversed = [];
+        foreach ($rows as $row) {
+            $type = $row->reference_type instanceof \BackedEnum ? $row->reference_type->value : (string) $row->reference_type;
+            $key = $type.'|'.$row->reference_id.'|'.$row->currency_id;
+            if (! isset($seen[$key])) {
+                $seen[$key] = true;
+
+                continue;
+            }
+            $reversed[(int) $row->id] = true;
+        }
+
+        return $reversed;
+    }
+
+    /**
+     * @return list<array{currency_id: int, currency_code: ?string, currency_symbol: ?string, opening_balance: string, period_debit: string, period_credit: string, closing_balance: string}>
+     */
+    private function currencySummaries(string $partyId, ?int $currencyId, ?string $dateFrom, ?string $dateTo): array
+    {
+        /** @var array<int, string> $openingByCurrency */
+        $openingByCurrency = [];
+        if ($dateFrom !== null) {
+            $rows = $this->scopedEntries($partyId, $currencyId)
+                ->where('transaction_date', '<', $dateFrom)
+                ->groupBy('currency_id')
+                ->selectRaw('currency_id, '.$this->signedSumSql().' as bal')
+                ->get();
+            foreach ($rows as $row) {
+                $openingByCurrency[(int) $row->currency_id] = $this->formatMoney($row->bal);
+            }
+        }
+
+        $periodQuery = $this->scopedEntries($partyId, $currencyId);
+        $this->applyDateRange($periodQuery, $dateFrom, $dateTo);
+        $periodRows = $periodQuery
+            ->groupBy('currency_id')
+            ->selectRaw('currency_id, COALESCE(SUM(debit), 0) as period_debit, COALESCE(SUM(credit), 0) as period_credit')
+            ->get();
+
+        /** @var array<int, array{debit: string, credit: string}> $periodByCurrency */
+        $periodByCurrency = [];
+        foreach ($periodRows as $row) {
+            $periodByCurrency[(int) $row->currency_id] = [
+                'debit' => $this->formatMoney($row->getAttribute('period_debit')),
+                'credit' => $this->formatMoney($row->getAttribute('period_credit')),
+            ];
+        }
+
+        $ids = array_values(array_unique([...array_keys($openingByCurrency), ...array_keys($periodByCurrency)]));
+        if ($currencyId !== null && ! in_array($currencyId, $ids, true)) {
+            $ids[] = $currencyId;
+        }
+        sort($ids);
+
+        $currencies = $ids === []
+            ? collect()
+            : DB::table('currencies')->whereIn('id', $ids)->get(['id', 'code', 'symbol'])->keyBy(fn ($row): int => (int) $row->id);
+
+        $out = [];
+        foreach ($ids as $id) {
+            $opening = $openingByCurrency[$id] ?? $this->formatMoney(0);
+            $debit = $periodByCurrency[$id]['debit'] ?? $this->formatMoney(0);
+            $credit = $periodByCurrency[$id]['credit'] ?? $this->formatMoney(0);
+            $currency = $currencies->get($id);
+            $out[] = [
+                'currency_id' => $id,
+                'currency_code' => $currency?->code !== null ? (string) $currency->code : null,
+                'currency_symbol' => $currency?->symbol !== null && $currency->symbol !== '' ? (string) $currency->symbol : null,
+                'opening_balance' => $opening,
+                'period_debit' => $debit,
+                'period_credit' => $credit,
+                'closing_balance' => $this->closingBalance($opening, $debit, $credit),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array{currency_id: int, currency_code: ?string, currency_symbol: ?string, opening_balance: string, period_debit: string, period_credit: string, closing_balance: string}>  $summaries
+     * @return array{opening_balance: string, period_debit: string, period_credit: string, closing_balance: string}
+     */
+    private function flatSummary(array $summaries, int $currencyId): array
+    {
+        foreach ($summaries as $row) {
+            if ($row['currency_id'] === $currencyId) {
+                return [
+                    'opening_balance' => $row['opening_balance'],
+                    'period_debit' => $row['period_debit'],
+                    'period_credit' => $row['period_credit'],
+                    'closing_balance' => $row['closing_balance'],
+                ];
+            }
+        }
+
+        $zero = $this->formatMoney(0);
+
+        return [
+            'opening_balance' => $zero,
+            'period_debit' => $zero,
+            'period_credit' => $zero,
+            'closing_balance' => $zero,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, CustomerLedgerEntry>  $page
+     * @param  list<array{currency_id: int, opening_balance: string}>  $summaries
+     * @return array<int, string>
+     */
+    private function runningBalances(string $partyId, ?string $dateFrom, ?string $dateTo, Collection $page, array $summaries): array
+    {
+        /** @var array<int, string> $openings */
+        $openings = [];
+        foreach ($summaries as $row) {
+            $openings[(int) $row['currency_id']] = $row['opening_balance'];
+        }
+
+        $running = [];
+        foreach ($page->groupBy(fn (CustomerLedgerEntry $entry): int => (int) $entry->currency_id) as $currencyId => $rows) {
+            $first = $rows->first();
+            if (! $first instanceof CustomerLedgerEntry) {
+                continue;
+            }
+            $priorQuery = $this->scopedEntries($partyId, (int) $currencyId);
+            $this->applyDateRange($priorQuery, $dateFrom, $dateTo);
+            $date = $first->transaction_date->toDateString();
+            $priorQuery->where(function (Builder $query) use ($first, $date): void {
+                $query->where('transaction_date', '<', $date)
+                    ->orWhere(function (Builder $sameDay) use ($first, $date): void {
+                        $sameDay->where('transaction_date', $date)->where('id', '<', $first->id);
+                    });
+            });
+            $cursor = $this->combine($openings[(int) $currencyId] ?? $this->formatMoney(0), $this->signedBalance($priorQuery));
+            foreach ($rows as $entry) {
+                $cursor = $this->combine($cursor, $this->rowDelta($entry));
+                $running[(int) $entry->id] = $cursor;
+            }
+        }
+
+        return $running;
+    }
+
+    /**
+     * @param  Collection<int, CustomerLedgerEntry>  $entries
+     * @return array<string, string> "{reference_type}|{reference_id}" => document number
+     */
+    private function documentNumbers(Collection $entries): array
+    {
+        $invoiceIds = [];
+        $paymentIds = [];
+        $creditNoteIds = [];
+        $refundIds = [];
+        foreach ($entries as $entry) {
+            if ($entry->reference_id === null) {
+                continue;
+            }
+            $type = $entry->reference_type instanceof \BackedEnum ? $entry->reference_type->value : (string) $entry->reference_type;
+            if ($type === LedgerReferenceType::Invoice->value) {
+                $invoiceIds[] = (string) $entry->reference_id;
+            } elseif ($type === LedgerReferenceType::Payment->value) {
+                $paymentIds[] = (string) $entry->reference_id;
+            } elseif ($type === LedgerReferenceType::CreditNote->value) {
+                $creditNoteIds[] = (string) $entry->reference_id;
+            } elseif ($type === LedgerReferenceType::Refund->value) {
+                $refundIds[] = (string) $entry->reference_id;
+            }
+        }
+
+        $out = [];
+        if ($invoiceIds !== []) {
+            $numbers = DB::table('sales_invoices')->whereIn('id', array_values(array_unique($invoiceIds)))->pluck('invoice_number', 'id');
+            foreach ($numbers as $id => $number) {
+                if ($number !== null && $number !== '') {
+                    $out[LedgerReferenceType::Invoice->value.'|'.$id] = (string) $number;
+                }
+            }
+        }
+        if ($paymentIds !== []) {
+            $numbers = DB::table('customer_receipts')->whereIn('id', array_values(array_unique($paymentIds)))->pluck('receipt_number', 'id');
+            foreach ($numbers as $id => $number) {
+                if ($number !== null && $number !== '') {
+                    $out[LedgerReferenceType::Payment->value.'|'.$id] = (string) $number;
+                }
+            }
+        }
+        if ($creditNoteIds !== []) {
+            $numbers = DB::table('sales_credit_notes')->whereIn('id', array_values(array_unique($creditNoteIds)))->pluck('credit_note_number', 'id');
+            foreach ($numbers as $id => $number) {
+                if ($number !== null && $number !== '') {
+                    $out[LedgerReferenceType::CreditNote->value.'|'.$id] = (string) $number;
+                }
+            }
+        }
+        if ($refundIds !== []) {
+            $numbers = DB::table('customer_refunds')->whereIn('id', array_values(array_unique($refundIds)))->pluck('refund_number', 'id');
+            foreach ($numbers as $id => $number) {
+                if ($number !== null && $number !== '') {
+                    $out[LedgerReferenceType::Refund->value.'|'.$id] = (string) $number;
+                }
+            }
+        }
+
+        return $out;
     }
 }

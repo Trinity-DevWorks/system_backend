@@ -24,6 +24,9 @@ return new class extends Migration
             $table->string('inventory_costing_method', 32)->default('moving_average');
             $table->string('price_rounding_mode', 32)->default('half_up');
             $table->unsignedTinyInteger('price_decimal_places')->default(2);
+            $table->unsignedTinyInteger('fiscal_year_start_month')->default(1);
+            $table->date('books_closed_through')->nullable();
+            $table->string('chart_template', 32)->nullable();
             $table->timestamps();
         });
     }

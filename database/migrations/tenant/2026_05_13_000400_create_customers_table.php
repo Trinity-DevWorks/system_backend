@@ -18,6 +18,7 @@ return new class extends Migration
             $table->foreignId('payment_terms_id')->nullable()->constrained('payment_terms')->nullOnDelete();
             $table->foreignId('vat_group_id')->nullable()->constrained('vat_groups')->restrictOnDelete();
             $table->string('customer_code')->nullable()->unique();
+            $table->string('account_number', 128)->nullable()->unique();
             $table->string('name');
             $table->string('email')->nullable()->unique();
             $table->string('phone', 32)->nullable()->index();

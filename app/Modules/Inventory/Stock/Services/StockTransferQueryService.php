@@ -49,8 +49,8 @@ class StockTransferQueryService
     {
         $query = StockTransfer::query()
             ->with([
-                'fromWarehouse:id,name,shortcut_name,is_active',
-                'toWarehouse:id,name,shortcut_name,is_active',
+                'fromWarehouse:id,name,shortcut_name,is_active,manager_id',
+                'toWarehouse:id,name,shortcut_name,is_active,manager_id',
                 'createdByUser:id,name,email',
                 'dispatchedByUser:id,name,email',
                 'receivedByUser:id,name,email',
@@ -62,8 +62,10 @@ class StockTransferQueryService
             if ($visibleIds === []) {
                 $query->whereRaw('0 = 1');
             } else {
-                $query->whereIn('from_warehouse_id', $visibleIds)
-                    ->whereIn('to_warehouse_id', $visibleIds);
+                $query->where(function ($visible) use ($visibleIds): void {
+                    $visible->whereIn('from_warehouse_id', $visibleIds)
+                        ->orWhereIn('to_warehouse_id', $visibleIds);
+                });
             }
         }
 
