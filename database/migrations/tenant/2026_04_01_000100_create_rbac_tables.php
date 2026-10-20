@@ -35,6 +35,7 @@ return new class extends Migration
             $table->boolean('can_import')->default(false);
             $table->boolean('can_export')->default(false);
             $table->boolean('can_reverse')->default(false);
+            $table->boolean('can_reopen')->default(false);
             $table->timestamps();
 
             $table->unique(['role_id', 'permission_id']);

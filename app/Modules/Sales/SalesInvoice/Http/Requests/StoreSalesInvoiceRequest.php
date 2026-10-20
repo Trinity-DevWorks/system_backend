@@ -28,6 +28,7 @@ class StoreSalesInvoiceRequest extends FormRequest
     {
         return [
             'customer_id' => ['required', 'uuid', 'exists:customers,id'],
+            'sales_order_id' => ['nullable', 'uuid', 'exists:sales_orders,id'],
             'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
             'currency_id' => ['sometimes', 'integer', 'exists:currencies,id'],
             'salesman_id' => ['nullable', 'uuid', 'exists:salesmen,id'],
@@ -56,6 +57,7 @@ class StoreSalesInvoiceRequest extends FormRequest
             'adjustment' => ['nullable', 'numeric'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'lines' => ['sometimes', 'array'],
+            'lines.*.sales_order_line_id' => ['nullable', 'integer', 'exists:sales_order_lines,id'],
             'lines.*.item_id' => ['required', 'uuid', 'exists:items,id'],
             'lines.*.quantity' => ['required', 'numeric', 'min:0.000001', 'max:999999.999999'],
             'lines.*.item_uom_id' => ['nullable', 'integer', Rule::exists('item_uoms', 'id')],

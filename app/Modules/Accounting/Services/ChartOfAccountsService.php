@@ -10,6 +10,7 @@ use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\AccountMapping;
 use App\Modules\Accounting\Models\JournalEntryLine;
 use App\Modules\CompanySetting\Models\CompanySetting;
+use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,7 @@ class ChartOfAccountsService
      * Copy a template into the tenant. Only missing codes and unmapped roles are inserted,
      * so running it again never overwrites what accountants changed.
      *
-     * @return array{template: string, accounts_created: int, mappings_created: int}
+     * @return array{template: string, accounts_created: int, mappings_created: int, name_ar_filled: int}
      */
     public function seedFromTemplate(?string $templateKey = null): array
     {
@@ -47,9 +48,11 @@ class ChartOfAccountsService
                         continue;
                     }
                     $parent = $row['parent'] ?? null;
+                    $nameAr = isset($row['name_ar']) ? trim((string) $row['name_ar']) : '';
                     $insert[] = [
                         'code' => $code,
                         'name' => (string) $row['name'],
+                        'name_ar' => $nameAr !== '' ? $nameAr : null,
                         'parent_id' => $parent !== null ? ($idsByCode[(string) $parent] ?? null) : null,
                         'type' => $row['type'] ?? null,
                         'normal_balance' => $row['normal_balance'] ?? null,
@@ -69,6 +72,20 @@ class ChartOfAccountsService
                 $idsByCode = Account::query()->pluck('id', 'code')->map(fn ($id): int => (int) $id)->all();
             }
 
+            $nameArFilled = 0;
+            foreach ($rows as $row) {
+                $nameAr = isset($row['name_ar']) ? trim((string) $row['name_ar']) : '';
+                $code = (string) $row['code'];
+                if ($nameAr === '' || ! isset($idsByCode[$code])) {
+                    continue;
+                }
+                $updated = Account::query()
+                    ->whereKey($idsByCode[$code])
+                    ->whereNull('name_ar')
+                    ->update(['name_ar' => $nameAr, 'updated_at' => $now]);
+                $nameArFilled += $updated;
+            }
+
             $mappedRoles = AccountMapping::query()->pluck('role')
                 ->map(fn ($role): string => $role instanceof AccountRole ? $role->value : (string) $role)
                 ->all();
@@ -83,7 +100,18 @@ class ChartOfAccountsService
                 $createdMappings++;
             }
 
-            return ['template' => $key, 'accounts_created' => $createdAccounts, 'mappings_created' => $createdMappings];
+            $settings = CompanySetting::singleton();
+            if ($settings->chart_template !== $key) {
+                $settings->update(['chart_template' => $key]);
+                app(CompanySettingService::class)->forgetCache();
+            }
+
+            return [
+                'template' => $key,
+                'accounts_created' => $createdAccounts,
+                'mappings_created' => $createdMappings,
+                'name_ar_filled' => $nameArFilled,
+            ];
         });
     }
 
@@ -118,7 +146,9 @@ class ChartOfAccountsService
         $search = trim((string) ($filters['search'] ?? ''));
         if ($search !== '') {
             $query->where(function ($q) use ($search): void {
-                $q->where('code', 'like', $search.'%')->orWhere('name', 'ilike', '%'.$search.'%');
+                $q->where('code', 'like', $search.'%')
+                    ->orWhere('name', 'ilike', '%'.$search.'%')
+                    ->orWhere('name_ar', 'ilike', '%'.$search.'%');
             });
         }
         if (! empty($filters['type'])) {

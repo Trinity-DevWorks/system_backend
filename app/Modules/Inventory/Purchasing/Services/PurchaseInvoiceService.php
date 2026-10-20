@@ -23,6 +23,7 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Services\InventoryLotService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
+use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Models\Supplier;
@@ -316,6 +317,11 @@ class PurchaseInvoiceService
             if (bccomp((string) $locked->paid_total, '0', 4) > 0) {
                 abort(422, 'This invoice has payments and cannot be reversed.', [
                     'X-Error-Code' => 'PURCHASE_INVOICE_HAS_PAYMENTS',
+                ]);
+            }
+            if (bccomp((string) ($locked->debited_total ?? 0), '0', 4) > 0) {
+                abort(422, 'This invoice has debit notes and cannot be reversed.', [
+                    'X-Error-Code' => 'PURCHASE_INVOICE_HAS_DEBIT_NOTES',
                 ]);
             }
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
@@ -628,7 +634,7 @@ class PurchaseInvoiceService
             'tax_total' => $totals['tax_total'],
             'grand_total' => $totals['grand_total'],
             'paid_total' => PriceMath::normalize($invoice->paid_total ?? 0),
-            'net_to_pay' => PaymentAllocation::netToPay($totals['grand_total'], $invoice->paid_total ?? 0),
+            'net_to_pay' => PaymentAllocation::netToPay($totals['grand_total'], $invoice->paid_total ?? 0, $invoice->debited_total ?? 0),
         ]);
     }
 
@@ -650,7 +656,21 @@ class PurchaseInvoiceService
             notes: $line->notes ? $note.' — '.$line->notes : $note,
             userId: $userId,
             lotId: $line->lot_id ? (int) $line->lot_id : null,
+            valueDelta: $this->inboundValue($invoice, $line),
         ));
+    }
+
+    /**
+     * Quantity × price in the unit on the line, then once into the primary currency.
+     * Stock is not rebuilt from the rounded cost of one piece.
+     */
+    private function inboundValue(PurchaseInvoice $invoice, PurchaseInvoiceLine $line): string
+    {
+        $documentValue = InventoryCostingMath::extended($line->quantity, (string) $line->unit_price);
+
+        return InventoryCostingMath::moneyRound(
+            ExchangeRateSnapshot::toPrimary($documentValue, (string) $invoice->exchange_rate, 8),
+        );
     }
 
     private function supplierIsExempt(?Supplier $supplier, string $documentDate): bool

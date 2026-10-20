@@ -44,6 +44,7 @@ class AccountMappingController extends Controller
                 'account_id' => $account?->id,
                 'account_code' => $account?->code,
                 'account_name' => $account?->name,
+                'account_name_ar' => $account?->name_ar,
             ];
         }
 

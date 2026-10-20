@@ -24,6 +24,7 @@ enum AccountRole: string
     case VatOutput = 'vat_output';
     case VatInput = 'vat_input';
     case VatPayable = 'vat_payable';
+    case VatCreditCarriedForward = 'vat_credit_carried_forward';
     case Cash = 'cash';
     case Bank = 'bank';
     case ChequesToCollect = 'cheques_to_collect';
@@ -49,6 +50,7 @@ enum AccountRole: string
         return match ($this) {
             self::Receivable,
             self::Inventory,
+            self::VatCreditCarriedForward,
             self::Cash,
             self::Bank,
             self::ChequesToCollect => [AccountType::Asset],

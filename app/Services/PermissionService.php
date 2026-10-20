@@ -130,6 +130,7 @@ class PermissionService
                 'role_permissions.can_import',
                 'role_permissions.can_export',
                 'role_permissions.can_reverse',
+                'role_permissions.can_reopen',
             ])
             ->get();
 
@@ -147,6 +148,7 @@ class PermissionService
                 'can_import' => $row->can_import,
                 'can_export' => $row->can_export,
                 'can_reverse' => $row->can_reverse,
+                'can_reopen' => $row->can_reopen,
             ]);
             foreach ($clamped as $flag => $on) {
                 if ($on) {

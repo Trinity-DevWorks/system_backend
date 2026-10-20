@@ -9,10 +9,14 @@ use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
+use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteStatus;
+use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
+use App\Modules\Sales\SalesOrder\Models\SalesOrder;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,6 +34,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 #[Fillable([
     'invoice_number',
     'customer_id',
+    'sales_order_id',
     'warehouse_id',
     'currency_id',
     'salesman_id',
@@ -48,6 +53,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'adjustment',
     'grand_total',
     'paid_total',
+    'credited_total',
     'net_to_pay',
     'notes',
     'created_by',
@@ -79,6 +85,7 @@ class SalesInvoice extends Model implements AuditableContract
             'adjustment' => 'decimal:4',
             'grand_total' => 'decimal:4',
             'paid_total' => 'decimal:4',
+            'credited_total' => 'decimal:4',
             'net_to_pay' => 'decimal:4',
             'posted_at' => 'datetime',
         ];
@@ -90,6 +97,14 @@ class SalesInvoice extends Model implements AuditableContract
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    /**
+     * @return BelongsTo<SalesOrder, $this>
+     */
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrder::class);
     }
 
     /**
@@ -154,5 +169,27 @@ class SalesInvoice extends Model implements AuditableContract
     public function lines(): HasMany
     {
         return $this->hasMany(SalesInvoiceLine::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /**
+     * @return HasMany<SalesCreditNote, $this>
+     */
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(SalesCreditNote::class);
+    }
+
+    /**
+     * Sum of posted credit notes, used to decide whether another note can still be created.
+     *
+     * @param  Builder<SalesInvoice>  $query
+     * @return Builder<SalesInvoice>
+     */
+    public function scopeWithPostedCreditTotal(Builder $query): Builder
+    {
+        return $query->withSum(
+            ['creditNotes as posted_credit_total' => fn (Builder $notes) => $notes->where('status', SalesCreditNoteStatus::Posted->value)],
+            'grand_total',
+        );
     }
 }

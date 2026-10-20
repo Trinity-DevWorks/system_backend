@@ -12,6 +12,7 @@ use App\Modules\Inventory\Stock\Enums\StockAdjustmentStatus;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockAdjustmentLine;
 use App\Modules\Inventory\Stock\Models\StockAdjustmentReason;
+use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentRules;
 use App\Modules\Warehouse\Services\WarehouseService;
@@ -193,6 +194,9 @@ class StockAdjustmentService
                 $itemUomId = $line->item_uom_id ? (int) $line->item_uom_id : null;
                 $unitCost = StockAdjustmentQuantity::resolveBaseUnitCost($item, $line->unit_cost, $itemUomId);
                 $lineNote = $line->notes ? $referenceNote.' — '.$line->notes : $referenceNote;
+                $inboundValue = bccomp((string) $line->base_quantity, '0', 6) > 0
+                    ? InventoryCostingMath::extended($line->quantity, $line->unit_cost)
+                    : null;
 
                 if ($item->track_lots && ! $line->lot_id) {
                     abort(422, 'Enter a lot number when adjusting a lot-tracked item.', [
@@ -210,6 +214,7 @@ class StockAdjustmentService
                     userId: $userId,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
                     stockAdjustmentId: (string) $locked->id,
+                    valueDelta: $inboundValue,
                 ));
             }
 

@@ -253,7 +253,7 @@ class SupplierPaymentService
                 $paid = PaymentAllocation::add($invoice->paid_total, $allocation->applied_amount);
                 $invoice->update([
                     'paid_total' => $paid,
-                    'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid),
+                    'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid, $invoice->debited_total),
                 ]);
             }
 
@@ -319,7 +319,7 @@ class SupplierPaymentService
 
                 $invoice->update([
                     'paid_total' => $paid,
-                    'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid),
+                    'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid, $invoice->debited_total),
                 ]);
             }
 

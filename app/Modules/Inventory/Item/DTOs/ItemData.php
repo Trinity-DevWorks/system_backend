@@ -33,6 +33,7 @@ readonly class ItemData
         public ?string $costingMethod,
         public bool $allowSale,
         public bool $allowPurchase,
+        public bool $allowReturn,
         public bool $isActive,
     ) {}
 
@@ -79,6 +80,9 @@ readonly class ItemData
             allowPurchase: array_key_exists('allow_purchase', $data)
                 ? (bool) $data['allow_purchase']
                 : $defaults['allow_purchase'],
+            allowReturn: array_key_exists('allow_return', $data)
+                ? (bool) $data['allow_return']
+                : $defaults['allow_return'],
             isActive: (bool) ($data['is_active'] ?? true),
         );
     }
@@ -148,6 +152,9 @@ readonly class ItemData
             allowPurchase: array_key_exists('allow_purchase', $data)
                 ? (bool) $data['allow_purchase']
                 : (bool) $item->allow_purchase,
+            allowReturn: array_key_exists('allow_return', $data)
+                ? (bool) $data['allow_return']
+                : (bool) $item->allow_return,
             isActive: array_key_exists('is_active', $data)
                 ? (bool) $data['is_active']
                 : (bool) $item->is_active,
@@ -182,6 +189,7 @@ readonly class ItemData
             'costing_method' => $this->costingMethod,
             'allow_sale' => $this->allowSale,
             'allow_purchase' => $this->allowPurchase,
+            'allow_return' => $this->allowReturn,
             'is_active' => $this->isActive,
         ];
     }

@@ -54,7 +54,8 @@ class SalesInvoiceQueryService
                 'createdByUser:id,name,email',
                 'postedByUser:id,name,email',
             ])
-            ->withCount('lines');
+            ->withCount('lines')
+            ->withPostedCreditTotal();
 
         $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
 

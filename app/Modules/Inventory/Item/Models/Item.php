@@ -50,6 +50,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'costing_method',
     'allow_sale',
     'allow_purchase',
+    'allow_return',
     'is_active',
 ])]
 class Item extends Model implements AuditableContract
@@ -71,6 +72,7 @@ class Item extends Model implements AuditableContract
             'track_lots' => 'boolean',
             'allow_sale' => 'boolean',
             'allow_purchase' => 'boolean',
+            'allow_return' => 'boolean',
             'is_active' => 'boolean',
         ];
     }

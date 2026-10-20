@@ -13,6 +13,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property StockTransferClosureOutcome $outcome
+ */
 #[Fillable([
     'stock_transfer_closure_id',
     'stock_transfer_line_id',

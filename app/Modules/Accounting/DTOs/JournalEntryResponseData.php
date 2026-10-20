@@ -62,6 +62,7 @@ final class JournalEntryResponseData
             'account_id' => (int) $line->account_id,
             'account_code' => $line->account?->code,
             'account_name' => $line->account?->name,
+            'account_name_ar' => $line->account?->name_ar,
             'debit' => (string) $line->debit,
             'credit' => (string) $line->credit,
             'currency_id' => (int) $line->currency_id,

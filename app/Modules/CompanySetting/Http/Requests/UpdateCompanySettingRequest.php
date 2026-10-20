@@ -50,6 +50,7 @@ class UpdateCompanySettingRequest extends FormRequest
             'inventory_costing_method' => ['sometimes', 'required', Rule::enum(InventoryCostingMethod::class)],
             'price_rounding_mode' => ['sometimes', 'required', Rule::enum(PriceRoundingMode::class)],
             'price_decimal_places' => ['sometimes', 'required', 'integer', 'min:0', 'max:6'],
+            'fiscal_year_start_month' => ['sometimes', 'required', 'integer', 'min:1', 'max:12'],
         ];
     }
 

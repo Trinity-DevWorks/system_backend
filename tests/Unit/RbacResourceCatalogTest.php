@@ -62,6 +62,14 @@ class RbacResourceCatalogTest extends TestCase
         $this->assertTrue(RbacResourceCatalog::allows('purchase_invoices', 'reverse'));
         $this->assertTrue(RbacResourceCatalog::allows('customer_receipts', 'reverse'));
         $this->assertTrue(RbacResourceCatalog::allows('supplier_payments', 'reverse'));
+        $this->assertTrue(RbacResourceCatalog::allows('sales_credit_notes', 'reverse'));
+        $this->assertTrue(RbacResourceCatalog::allows('sales_credit_notes', 'export'));
+        $this->assertTrue(RbacResourceCatalog::allows('customer_refunds', 'reverse'));
+        $this->assertTrue(RbacResourceCatalog::allows('purchase_debit_notes', 'reverse'));
+        $this->assertTrue(RbacResourceCatalog::allows('supplier_refunds', 'export'));
         $this->assertFalse(RbacResourceCatalog::allows('customers', 'reverse'));
+        $this->assertSame(['view', 'edit', 'reopen'], RbacResourceCatalog::actions('accounting_periods'));
+        $this->assertTrue(RbacResourceCatalog::allows('accounting_periods', 'reopen'));
+        $this->assertFalse(RbacResourceCatalog::allows('accounting_periods', 'add'));
     }
 }

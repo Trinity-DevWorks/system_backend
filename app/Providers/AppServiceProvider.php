@@ -11,6 +11,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\AccountMapping;
+use App\Modules\Accounting\Models\FiscalYear;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Brand\Models\Brand;
@@ -33,7 +34,9 @@ use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoiceLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
+use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNote;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
+use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefund;
 use App\Modules\Inventory\Stock\Models\BundleExplosion;
 use App\Modules\Inventory\Stock\Models\BundleExplosionLine;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
@@ -59,8 +62,14 @@ use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
+use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
+use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
+use App\Modules\Sales\SalesOrder\Models\SalesOrder;
+use App\Modules\Sales\SalesOrder\Models\SalesOrderLine;
+use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
+use App\Modules\Sales\SalesQuotation\Models\SalesQuotationLine;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
@@ -107,6 +116,7 @@ class AppServiceProvider extends ServiceProvider
             'account' => Account::class,
             'account_mapping' => AccountMapping::class,
             'journal_entry' => JournalEntry::class,
+            'fiscal_year' => FiscalYear::class,
             'audit' => Audit::class,
             'attachment' => Attachment::class,
             'brand' => Brand::class,
@@ -118,8 +128,14 @@ class AppServiceProvider extends ServiceProvider
             'customer_address' => CustomerAddress::class,
             'customer_balance' => CustomerBalance::class,
             'salesman' => Salesman::class,
+            'sales_quotation' => SalesQuotation::class,
+            'sales_quotation_line' => SalesQuotationLine::class,
+            'sales_order' => SalesOrder::class,
+            'sales_order_line' => SalesOrderLine::class,
             'sales_invoice' => SalesInvoice::class,
+            'sales_credit_note' => SalesCreditNote::class,
             'customer_receipt' => CustomerReceipt::class,
+            'customer_refund' => CustomerRefund::class,
             'sales_invoice_line' => SalesInvoiceLine::class,
             'supplier' => Supplier::class,
             'supplier_group' => SupplierGroup::class,
@@ -148,7 +164,9 @@ class AppServiceProvider extends ServiceProvider
             'goods_receipt' => GoodsReceipt::class,
             'goods_receipt_line' => GoodsReceiptLine::class,
             'purchase_invoice' => PurchaseInvoice::class,
+            'purchase_debit_note' => PurchaseDebitNote::class,
             'supplier_payment' => SupplierPayment::class,
+            'supplier_refund' => SupplierRefund::class,
             'purchase_invoice_line' => PurchaseInvoiceLine::class,
             'opening_stock' => OpeningStock::class,
             'opening_stock_line' => OpeningStockLine::class,

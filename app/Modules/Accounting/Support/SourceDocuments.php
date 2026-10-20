@@ -18,12 +18,17 @@ final class SourceDocuments
     /** @var array<string, array{table: string, number: string}> */
     private const DOCUMENTS = [
         'sales_invoice' => ['table' => 'sales_invoices', 'number' => 'invoice_number'],
+        'sales_credit_note' => ['table' => 'sales_credit_notes', 'number' => 'credit_note_number'],
         'customer_receipt' => ['table' => 'customer_receipts', 'number' => 'receipt_number'],
+        'customer_refund' => ['table' => 'customer_refunds', 'number' => 'refund_number'],
         'goods_receipt' => ['table' => 'goods_receipts', 'number' => 'grn_number'],
         'purchase_invoice' => ['table' => 'purchase_invoices', 'number' => 'invoice_number'],
+        'purchase_debit_note' => ['table' => 'purchase_debit_notes', 'number' => 'debit_note_number'],
         'supplier_payment' => ['table' => 'supplier_payments', 'number' => 'payment_number'],
+        'supplier_refund' => ['table' => 'supplier_refunds', 'number' => 'refund_number'],
         'stock_adjustment' => ['table' => 'stock_adjustments', 'number' => 'adj_number'],
         'stock_count' => ['table' => 'stock_counts', 'number' => 'cnt_number'],
+        'stock_transfer_closure' => ['table' => 'stock_transfer_closures', 'number' => 'closure_number'],
         'opening_stock' => ['table' => 'opening_stocks', 'number' => 'os_number'],
         'production' => ['table' => 'productions', 'number' => 'prd_number'],
     ];
@@ -58,6 +63,29 @@ final class SourceDocuments
                 $doc = self::DOCUMENTS[$type];
                 foreach (DB::table($doc['table'])->whereIn('id', $ids)->get(['id', $doc['number'].' as number']) as $row) {
                     $out[$type.':'.$row->id] = (string) ($row->number ?? '');
+                }
+
+                continue;
+            }
+
+            $application = match ($type) {
+                'sales_credit_note_apply' => ['sales_credit_notes', 'credit_note_number'],
+                'purchase_debit_note_apply' => ['purchase_debit_notes', 'debit_note_number'],
+                default => null,
+            };
+            if ($application !== null) {
+                [$table, $numberColumn] = $application;
+                $noteIds = [];
+                foreach ($ids as $id) {
+                    $noteIds[explode(':', (string) $id, 2)[0]] = true;
+                }
+                $numbers = DB::table($table)->whereIn('id', array_keys($noteIds))->pluck($numberColumn, 'id');
+                foreach ($ids as $id) {
+                    $noteId = explode(':', (string) $id, 2)[0];
+                    $number = $numbers[$noteId] ?? null;
+                    if ($number !== null && $number !== '') {
+                        $out[$type.':'.$id] = (string) $number;
+                    }
                 }
 
                 continue;

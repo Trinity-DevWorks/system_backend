@@ -22,7 +22,7 @@ class AccountMappingService
     public function list(): array
     {
         $mappings = AccountMapping::query()
-            ->with('account:id,code,name,type,is_group,is_active')
+            ->with('account:id,code,name,name_ar,type,is_group,is_active')
             ->get()
             ->keyBy(fn (AccountMapping $m): string => $m->role->value);
 

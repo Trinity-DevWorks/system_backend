@@ -7,6 +7,7 @@ namespace App\Modules\Sales\SalesInvoice\Models;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Stock\Models\InventoryLot;
+use App\Modules\Sales\SalesOrder\Models\SalesOrderLine;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +17,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 #[Fillable([
     'sales_invoice_id',
+    'sales_order_line_id',
     'item_id',
     'item_uom_id',
     'warehouse_id',
@@ -64,6 +66,14 @@ class SalesInvoiceLine extends Model implements AuditableContract
     public function salesInvoice(): BelongsTo
     {
         return $this->belongsTo(SalesInvoice::class);
+    }
+
+    /**
+     * @return BelongsTo<SalesOrderLine, $this>
+     */
+    public function salesOrderLine(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrderLine::class);
     }
 
     /**

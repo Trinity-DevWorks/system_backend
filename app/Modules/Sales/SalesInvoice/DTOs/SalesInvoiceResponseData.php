@@ -11,6 +11,7 @@ use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\SalesOrder\Models\SalesOrder;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Warehouse\Models\Warehouse;
 
@@ -27,12 +28,14 @@ readonly class SalesInvoiceResponseData
             'paymentTerm:id,name,code,due_days',
             'createdByUser:id,name,email',
             'postedByUser:id,name,email',
+            'salesOrder:id,order_number,status',
         ]);
 
         $payload = [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
             'customer_id' => $invoice->customer_id,
+            'sales_order_id' => $invoice->sales_order_id,
             'warehouse_id' => $invoice->warehouse_id,
             'currency_id' => $invoice->currency_id,
             'salesman_id' => $invoice->salesman_id,
@@ -53,9 +56,12 @@ readonly class SalesInvoiceResponseData
             'adjustment' => (string) $invoice->adjustment,
             'grand_total' => (string) $invoice->grand_total,
             'paid_total' => (string) $invoice->paid_total,
+            'credited_total' => (string) $invoice->credited_total,
+            'creditable_total' => self::creditableTotal($invoice),
             'net_to_pay' => (string) $invoice->net_to_pay,
             'notes' => $invoice->notes,
             'customer' => self::customerBrief($invoice->customer),
+            'sales_order' => self::orderBrief($invoice->salesOrder),
             'warehouse' => self::warehouseBrief($invoice->warehouse),
             'currency' => self::currencyBrief($invoice->currency),
             'salesman' => self::salesmanBrief($invoice->salesman),
@@ -75,6 +81,7 @@ readonly class SalesInvoiceResponseData
                 'lines.itemUom.uom',
                 'lines.warehouse',
                 'lines.lot',
+                'lines.salesOrderLine',
             ]);
             $payload['lines'] = SalesInvoiceLineResponseData::collectionToArray($invoice->lines);
         }
@@ -83,8 +90,40 @@ readonly class SalesInvoiceResponseData
     }
 
     /**
+     * Invoice total still available for another posted credit note.
+     * credited_total is only the amount applied to the balance, so a fully paid
+     * invoice can already be fully credited while that field stays at zero.
+     */
+    private static function creditableTotal(SalesInvoice $invoice): string
+    {
+        $posted = $invoice->getAttribute('posted_credit_total');
+        $used = $posted === null ? '0' : (string) $posted;
+        $remaining = bcsub((string) $invoice->grand_total, $used, 4);
+
+        return bccomp($remaining, '0', 4) < 0 ? '0.0000' : $remaining;
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
+    /**
+     * @return array{id:string,order_number:?string,status:string}|null
+     */
+    private static function orderBrief(?SalesOrder $order): ?array
+    {
+        if (! $order) {
+            return null;
+        }
+
+        $status = $order->status instanceof \BackedEnum ? $order->status->value : (string) $order->status;
+
+        return [
+            'id' => (string) $order->id,
+            'order_number' => $order->order_number,
+            'status' => $status,
+        ];
+    }
+
     private static function customerBrief(?Customer $customer): ?array
     {
         if (! $customer) {

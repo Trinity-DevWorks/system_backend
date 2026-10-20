@@ -21,6 +21,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 #[Fillable([
     'code',
     'name',
+    'name_ar',
     'parent_id',
     'type',
     'normal_balance',

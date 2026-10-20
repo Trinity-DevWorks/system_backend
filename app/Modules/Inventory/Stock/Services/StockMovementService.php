@@ -74,6 +74,7 @@ class StockMovementService
                 $data->quantityDelta,
                 $data->unitCost,
                 (int) $movement->id,
+                $data->valueDelta,
             );
 
             $movement->update([

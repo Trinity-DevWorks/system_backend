@@ -22,6 +22,7 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Services\InventoryLotService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
+use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Supplier\Services\SupplierItemService;
@@ -212,7 +213,11 @@ class GoodsReceiptService
 
                 $item = $line->item ?? Item::query()->findOrFail($line->item_id);
                 $itemUomId = $line->item_uom_id ? (int) $line->item_uom_id : null;
+                $enteredCost = $line->unit_cost ?? $poLine?->unit_price;
                 $unitCost = $this->resolveBaseUnitCost($item, $line, $poLine, $itemUomId);
+                $inboundValue = $enteredCost !== null && $enteredCost !== ''
+                    ? InventoryCostingMath::extended($line->quantity, $enteredCost)
+                    : null;
                 $lineNote = $line->notes ? $referenceNote.' — '.$line->notes : $referenceNote;
 
                 if ($item->track_lots && ! $line->lot_id) {
@@ -233,6 +238,7 @@ class GoodsReceiptService
                         userId: $userId,
                         lotId: $line->lot_id ? (int) $line->lot_id : null,
                         goodsReceiptId: (string) $locked->id,
+                        valueDelta: $inboundValue,
                     ));
                 }
 

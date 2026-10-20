@@ -35,6 +35,7 @@ class UpdateAccountRequest extends FormRequest
                 Rule::unique('accounts', 'code')->ignore($account->id),
             ],
             'name' => ['required', 'string', 'max:255'],
+            'name_ar' => ['nullable', 'string', 'max:255'],
             'parent_id' => ['nullable', 'integer', 'exists:accounts,id'],
             'type' => ['nullable', new Enum(AccountType::class)],
             'normal_balance' => ['nullable', new Enum(NormalBalance::class)],

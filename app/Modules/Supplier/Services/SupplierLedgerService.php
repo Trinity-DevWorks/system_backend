@@ -436,8 +436,8 @@ class SupplierLedgerService
         $periodByCurrency = [];
         foreach ($periodRows as $row) {
             $periodByCurrency[(int) $row->currency_id] = [
-                'debit' => $this->formatMoney($row->period_debit),
-                'credit' => $this->formatMoney($row->period_credit),
+                'debit' => $this->formatMoney($row->getAttribute('period_debit')),
+                'credit' => $this->formatMoney($row->getAttribute('period_credit')),
             ];
         }
 
@@ -544,6 +544,8 @@ class SupplierLedgerService
     {
         $invoiceIds = [];
         $paymentIds = [];
+        $debitNoteIds = [];
+        $refundIds = [];
         foreach ($entries as $entry) {
             if ($entry->reference_id === null) {
                 continue;
@@ -553,6 +555,10 @@ class SupplierLedgerService
                 $invoiceIds[] = (string) $entry->reference_id;
             } elseif ($type === LedgerReferenceType::Payment->value) {
                 $paymentIds[] = (string) $entry->reference_id;
+            } elseif ($type === LedgerReferenceType::DebitNote->value) {
+                $debitNoteIds[] = (string) $entry->reference_id;
+            } elseif ($type === LedgerReferenceType::Refund->value) {
+                $refundIds[] = (string) $entry->reference_id;
             }
         }
 
@@ -570,6 +576,22 @@ class SupplierLedgerService
             foreach ($numbers as $id => $number) {
                 if ($number !== null && $number !== '') {
                     $out[LedgerReferenceType::Payment->value.'|'.$id] = (string) $number;
+                }
+            }
+        }
+        if ($debitNoteIds !== []) {
+            $numbers = DB::table('purchase_debit_notes')->whereIn('id', array_values(array_unique($debitNoteIds)))->pluck('debit_note_number', 'id');
+            foreach ($numbers as $id => $number) {
+                if ($number !== null && $number !== '') {
+                    $out[LedgerReferenceType::DebitNote->value.'|'.$id] = (string) $number;
+                }
+            }
+        }
+        if ($refundIds !== []) {
+            $numbers = DB::table('supplier_refunds')->whereIn('id', array_values(array_unique($refundIds)))->pluck('refund_number', 'id');
+            foreach ($numbers as $id => $number) {
+                if ($number !== null && $number !== '') {
+                    $out[LedgerReferenceType::Refund->value.'|'.$id] = (string) $number;
                 }
             }
         }

@@ -87,6 +87,7 @@ class ItemService
                 'track_lots',
                 'allow_sale',
                 'allow_purchase',
+                'allow_return',
                 'is_active',
             ])
             ->with(['vatGroup:id,percentage'])
@@ -132,7 +133,7 @@ class ItemService
     public function names(): Collection
     {
         return Item::query()
-            ->select(['id', 'item_code', 'name', 'item_type_id', 'base_uom_id', 'vat_group_id', 'track_inventory', 'track_lots', 'allow_sale', 'allow_purchase', 'is_active'])
+            ->select(['id', 'item_code', 'name', 'item_type_id', 'base_uom_id', 'vat_group_id', 'track_inventory', 'track_lots', 'allow_sale', 'allow_purchase', 'allow_return', 'is_active'])
             ->with(['itemType:id,code,name', 'baseUom:id,code,name', 'vatGroup:id,percentage'])
             ->orderBy('name')
             ->get();

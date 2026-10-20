@@ -46,6 +46,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'adjustment',
     'grand_total',
     'paid_total',
+    'debited_total',
     'net_to_pay',
     'notes',
     'created_by',
@@ -75,6 +76,7 @@ class PurchaseInvoice extends Model implements AuditableContract
             'adjustment' => 'decimal:4',
             'grand_total' => 'decimal:4',
             'paid_total' => 'decimal:4',
+            'debited_total' => 'decimal:4',
             'net_to_pay' => 'decimal:4',
             'posted_at' => 'datetime',
         ];

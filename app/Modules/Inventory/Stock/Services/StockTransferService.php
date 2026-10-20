@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Enums\StockMovementType;
@@ -32,6 +33,7 @@ class StockTransferService
         private readonly StockTransferQueryService $stockTransferQueryService,
         private readonly DomainNotificationPublisher $notifications,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -386,6 +388,8 @@ class StockTransferService
                     ]);
                 }
             }
+
+            $this->journalPostingService->stockTransferClosure($closure->load('lines'), $userId);
 
             $this->syncLifecycleAfterReceive($locked, $userId);
 

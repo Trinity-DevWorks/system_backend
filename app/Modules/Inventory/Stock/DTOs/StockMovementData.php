@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\DTOs;
 
-use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\BundleExplosion;
 use App\Modules\Inventory\Stock\Models\OpeningStock;
 use App\Modules\Inventory\Stock\Models\Production;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockCount;
+use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 
 readonly class StockMovementData
 {
@@ -26,6 +26,7 @@ readonly class StockMovementData
         public ?string $userId,
         public ?string $unitCost = null,
         public ?int $lotId = null,
+        public ?string $valueDelta = null,
     ) {}
 
     public static function forTransfer(
@@ -65,6 +66,7 @@ readonly class StockMovementData
         ?string $userId,
         ?int $lotId = null,
         ?string $openingStockId = null,
+        ?string $valueDelta = null,
     ): self {
         return new self(
             itemId: $itemId,
@@ -78,6 +80,7 @@ readonly class StockMovementData
             userId: $userId,
             unitCost: self::normalizeUnitCost($unitCost),
             lotId: $lotId,
+            valueDelta: self::normalizeValueDelta($valueDelta),
         );
     }
 
@@ -92,6 +95,7 @@ readonly class StockMovementData
         ?string $userId,
         ?int $lotId = null,
         ?string $goodsReceiptId = null,
+        ?string $valueDelta = null,
     ): self {
         return new self(
             itemId: $itemId,
@@ -105,6 +109,7 @@ readonly class StockMovementData
             userId: $userId,
             unitCost: self::normalizeUnitCost($unitCost),
             lotId: $lotId,
+            valueDelta: self::normalizeValueDelta($valueDelta),
         );
     }
 
@@ -118,6 +123,7 @@ readonly class StockMovementData
         ?string $notes,
         ?string $userId,
         ?int $lotId = null,
+        ?string $valueDelta = null,
     ): self {
         return new self(
             itemId: $itemId,
@@ -131,6 +137,7 @@ readonly class StockMovementData
             userId: $userId,
             unitCost: self::normalizeUnitCost($unitCost),
             lotId: $lotId,
+            valueDelta: self::normalizeValueDelta($valueDelta),
         );
     }
 
@@ -145,6 +152,7 @@ readonly class StockMovementData
         ?string $userId,
         ?int $lotId = null,
         ?string $productionId = null,
+        ?string $valueDelta = null,
     ): self {
         return new self(
             itemId: $itemId,
@@ -158,6 +166,7 @@ readonly class StockMovementData
             userId: $userId,
             unitCost: self::normalizeUnitCost($unitCost),
             lotId: $lotId,
+            valueDelta: self::normalizeValueDelta($valueDelta),
         );
     }
 
@@ -178,6 +187,59 @@ readonly class StockMovementData
             referenceType: $bundleExplosionId !== null ? BundleExplosion::REFERENCE_TYPE : null,
             referenceId: $bundleExplosionId,
             itemUomId: null,
+            notes: self::normalizeNotes($notes),
+            userId: $userId,
+            unitCost: null,
+            lotId: $lotId,
+        );
+    }
+
+    public static function forSalesReturn(
+        string $itemId,
+        int $warehouseId,
+        string $quantityDelta,
+        string $salesCreditNoteId,
+        ?string $unitCost,
+        ?int $itemUomId,
+        ?string $notes,
+        ?string $userId,
+        ?int $lotId = null,
+        ?string $valueDelta = null,
+    ): self {
+        return new self(
+            itemId: $itemId,
+            warehouseId: $warehouseId,
+            quantityDelta: self::formatDelta($quantityDelta),
+            type: StockMovementType::SalesReturn,
+            referenceType: 'sales_credit_note',
+            referenceId: $salesCreditNoteId,
+            itemUomId: $itemUomId,
+            notes: self::normalizeNotes($notes),
+            userId: $userId,
+            unitCost: self::normalizeUnitCost($unitCost),
+            lotId: $lotId,
+            valueDelta: self::normalizeValueDelta($valueDelta),
+        );
+    }
+
+    public static function forPurchaseReturn(
+        string $itemId,
+        int $warehouseId,
+        string $quantityDelta,
+        string $purchaseDebitNoteId,
+        ?int $itemUomId,
+        ?string $notes,
+        ?string $userId,
+        ?int $lotId = null,
+    ): self {
+        return new self(
+            itemId: $itemId,
+            warehouseId: $warehouseId,
+            quantityDelta: self::formatDelta($quantityDelta),
+            type: StockMovementType::PurchaseReturn,
+            referenceType: 'purchase_debit_note',
+            referenceId: $purchaseDebitNoteId,
+            itemUomId: $itemUomId,
             notes: self::normalizeNotes($notes),
             userId: $userId,
             unitCost: null,
@@ -269,6 +331,7 @@ readonly class StockMovementData
         ?string $userId,
         ?int $lotId = null,
         ?string $stockAdjustmentId = null,
+        ?string $valueDelta = null,
     ): self {
         return new self(
             itemId: $itemId,
@@ -282,6 +345,7 @@ readonly class StockMovementData
             userId: $userId,
             unitCost: self::normalizeUnitCost($unitCost),
             lotId: $lotId,
+            valueDelta: self::normalizeValueDelta($valueDelta),
         );
     }
 
@@ -326,11 +390,20 @@ readonly class StockMovementData
             return null;
         }
 
-        $cost = PriceMath::normalize($value);
-        if (bccomp($cost, '0', PriceMath::scale()) < 0) {
+        $cost = InventoryCostingMath::moneyRound($value);
+        if (bccomp($cost, '0', InventoryCostingMath::MONEY_SCALE) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 
         return $cost;
+    }
+
+    private static function normalizeValueDelta(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return InventoryCostingMath::moneyRound($value);
     }
 }

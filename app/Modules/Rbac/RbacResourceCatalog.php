@@ -13,7 +13,7 @@ namespace App\Modules\Rbac;
 final class RbacResourceCatalog
 {
     /** @var list<string> */
-    public const ACTIONS = ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse'];
+    public const ACTIONS = ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse', 'reopen'];
 
     /** @var array<string, string> */
     public const ACTION_FLAGS = [
@@ -24,6 +24,7 @@ final class RbacResourceCatalog
         'import' => 'can_import',
         'export' => 'can_export',
         'reverse' => 'can_reverse',
+        'reopen' => 'can_reopen',
     ];
 
     public static function label(string $resourceKey): string
@@ -75,7 +76,7 @@ final class RbacResourceCatalog
      * Force flags that are not in the resource catalog to false.
      *
      * @param  array<string, mixed>  $row
-     * @return array{can_view: bool, can_add: bool, can_edit: bool, can_delete: bool, can_import: bool, can_export: bool, can_reverse: bool}
+     * @return array{can_view: bool, can_add: bool, can_edit: bool, can_delete: bool, can_import: bool, can_export: bool, can_reverse: bool, can_reopen: bool}
      */
     public static function clampFlags(string $resourceKey, array $row): array
     {

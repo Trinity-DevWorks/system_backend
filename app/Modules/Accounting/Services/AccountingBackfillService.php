@@ -8,12 +8,17 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNote;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
+use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefund;
 use App\Modules\Inventory\Stock\Models\OpeningStock;
 use App\Modules\Inventory\Stock\Models\Production;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockCount;
+use App\Modules\Inventory\Stock\Models\StockTransferClosure;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
+use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
+use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Supplier\Models\SupplierBalance;
 use Illuminate\Database\Eloquent\Model;
@@ -35,8 +40,12 @@ class AccountingBackfillService
         GoodsReceipt::class => ['received_date', 'goodsReceipt'],
         PurchaseInvoice::class => ['invoice_date', 'purchaseInvoice'],
         SalesInvoice::class => ['invoice_date', 'salesInvoice'],
+        SalesCreditNote::class => ['credit_date', 'backfillSalesCreditNote'],
         CustomerReceipt::class => ['payment_date', 'customerReceipt'],
+        CustomerRefund::class => ['refund_date', 'customerRefund'],
+        PurchaseDebitNote::class => ['debit_date', 'backfillPurchaseDebitNote'],
         SupplierPayment::class => ['payment_date', 'supplierPayment'],
+        SupplierRefund::class => ['refund_date', 'supplierRefund'],
         StockAdjustment::class => ['adjustment_date', 'stockAdjustment'],
         StockCount::class => ['count_date', 'stockCount'],
         Production::class => ['production_date', 'production'],
@@ -61,14 +70,30 @@ class AccountingBackfillService
             });
         }
 
+        foreach (StockTransferClosure::query()->orderBy('closed_at')->orderBy('created_at')->get() as $closure) {
+            DB::transaction(function () use ($closure): void {
+                $this->journalPostingService->stockTransferClosure(
+                    $closure,
+                    $closure->created_by !== null ? (string) $closure->created_by : null,
+                    $closure->closed_at?->toDateString(),
+                );
+            });
+        }
+
         foreach ($this->documents() as [$model, $date, $method]) {
             DB::transaction(function () use ($model, $date, $method): void {
                 $this->journalPostingService->{$method}($model, $model->posted_by ?? null, $date);
 
                 if ($this->statusValue($model) === 'reversed') {
                     $reversedOn = $model->updated_at?->toDateString() ?? $date;
+                    if ($model instanceof SalesCreditNote) {
+                        $this->journalPostingService->reverseCreditApplications((string) $model->getKey(), null);
+                    }
+                    if ($model instanceof PurchaseDebitNote) {
+                        $this->journalPostingService->reverseDebitApplications((string) $model->getKey(), null);
+                    }
                     $this->journalPostingService->reverse(
-                        $model::REFERENCE_TYPE,
+                        constant($model::class.'::REFERENCE_TYPE'),
                         (string) $model->getKey(),
                         null,
                         max($reversedOn, $date),

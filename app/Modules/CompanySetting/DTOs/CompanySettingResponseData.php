@@ -27,6 +27,8 @@ readonly class CompanySettingResponseData
         public string $inventoryCostingMethod,
         public string $priceRoundingMode,
         public int $priceDecimalPlaces,
+        public int $fiscalYearStartMonth,
+        public ?string $chartTemplate,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -50,6 +52,8 @@ readonly class CompanySettingResponseData
             inventoryCostingMethod: $settings->inventory_costing_method->value,
             priceRoundingMode: $settings->price_rounding_mode->value,
             priceDecimalPlaces: (int) $settings->price_decimal_places,
+            fiscalYearStartMonth: (int) ($settings->fiscal_year_start_month ?? 1),
+            chartTemplate: $settings->chart_template !== null ? (string) $settings->chart_template : null,
             createdAt: (string) $settings->created_at,
             updatedAt: (string) $settings->updated_at,
         );
@@ -75,6 +79,8 @@ readonly class CompanySettingResponseData
             'inventory_costing_method' => $this->inventoryCostingMethod,
             'price_rounding_mode' => $this->priceRoundingMode,
             'price_decimal_places' => $this->priceDecimalPlaces,
+            'fiscal_year_start_month' => $this->fiscalYearStartMonth,
+            'chart_template' => $this->chartTemplate,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];

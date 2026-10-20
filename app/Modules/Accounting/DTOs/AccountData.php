@@ -14,6 +14,8 @@ readonly class AccountData
     public function __construct(
         public string $code,
         public string $name,
+        public ?string $nameAr,
+        public bool $nameArProvided,
         public ?int $parentId,
         public ?AccountType $type,
         public ?NormalBalance $normalBalance,
@@ -43,10 +45,13 @@ readonly class AccountData
             ? NormalBalance::from((string) $data['normal_balance'])
             : null;
         $description = isset($data['description']) ? trim((string) $data['description']) : null;
+        $nameAr = array_key_exists('name_ar', $data) ? trim((string) ($data['name_ar'] ?? '')) : null;
 
         return new self(
             code: trim((string) $data['code']),
             name: trim((string) $data['name']),
+            nameAr: $nameAr === '' ? null : $nameAr,
+            nameArProvided: array_key_exists('name_ar', $data),
             parentId: isset($data['parent_id']) ? (int) $data['parent_id'] : null,
             type: $type,
             normalBalance: $normal,
@@ -72,6 +77,6 @@ readonly class AccountData
             'is_active' => $this->isActive,
             'currency_id' => $this->currencyId,
             'description' => $this->description,
-        ];
+        ] + ($this->nameArProvided ? ['name_ar' => $this->nameAr] : []);
     }
 }

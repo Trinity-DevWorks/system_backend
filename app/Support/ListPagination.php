@@ -40,7 +40,7 @@ final class ListPagination
      */
     private static function containsOperator(Builder $query): string
     {
-        return $query->getConnection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+        return $query->getModel()->getConnection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
     }
 
     /**

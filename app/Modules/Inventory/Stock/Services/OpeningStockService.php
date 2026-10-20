@@ -11,6 +11,7 @@ use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Enums\OpeningStockStatus;
 use App\Modules\Inventory\Stock\Models\OpeningStock;
 use App\Modules\Inventory\Stock\Models\OpeningStockLine;
+use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\OpeningStockRules;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Warehouse\Services\WarehouseService;
@@ -172,6 +173,7 @@ class OpeningStockService
                 $itemUomId = $line->item_uom_id ? (int) $line->item_uom_id : null;
                 $unitCost = StockAdjustmentQuantity::resolveBaseUnitCost($item, $line->unit_cost, $itemUomId);
                 $lineNote = $line->notes ? $referenceNote.' — '.$line->notes : $referenceNote;
+                $inboundValue = InventoryCostingMath::extended($line->quantity, $line->unit_cost);
 
                 if ($item->track_lots && ! $line->lot_id) {
                     abort(422, 'Enter a lot number when adding stock for a lot-tracked item.', [
@@ -189,6 +191,7 @@ class OpeningStockService
                     userId: $userId,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
                     openingStockId: (string) $locked->id,
+                    valueDelta: $inboundValue,
                 ));
             }
 

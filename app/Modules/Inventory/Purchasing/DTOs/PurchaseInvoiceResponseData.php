@@ -49,6 +49,7 @@ readonly class PurchaseInvoiceResponseData
             'adjustment' => (string) $invoice->adjustment,
             'grand_total' => (string) $invoice->grand_total,
             'paid_total' => (string) $invoice->paid_total,
+            'debited_total' => (string) $invoice->debited_total,
             'net_to_pay' => (string) $invoice->net_to_pay,
             'notes' => $invoice->notes,
             'posted_at' => $invoice->posted_at?->toIso8601String(),

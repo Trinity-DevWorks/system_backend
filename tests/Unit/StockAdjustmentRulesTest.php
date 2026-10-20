@@ -14,9 +14,9 @@ use Tests\TestCase;
 
 class StockAdjustmentRulesTest extends TestCase
 {
-    public function test_status_values_are_draft_and_posted(): void
+    public function test_status_values_are_draft_posted_and_reversed(): void
     {
-        $this->assertSame(['draft', 'posted'], StockAdjustmentStatus::values());
+        $this->assertSame(['draft', 'posted', 'reversed'], StockAdjustmentStatus::values());
     }
 
     public function test_assert_draft_rejects_posted_document(): void

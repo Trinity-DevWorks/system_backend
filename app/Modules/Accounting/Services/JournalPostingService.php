@@ -20,17 +20,30 @@ use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoiceLine;
+use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Enums\PurchaseDebitNoteType;
+use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNote;
+use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNoteLine;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPaymentAllocation;
+use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefund;
+use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefundAllocation;
+use App\Modules\Inventory\Stock\Enums\StockMovementType;
+use App\Modules\Inventory\Stock\Enums\StockTransferClosureOutcome;
 use App\Modules\Inventory\Stock\Models\OpeningStock;
 use App\Modules\Inventory\Stock\Models\Production;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockCount;
 use App\Modules\Inventory\Stock\Models\StockMovement;
+use App\Modules\Inventory\Stock\Models\StockTransfer;
+use App\Modules\Inventory\Stock\Models\StockTransferClosure;
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
+use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
+use App\Modules\Sales\CustomerRefund\Models\CustomerRefundAllocation;
+use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteType;
+use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Supplier\Models\SupplierBalance;
 use App\Modules\Warehouse\Models\Warehouse;
@@ -38,6 +51,7 @@ use App\Services\ModuleEntitlementService;
 use App\Support\ExchangeRateSnapshot;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * Writes the automatic journal entries for documents. Called inside each document's
@@ -236,6 +250,243 @@ class JournalPostingService
         $this->create(SupplierPayment::REFERENCE_TYPE, $id, $date ?? $payment->payment_date->toDateString(), $label, null, $builder, $userId);
     }
 
+    public function salesCreditNote(SalesCreditNote $note, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $note->id;
+        if (! $this->shouldPost(SalesCreditNote::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $currencyId = (int) $note->currency_id;
+        $rate = (string) $note->exchange_rate;
+        $grand = (string) $note->grand_total;
+        $tax = (string) $note->tax_total;
+        $adjustment = (string) $note->adjustment;
+        $net = JournalMath::sub(JournalMath::sub($grand, $tax), $adjustment);
+        $label = 'Sales credit note '.$note->credit_note_number;
+        $contra = $note->type === SalesCreditNoteType::Allowance ? AccountRole::SalesDiscount : AccountRole::SalesReturns;
+
+        $builder = $this->builder()
+            ->foreign($this->account(AccountRole::Receivable), JournalMath::neg($grand), $currencyId, $rate, JournalEntryLine::PARTY_CUSTOMER, (string) $note->customer_id, $label)
+            ->foreign($this->account(AccountRole::VatOutput), $tax, $currencyId, $rate, null, null, $label)
+            ->foreign($this->account($contra), $net, $currencyId, $rate, null, null, $label)
+            ->foreign($this->account(AccountRole::Rounding), $adjustment, $currencyId, $rate, null, null, $label);
+
+        $value = $this->stockValue(SalesCreditNote::REFERENCE_TYPE, $id);
+        $builder
+            ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
+            ->primary($this->account(AccountRole::CostOfGoodsSold), JournalMath::neg($value), null, null, $label);
+
+        $this->create(SalesCreditNote::REFERENCE_TYPE, $id, $date ?? $note->credit_date->toDateString(), $label, $this->documentWarehouseBranch($note), $builder, $userId);
+    }
+
+    public function creditApplication(SalesCreditNote $note, SalesInvoice $invoice, string $amount, ?string $userId, ?string $date = null): void
+    {
+        $this->rateApplication(
+            'sales_credit_note_apply',
+            $note->credit_note_number,
+            (string) $note->id,
+            (string) $note->exchange_rate,
+            $invoice->invoice_number,
+            (string) $invoice->exchange_rate,
+            (int) $note->currency_id,
+            $amount,
+            AccountRole::Receivable,
+            JournalEntryLine::PARTY_CUSTOMER,
+            (string) $note->customer_id,
+            $userId,
+            $date,
+        );
+    }
+
+    public function reverseCreditApplications(string $creditNoteId, ?string $userId): void
+    {
+        $this->reverseApplications('sales_credit_note_apply', $creditNoteId, $userId);
+    }
+
+    /**
+     * When accounting was off at post time, the later backfill also writes the rate difference
+     * for allocations that already exist. A live post writes those itself and is skipped here.
+     */
+    public function backfillSalesCreditNote(SalesCreditNote $note, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $note->id;
+        $had = $this->hasEntry(SalesCreditNote::REFERENCE_TYPE, $id);
+        $this->salesCreditNote($note, $userId, $date);
+        if ($had || ! $this->enabled()) {
+            return;
+        }
+
+        $note->loadMissing('allocations.salesInvoice');
+        foreach ($note->allocations as $allocation) {
+            if ($allocation->salesInvoice instanceof SalesInvoice) {
+                $this->creditApplication($note, $allocation->salesInvoice, (string) $allocation->amount, $userId, $date);
+            }
+        }
+    }
+
+    public function customerRefund(CustomerRefund $refund, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $refund->id;
+        if (! $this->shouldPost(CustomerRefund::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $label = 'Customer refund '.$refund->refund_number;
+        $builder = $this->builder()->foreign(
+            $this->paymentAccount((int) $refund->payment_method_id),
+            JournalMath::neg($refund->amount),
+            (int) $refund->currency_id,
+            (string) $refund->exchange_rate,
+            null,
+            null,
+            $label,
+        );
+
+        $allocations = CustomerRefundAllocation::query()->where('customer_refund_id', $id)->orderBy('id')->get();
+        $notes = SalesCreditNote::query()->whereIn('id', $allocations->pluck('sales_credit_note_id')->all())->get()->keyBy('id');
+        foreach ($allocations as $allocation) {
+            $note = $notes->get($allocation->sales_credit_note_id);
+            if (! $note instanceof SalesCreditNote) {
+                continue;
+            }
+            $builder->foreign(
+                $this->account(AccountRole::Receivable),
+                $allocation->amount,
+                (int) $note->currency_id,
+                (string) $note->exchange_rate,
+                JournalEntryLine::PARTY_CUSTOMER,
+                (string) $refund->customer_id,
+                $label.' — '.$note->credit_note_number,
+            );
+        }
+
+        $this->exchangeDifference($builder, $label);
+        $this->create(CustomerRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, null, $builder, $userId);
+    }
+
+    public function purchaseDebitNote(PurchaseDebitNote $note, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $note->id;
+        if (! $this->shouldPost(PurchaseDebitNote::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $currencyId = (int) $note->currency_id;
+        $rate = (string) $note->exchange_rate;
+        $label = 'Purchase debit note '.$note->debit_note_number;
+        $builder = $this->builder()
+            ->foreign($this->account(AccountRole::Payable), $note->grand_total, $currencyId, $rate, JournalEntryLine::PARTY_SUPPLIER, (string) $note->supplier_id, $label)
+            ->foreign($this->account(AccountRole::VatInput), JournalMath::neg($note->tax_total), $currencyId, $rate, null, null, $label);
+
+        $lines = PurchaseDebitNoteLine::query()->where('purchase_debit_note_id', $id)->orderBy('id')->get();
+        $items = Item::query()->with('itemType:id,code')->whereIn('id', $lines->pluck('item_id')->filter()->unique()->all())->get()->keyBy('id');
+
+        if ($note->type === PurchaseDebitNoteType::Allowance) {
+            $net = '0';
+            foreach ($lines as $line) {
+                $net = JournalMath::add($net, $line->line_subtotal);
+            }
+            $builder->foreign($this->account(AccountRole::PurchaseDiscount), JournalMath::neg($net), $currencyId, $rate, null, null, $label);
+        } else {
+            $nonStock = '0';
+            foreach ($lines as $line) {
+                $item = $items->get((string) $line->item_id);
+                $isBundle = $item !== null && strtoupper((string) $item->itemType?->code) === 'BUNDLE';
+                if ($item === null || (! $item->track_inventory && ! $isBundle)) {
+                    $nonStock = JournalMath::add($nonStock, $line->line_subtotal);
+                }
+            }
+            $builder->foreign($this->account(AccountRole::NonStockPurchase), JournalMath::neg($nonStock), $currencyId, $rate, null, null, $label);
+            $builder->primary($this->account(AccountRole::Inventory), $this->stockValue(PurchaseDebitNote::REFERENCE_TYPE, $id), null, null, $label);
+        }
+
+        $builder->balanceTo($this->account(AccountRole::PurchasePriceDifference), $label);
+        $this->create(PurchaseDebitNote::REFERENCE_TYPE, $id, $date ?? $note->debit_date->toDateString(), $label, $this->documentWarehouseBranch($note), $builder, $userId);
+    }
+
+    public function debitApplication(PurchaseDebitNote $note, PurchaseInvoice $invoice, string $amount, ?string $userId, ?string $date = null): void
+    {
+        $this->rateApplication(
+            'purchase_debit_note_apply',
+            $note->debit_note_number,
+            (string) $note->id,
+            (string) $note->exchange_rate,
+            $invoice->invoice_number,
+            (string) $invoice->exchange_rate,
+            (int) $note->currency_id,
+            $amount,
+            AccountRole::Payable,
+            JournalEntryLine::PARTY_SUPPLIER,
+            (string) $note->supplier_id,
+            $userId,
+            $date,
+            'Debit application',
+        );
+    }
+
+    public function reverseDebitApplications(string $debitNoteId, ?string $userId): void
+    {
+        $this->reverseApplications('purchase_debit_note_apply', $debitNoteId, $userId);
+    }
+
+    public function backfillPurchaseDebitNote(PurchaseDebitNote $note, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $note->id;
+        $had = $this->hasEntry(PurchaseDebitNote::REFERENCE_TYPE, $id);
+        $this->purchaseDebitNote($note, $userId, $date);
+        if ($had || ! $this->enabled()) {
+            return;
+        }
+
+        $note->loadMissing('allocations.purchaseInvoice');
+        foreach ($note->allocations as $allocation) {
+            if ($allocation->purchaseInvoice instanceof PurchaseInvoice) {
+                $this->debitApplication($note, $allocation->purchaseInvoice, (string) $allocation->amount, $userId, $date);
+            }
+        }
+    }
+
+    public function supplierRefund(SupplierRefund $refund, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $refund->id;
+        if (! $this->shouldPost(SupplierRefund::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $label = 'Supplier refund '.$refund->refund_number;
+        $builder = $this->builder()->foreign(
+            $this->paymentAccount((int) $refund->payment_method_id),
+            $refund->amount,
+            (int) $refund->currency_id,
+            (string) $refund->exchange_rate,
+            null,
+            null,
+            $label,
+        );
+
+        $allocations = SupplierRefundAllocation::query()->where('supplier_refund_id', $id)->orderBy('id')->get();
+        $notes = PurchaseDebitNote::query()->whereIn('id', $allocations->pluck('purchase_debit_note_id')->all())->get()->keyBy('id');
+        foreach ($allocations as $allocation) {
+            $note = $notes->get($allocation->purchase_debit_note_id);
+            if (! $note instanceof PurchaseDebitNote) {
+                continue;
+            }
+            $builder->foreign(
+                $this->account(AccountRole::Payable),
+                JournalMath::neg($allocation->amount),
+                (int) $note->currency_id,
+                (string) $note->exchange_rate,
+                JournalEntryLine::PARTY_SUPPLIER,
+                (string) $refund->supplier_id,
+                $label.' — '.$note->debit_note_number,
+            );
+        }
+
+        $this->exchangeDifference($builder, $label);
+        $this->create(SupplierRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, null, $builder, $userId);
+    }
+
     public function stockAdjustment(StockAdjustment $document, ?string $userId, ?string $date = null): void
     {
         $this->stockVariance(
@@ -272,6 +523,49 @@ class JournalPostingService
             $document->warehouse_id,
             $userId,
             true,
+        );
+    }
+
+    /**
+     * A write-off never returns the quantity transfer-out already removed, so the inventory
+     * account has to give that value up. A return puts the stock back and posts nothing here.
+     */
+    public function stockTransferClosure(StockTransferClosure $closure, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $closure->id;
+        if (! $this->shouldPost(StockTransferClosure::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $closure->loadMissing('lines');
+        $costs = $this->transferOutUnitCosts((string) $closure->stock_transfer_id);
+        $total = '0';
+        foreach ($closure->lines as $line) {
+            if ($line->outcome !== StockTransferClosureOutcome::WriteOff) {
+                continue;
+            }
+            $key = $line->item_id.'|'.($line->lot_id ?? '');
+            $value = JournalMath::mul((string) $line->base_quantity, $costs[$key] ?? '0');
+            $total = JournalMath::add($total, $value);
+        }
+        if (JournalMath::isZero($total)) {
+            return;
+        }
+
+        $label = 'Transfer write-off '.($closure->closure_number ?? $id);
+        $builder = $this->builder()
+            ->primary($this->account(AccountRole::InventoryShortage), $total, null, null, $label)
+            ->primary($this->account(AccountRole::Inventory), JournalMath::neg($total), null, null, $label);
+
+        $closedOn = $closure->closed_at?->toDateString() ?? Carbon::today()->toDateString();
+        $this->create(
+            StockTransferClosure::REFERENCE_TYPE,
+            $id,
+            $date ?? $closedOn,
+            $label,
+            $this->warehouseBranch($closure->warehouse_id),
+            $builder,
+            $userId,
         );
     }
 
@@ -433,6 +727,74 @@ class JournalPostingService
         $this->create($type, $id, $date ?? Carbon::today()->toDateString(), $label, null, $builder, $userId);
     }
 
+    private function rateApplication(
+        string $sourceType,
+        string $noteNumber,
+        string $noteId,
+        string $noteRate,
+        ?string $invoiceNumber,
+        string $invoiceRate,
+        int $currencyId,
+        string $amount,
+        AccountRole $partyRole,
+        string $partyType,
+        string $partyId,
+        ?string $userId,
+        ?string $date,
+        string $kind = 'Credit application',
+    ): void {
+        if (! $this->enabled() || $this->sameRate($noteRate, $invoiceRate)) {
+            return;
+        }
+
+        $label = $kind.' '.$noteNumber.($invoiceNumber ? ' — '.$invoiceNumber : '');
+        $builder = $this->builder()
+            ->foreign($this->account($partyRole), $amount, $currencyId, $noteRate, $partyType, $partyId, $label)
+            ->foreign($this->account($partyRole), JournalMath::neg($amount), $currencyId, $invoiceRate, $partyType, $partyId, $label);
+        $this->exchangeDifference($builder, $label);
+        $this->create($sourceType, $noteId.':'.(string) Str::ulid(), $date ?? Carbon::today()->toDateString(), $label, null, $builder, $userId);
+    }
+
+    private function reverseApplications(string $sourceType, string $noteId, ?string $userId): void
+    {
+        if (! $this->enabled()) {
+            return;
+        }
+
+        $entries = JournalEntry::query()
+            ->where('source_type', $sourceType)
+            ->where('source_id', 'like', $noteId.':%')
+            ->where('source_event', JournalEntry::EVENT_POST)
+            ->where('status', JournalEntryStatus::Posted)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($entries as $entry) {
+            if ($this->hasEntry($entry->source_type, (string) $entry->source_id, JournalEntry::EVENT_REVERSE)) {
+                continue;
+            }
+            $this->journalEntryService->reverseEntry($entry, $userId);
+        }
+    }
+
+    private function documentWarehouseBranch(SalesCreditNote|PurchaseDebitNote $note): ?int
+    {
+        $warehouseId = $note->lines()->whereNotNull('warehouse_id')->value('warehouse_id');
+        if ($warehouseId === null) {
+            $invoice = $note instanceof SalesCreditNote
+                ? SalesInvoice::query()->find($note->sales_invoice_id)
+                : PurchaseInvoice::query()->find($note->purchase_invoice_id);
+            $warehouseId = $invoice?->warehouse_id;
+        }
+
+        return $this->warehouseBranch($warehouseId);
+    }
+
+    private function sameRate(mixed $left, mixed $right): bool
+    {
+        return bccomp(bcadd((string) $left, '0', ExchangeRateSnapshot::SCALE), bcadd((string) $right, '0', ExchangeRateSnapshot::SCALE), ExchangeRateSnapshot::SCALE) === 0;
+    }
+
     private function exchangeDifference(JournalBuilder $builder, string $label): void
     {
         $net = $builder->net();
@@ -502,6 +864,26 @@ class JournalPostingService
         $branchId = Warehouse::query()->whereKey((int) $warehouseId)->value('branch_id');
 
         return $branchId !== null ? (int) $branchId : null;
+    }
+
+    /**
+     * Unit cost of each transfer-out movement, keyed by item and lot. Same costs a return uses.
+     *
+     * @return array<string, string>
+     */
+    private function transferOutUnitCosts(string $transferId): array
+    {
+        $costs = [];
+        $movements = StockMovement::query()
+            ->where('reference_type', StockTransfer::REFERENCE_TYPE)
+            ->where('reference_id', $transferId)
+            ->where('type', StockMovementType::TransferOut)
+            ->get(['item_id', 'lot_id', 'unit_cost']);
+        foreach ($movements as $movement) {
+            $costs[$movement->item_id.'|'.($movement->lot_id ?? '')] = (string) $movement->unit_cost;
+        }
+
+        return $costs;
     }
 
     private function stockValue(string $referenceType, string $referenceId): string

@@ -10,6 +10,7 @@ use App\Modules\Accounting\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Models\JournalEntryLine;
 use App\Modules\Accounting\Support\JournalLineRules;
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\DB;
 class JournalEntryService
 {
     public const RELATIONS = [
-        'lines.account:id,code,name,type,normal_balance',
+        'lines.account:id,code,name,name_ar,type,normal_balance',
         'lines.currency:id,code,name,symbol',
         'branch:id,name',
         'createdByUser:id,name',
@@ -134,6 +135,7 @@ class JournalEntryService
     {
         return DB::transaction(function () use ($entry, $userId): JournalEntry {
             $entry = $this->lockEditable($entry);
+            $this->assertPeriodOpen($this->dateString($entry->entry_date));
 
             $lines = $entry->lines()->get()->map(fn (JournalEntryLine $line): JournalLineData => new JournalLineData(
                 accountId: (int) $line->account_id,
@@ -193,8 +195,12 @@ class JournalEntryService
      * @param  array{entry_date: string, source_type: string, source_id: ?string, source_event: string, branch_id?: ?int, description?: ?string, reversal_of_id?: ?string}  $header
      * @param  list<JournalLineData>  $lines
      */
-    public function createPosted(array $header, array $lines, ?string $userId): JournalEntry
+    public function createPosted(array $header, array $lines, ?string $userId, bool $allowClosedPeriod = false): JournalEntry
     {
+        if (! $allowClosedPeriod) {
+            $this->assertPeriodOpen($this->dateString($header['entry_date']));
+        }
+
         $rows = $this->rules->prepare($lines, false);
         $totals = $this->rules->assertBalanced($rows);
 
@@ -205,7 +211,7 @@ class JournalEntryService
             'source_id' => $header['source_id'],
             'source_event' => $header['source_event'],
             'reversal_of_id' => $header['reversal_of_id'] ?? null,
-            'branch_id' => $header['branch_id'] ?? $this->activeBranchId(),
+            'branch_id' => array_key_exists('branch_id', $header) ? $header['branch_id'] : $this->activeBranchId(),
             'description' => isset($header['description']) ? mb_substr((string) $header['description'], 0, 500) : null,
             'status' => JournalEntryStatus::Posted,
             'total_debit' => $totals['debit'],
@@ -228,9 +234,12 @@ class JournalEntryService
             abort(422, 'Only posted journal entries can be reversed.', ['X-Error-Code' => 'JOURNAL_ENTRY_NOT_POSTED']);
         }
 
+        $reversalDate = $date ?? Carbon::today()->toDateString();
+        $this->assertPeriodOpen($this->dateString($reversalDate));
+
         $reversal = JournalEntry::query()->create([
             'entry_number' => SequentialCodeGenerator::next(JournalEntry::class, 'entry_number', 'JE-'),
-            'entry_date' => $date ?? Carbon::today()->toDateString(),
+            'entry_date' => $reversalDate,
             'source_type' => $original->source_type,
             'source_id' => $sourceId ?? $original->source_id,
             'source_event' => JournalEntry::EVENT_REVERSE,
@@ -272,14 +281,45 @@ class JournalEntryService
      */
     public function deleteAutomatic(string $sourceType, string $sourceId): void
     {
-        $ids = JournalEntry::query()
+        $entries = JournalEntry::query()
             ->where('source_type', $sourceType)
             ->where('source_id', $sourceId)
             ->orderByRaw("CASE WHEN source_event = 'reverse' THEN 0 ELSE 1 END")
-            ->pluck('id');
-        foreach ($ids as $id) {
-            JournalEntry::query()->whereKey($id)->first()?->delete();
+            ->get();
+        foreach ($entries as $entry) {
+            $this->assertPeriodOpen($this->dateString($entry->entry_date));
         }
+        foreach ($entries as $entry) {
+            $entry->delete();
+        }
+    }
+
+    /**
+     * Reject a posting whose date is on or before the books-closed date.
+     * Drafts are not checked here. Year-end close passes `$allowClosedPeriod`
+     * because that entry is dated on the locked year end on purpose.
+     */
+    private function assertPeriodOpen(?string $date): void
+    {
+        if ($date === null || $date === '') {
+            return;
+        }
+
+        $closedThrough = CompanySetting::current()->booksClosedThrough();
+        if ($closedThrough !== null && $date <= $closedThrough) {
+            abort(422, 'Books are closed through '.$closedThrough.'.', [
+                'X-Error-Code' => 'PERIOD_LOCKED',
+            ]);
+        }
+    }
+
+    private function dateString(mixed $date): string
+    {
+        if ($date instanceof \DateTimeInterface) {
+            return $date->format('Y-m-d');
+        }
+
+        return substr((string) $date, 0, 10);
     }
 
     /**

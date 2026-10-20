@@ -311,6 +311,7 @@ class ProductionService
                 userId: $userId,
                 lotId: $locked->lot_id ? (int) $locked->lot_id : null,
                 productionId: (string) $locked->id,
+                valueDelta: bccomp($producedBase, '0', 6) > 0 ? $consumedValue : null,
             ));
 
             $this->journalPostingService->production($locked, $userId);

@@ -7,6 +7,7 @@ namespace Database\Seeders;
 use App\Jobs\BootstrapTenantRbac;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Branch\Services\BranchService;
 use App\Modules\Category\Models\Category;
 use App\Modules\CompanySetting\Models\CompanySetting;
@@ -22,6 +23,8 @@ use App\Modules\Inventory\ItemType\Models\ItemType;
 use App\Modules\Inventory\Shared\Enums\DimensionType;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
+use App\Modules\PaymentMethod\Enums\PaymentMethodType;
+use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Warehouse\Enums\WarehouseType;
@@ -37,7 +40,7 @@ use Stancl\Tenancy\Database\Models\Domain;
  * Access tenant API via domain {@see self::TENANT_DOMAIN} (add to hosts: 127.0.0.1 tenant.localhost).
  *
  * Demo data (after RBAC): Admin user, branch-linked warehouses, 1 customer, 1 supplier,
- * 2 inventory items each with base + alternate UOM.
+ * 1 default cash payment method, 2 inventory items each with base + alternate UOM.
  */
 class TenantSeeder extends Seeder
 {
@@ -233,6 +236,7 @@ class TenantSeeder extends Seeder
         $this->seedDemoWarehouses();
         $this->seedDemoCustomer();
         $this->seedDemoSupplier();
+        $this->seedDemoPaymentMethod();
         $this->seedDemoItems();
     }
 
@@ -307,7 +311,7 @@ class TenantSeeder extends Seeder
         ], $warehouse->exists ? [] : $defaults));
 
         // Always keep seeded warehouses on the default branch (idempotent re-runs).
-        $warehouse->type = WarehouseType::Branch;
+        $warehouse->type = WarehouseType::Branch->value;
         $warehouse->branch_id = $branchId;
         if ($warehouse->manager_id === null) {
             $warehouse->manager_id = $managerId;
@@ -348,6 +352,29 @@ class TenantSeeder extends Seeder
                 'is_exempted' => false,
             ]
         );
+    }
+
+    private function seedDemoPaymentMethod(): void
+    {
+        $accountId = Account::query()->where('code', '5310')->value('id');
+        $hasDefault = PaymentMethod::query()->where('is_default', true)->exists();
+
+        $method = PaymentMethod::query()->firstOrCreate(
+            ['code' => 'CASH'],
+            [
+                'name' => 'Cash',
+                'type' => PaymentMethodType::Cash,
+                'account_id' => $accountId,
+                'requires_reference' => false,
+                'supports_change' => true,
+                'is_default' => ! $hasDefault,
+                'is_active' => true,
+            ]
+        );
+
+        if ($method->account_id === null && $accountId !== null) {
+            $method->update(['account_id' => $accountId]);
+        }
     }
 
     private function seedDemoItems(): void

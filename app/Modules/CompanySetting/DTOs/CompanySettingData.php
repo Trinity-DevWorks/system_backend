@@ -27,6 +27,7 @@ readonly class CompanySettingData
         public InventoryCostingMethod $inventoryCostingMethod,
         public PriceRoundingMode $priceRoundingMode,
         public int $priceDecimalPlaces,
+        public int $fiscalYearStartMonth,
     ) {}
 
     public static function fromUpdateRequest(UpdateCompanySettingRequest $request, CompanySetting $settings): self
@@ -67,6 +68,9 @@ readonly class CompanySettingData
             priceDecimalPlaces: array_key_exists('price_decimal_places', $data)
                 ? (int) $data['price_decimal_places']
                 : (int) $settings->price_decimal_places,
+            fiscalYearStartMonth: array_key_exists('fiscal_year_start_month', $data)
+                ? (int) $data['fiscal_year_start_month']
+                : (int) ($settings->fiscal_year_start_month ?? 1),
         );
     }
 
@@ -82,7 +86,8 @@ readonly class CompanySettingData
      *     allow_negative_stock: bool,
      *     inventory_costing_method: string,
      *     price_rounding_mode: string,
-     *     price_decimal_places: int
+     *     price_decimal_places: int,
+     *     fiscal_year_start_month: int
      * }
      */
     public function toArray(): array
@@ -99,6 +104,7 @@ readonly class CompanySettingData
             'inventory_costing_method' => $this->inventoryCostingMethod->value,
             'price_rounding_mode' => $this->priceRoundingMode->value,
             'price_decimal_places' => $this->priceDecimalPlaces,
+            'fiscal_year_start_month' => $this->fiscalYearStartMonth,
         ];
     }
 

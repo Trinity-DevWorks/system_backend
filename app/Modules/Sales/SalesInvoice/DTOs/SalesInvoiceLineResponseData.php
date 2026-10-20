@@ -21,11 +21,14 @@ readonly class SalesInvoiceLineResponseData
             'itemUom.uom:id,code,name',
             'warehouse:id,name,shortcut_name,is_active',
             'lot:id,lot_number,expiry_date,item_id',
+            'salesOrderLine',
         ]);
 
         return [
             'id' => $line->id,
             'sales_invoice_id' => $line->sales_invoice_id,
+            'sales_order_line_id' => $line->sales_order_line_id,
+            'order_remaining_quantity' => self::orderRemainingQuantity($line),
             'item_id' => $line->item_id,
             'item_uom_id' => $line->item_uom_id,
             'warehouse_id' => $line->warehouse_id,
@@ -78,9 +81,20 @@ readonly class SalesInvoiceLineResponseData
             ->all();
     }
 
-    /**
-     * @return array<string, mixed>|null
-     */
+    private static function orderRemainingQuantity(SalesInvoiceLine $line): ?string
+    {
+        $orderLine = $line->relationLoaded('salesOrderLine') ? $line->salesOrderLine : $line->salesOrderLine()->first();
+        if ($orderLine === null) {
+            return null;
+        }
+        $factor = (string) ($line->conversion_factor ?: '1');
+        if (bccomp($factor, '0', 6) <= 0) {
+            $factor = '1';
+        }
+
+        return bcdiv($orderLine->remainingBaseQuantity(), $factor, 6);
+    }
+
     private static function itemBrief(?Item $item): ?array
     {
         if (! $item) {

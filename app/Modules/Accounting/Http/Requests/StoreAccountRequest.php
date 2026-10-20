@@ -24,6 +24,7 @@ class StoreAccountRequest extends FormRequest
         return [
             'code' => ['required', 'string', 'max:20', 'regex:/^[0-9]+$/', 'unique:accounts,code'],
             'name' => ['required', 'string', 'max:255'],
+            'name_ar' => ['nullable', 'string', 'max:255'],
             'parent_id' => ['nullable', 'integer', 'exists:accounts,id'],
             'type' => ['nullable', new Enum(AccountType::class)],
             'normal_balance' => ['nullable', new Enum(NormalBalance::class)],

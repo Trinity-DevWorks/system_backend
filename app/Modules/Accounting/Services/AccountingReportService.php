@@ -8,6 +8,7 @@ use App\Modules\Accounting\DTOs\JournalEntryResponseData;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\JournalEntryLine;
 use App\Modules\Accounting\Support\JournalMath;
+use App\Modules\Accounting\Support\ReportBranchScope;
 use App\Modules\Accounting\Support\SourceDocuments;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
@@ -16,6 +17,7 @@ class AccountingReportService
 {
     public function __construct(
         private readonly AccountBalanceService $balances,
+        private readonly ReportBranchScope $branchScope,
     ) {}
 
     /**
@@ -23,13 +25,15 @@ class AccountingReportService
      * Without a level only posting accounts are listed; with a level, accounts at that
      * depth carry their descendants' totals (depth 1 = the one-digit classes).
      *
-     * @return array{rows: list<array<string, mixed>>, totals: array<string, string>, from: ?string, to: ?string, level: ?int}
+     * @return array{rows: list<array<string, mixed>>, totals: array<string, string>, from: ?string, to: ?string, level: ?int, branch_id: ?int}
      */
-    public function trialBalance(?string $from, ?string $to, ?int $level): array
+    public function trialBalance(?string $from, ?string $to, ?int $level, ?int $branchId = null): array
     {
+        $scoped = $this->branchScope->apply($branchId);
+        $filters = $scoped['filters'];
         $accounts = Account::query()->orderBy('code')->get();
-        $opening = $from !== null ? $this->balances->totals(null, null, $from) : [];
-        $period = $this->balances->totals($from, $to);
+        $opening = $from !== null ? $this->balances->totals(null, null, $from, $filters) : [];
+        $period = $this->balances->totals($from, $to, null, $filters);
 
         if ($level !== null) {
             $opening = $this->balances->rollUp($accounts, $opening);
@@ -64,6 +68,7 @@ class AccountingReportService
                 'account_id' => (int) $account->id,
                 'code' => (string) $account->code,
                 'name' => (string) $account->name,
+                'name_ar' => $account->name_ar !== null && trim((string) $account->name_ar) !== '' ? (string) $account->name_ar : null,
                 'type' => $account->type?->value,
                 'normal_balance' => $account->normal_balance?->value,
                 'is_group' => (bool) $account->is_group,
@@ -83,7 +88,14 @@ class AccountingReportService
             $rows[] = $row;
         }
 
-        return ['rows' => $rows, 'totals' => $totals, 'from' => $from, 'to' => $to, 'level' => $level];
+        return [
+            'rows' => $rows,
+            'totals' => $totals,
+            'from' => $from,
+            'to' => $to,
+            'level' => $level,
+            'branch_id' => $scoped['branch_id'],
+        ];
     }
 
     /**
@@ -91,19 +103,23 @@ class AccountingReportService
      *
      * @return array<string, mixed>
      */
-    public function accountLedger(Account $account, ?string $from, ?string $to): array
+    public function accountLedger(Account $account, ?string $from, ?string $to, ?int $branchId = null): array
     {
+        $scoped = $this->branchScope->apply($branchId);
+        $filters = $scoped['filters'];
         $accountIds = $this->descendantIds($account);
 
-        $openingRow = $this->balances->linesQuery()
+        $openingQuery = $this->balances->linesQuery()
             ->whereIn('l.account_id', $accountIds)
             ->when($from !== null, fn (Builder $q) => $q->where('je.entry_date', '<', $from))
-            ->when($from === null, fn (Builder $q) => $q->whereRaw('1 = 0'))
+            ->when($from === null, fn (Builder $q) => $q->whereRaw('1 = 0'));
+        $this->balances->applyBranch($openingQuery, $filters);
+        $openingRow = $openingQuery
             ->selectRaw('COALESCE(SUM(l.debit), 0) AS debit, COALESCE(SUM(l.credit), 0) AS credit')
             ->first();
         $opening = AccountBalanceService::net(['debit' => $openingRow->debit ?? '0', 'credit' => $openingRow->credit ?? '0']);
 
-        $lines = JournalEntryLine::query()
+        $linesQuery = JournalEntryLine::query()
             ->join('journal_entries as je', 'je.id', '=', 'journal_entry_lines.journal_entry_id')
             ->where('je.status', '!=', 'draft')
             ->whereIn('journal_entry_lines.account_id', $accountIds)
@@ -112,8 +128,10 @@ class AccountingReportService
             ->orderBy('je.entry_date')
             ->orderBy('je.entry_number')
             ->orderBy('journal_entry_lines.sort_order')
-            ->orderBy('journal_entry_lines.id')
-            ->with(['account:id,code,name', 'currency:id,code'])
+            ->orderBy('journal_entry_lines.id');
+        $this->balances->applyBranch($linesQuery, $filters);
+        $lines = $linesQuery
+            ->with(['account:id,code,name,name_ar', 'currency:id,code'])
             ->get([
                 'journal_entry_lines.*',
                 'je.entry_number',
@@ -125,8 +143,8 @@ class AccountingReportService
             ]);
 
         $numbers = SourceDocuments::numbers($lines->map(fn ($l): array => [
-            (string) $l->source_type,
-            $l->source_type === 'manual' ? null : $l->source_id,
+            (string) $l->getAttribute('source_type'),
+            $l->getAttribute('source_type') === 'manual' ? null : $l->getAttribute('source_id'),
         ]));
         $parties = JournalEntryResponseData::partyNames($lines);
 
@@ -141,16 +159,17 @@ class AccountingReportService
             $rows[] = [
                 'id' => (int) $line->id,
                 'journal_entry_id' => (string) $line->journal_entry_id,
-                'entry_number' => (string) $line->entry_number,
-                'entry_date' => Carbon::parse((string) $line->entry_date)->toDateString(),
-                'source_type' => (string) $line->source_type,
-                'source_id' => $line->source_id,
-                'source_event' => (string) $line->source_event,
-                'source_number' => $numbers[$line->source_type.':'.$line->source_id] ?? null,
-                'description' => $line->description ?? $line->entry_description,
+                'entry_number' => (string) $line->getAttribute('entry_number'),
+                'entry_date' => Carbon::parse((string) $line->getAttribute('entry_date'))->toDateString(),
+                'source_type' => (string) $line->getAttribute('source_type'),
+                'source_id' => $line->getAttribute('source_id'),
+                'source_event' => (string) $line->getAttribute('source_event'),
+                'source_number' => $numbers[$line->getAttribute('source_type').':'.$line->getAttribute('source_id')] ?? null,
+                'description' => $line->description ?? $line->getAttribute('entry_description'),
                 'account_id' => (int) $line->account_id,
                 'account_code' => $line->account?->code,
                 'account_name' => $line->account?->name,
+                'account_name_ar' => $line->account?->name_ar,
                 'party_type' => $line->party_type,
                 'party_id' => $line->party_id,
                 'party_name' => $line->party_id !== null ? ($parties[$line->party_type.':'.$line->party_id] ?? null) : null,
@@ -167,12 +186,14 @@ class AccountingReportService
                 'id' => (int) $account->id,
                 'code' => (string) $account->code,
                 'name' => (string) $account->name,
+                'name_ar' => $account->name_ar !== null && trim((string) $account->name_ar) !== '' ? (string) $account->name_ar : null,
                 'type' => $account->type?->value,
                 'normal_balance' => $account->normal_balance?->value,
                 'is_group' => (bool) $account->is_group,
             ],
             'from' => $from,
             'to' => $to,
+            'branch_id' => $scoped['branch_id'],
             'opening_balance' => $opening,
             'period_debit' => JournalMath::store($debitTotal),
             'period_credit' => JournalMath::store($creditTotal),

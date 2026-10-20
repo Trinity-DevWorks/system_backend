@@ -24,6 +24,7 @@ use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceLineQuantity;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
+use App\Modules\Sales\SalesOrder\Services\SalesOrderFulfillment;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\DocumentTaxContext;
 use App\Support\DocumentTaxMath;
@@ -44,6 +45,7 @@ class SalesInvoiceService
         private readonly StockMovementService $stockMovementService,
         private readonly ExchangeRateService $exchangeRateService,
         private readonly JournalPostingService $journalPostingService,
+        private readonly SalesOrderFulfillment $salesOrderFulfillment,
     ) {}
 
     /**
@@ -64,6 +66,7 @@ class SalesInvoiceService
     public function find(string $id): SalesInvoice
     {
         $invoice = SalesInvoice::query()
+            ->withPostedCreditTotal()
             ->with([
                 'customer',
                 'warehouse',
@@ -74,10 +77,12 @@ class SalesInvoiceService
                 'createdByUser',
                 'postedByUser',
                 'lines' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
+                'salesOrder:id,order_number,status',
                 'lines.item',
                 'lines.itemUom.uom',
                 'lines.warehouse',
                 'lines.lot',
+                'lines.salesOrderLine',
             ])
             ->findOrFail($id);
 
@@ -99,6 +104,9 @@ class SalesInvoiceService
 
             $invoice = SalesInvoice::query()->create([
                 ...$header,
+                'sales_order_id' => isset($data['sales_order_id']) && $data['sales_order_id'] !== ''
+                    ? (string) $data['sales_order_id']
+                    : null,
                 'status' => SalesInvoiceStatus::Draft,
                 'paid_total' => PriceMath::normalize(0),
                 'created_by' => $userId,
@@ -195,6 +203,7 @@ class SalesInvoiceService
             $locked->refresh();
 
             $customer = SalesInvoiceRules::assertCustomer((string) $locked->customer_id);
+            $this->salesOrderFulfillment->applyInvoice($locked, false);
 
             if (bccomp((string) $locked->grand_total, '0', 4) > 0) {
                 $this->customerLedgerService->postEntry(
@@ -246,6 +255,11 @@ class SalesInvoiceService
                     'X-Error-Code' => 'SALES_INVOICE_HAS_PAYMENTS',
                 ]);
             }
+            if (bccomp((string) $locked->credited_total, '0', 4) > 0) {
+                abort(422, 'This invoice has credit notes and cannot be reversed.', [
+                    'X-Error-Code' => 'SALES_INVOICE_HAS_CREDIT_NOTES',
+                ]);
+            }
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
 
             $this->stockMovementService->reverseReference(SalesInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
@@ -264,6 +278,7 @@ class SalesInvoiceService
             }
 
             $this->journalPostingService->reverse(SalesInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->salesOrderFulfillment->applyInvoice($locked, true);
 
             $locked->update(['status' => SalesInvoiceStatus::Reversed]);
 
@@ -569,6 +584,9 @@ class SalesInvoiceService
 
             SalesInvoiceLine::query()->create([
                 'sales_invoice_id' => $invoice->id,
+                'sales_order_line_id' => isset($row['sales_order_line_id']) && $row['sales_order_line_id'] !== null && $row['sales_order_line_id'] !== ''
+                    ? (int) $row['sales_order_line_id']
+                    : null,
                 'item_id' => $item->id,
                 'item_uom_id' => $qty['item_uom_id'],
                 'warehouse_id' => $warehouseId,
@@ -623,7 +641,7 @@ class SalesInvoiceService
             'tax_total' => $totals['tax_total'],
             'grand_total' => $totals['grand_total'],
             'paid_total' => PriceMath::normalize($invoice->paid_total ?? 0),
-            'net_to_pay' => PaymentAllocation::netToPay($totals['grand_total'], $invoice->paid_total ?? 0),
+            'net_to_pay' => PaymentAllocation::netToPay($totals['grand_total'], $invoice->paid_total ?? 0, $invoice->credited_total ?? 0),
         ]);
     }
 

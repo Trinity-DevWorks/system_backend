@@ -45,6 +45,10 @@ class JournalEntry extends Model implements AuditableContract
 
     public const SOURCE_MANUAL = 'manual';
 
+    public const SOURCE_VAT_SETTLEMENT = 'vat_settlement';
+
+    public const SOURCE_YEAR_END_CLOSE = 'year_end_close';
+
     public const EVENT_POST = 'post';
 
     public const EVENT_REVERSE = 'reverse';
