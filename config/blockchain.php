@@ -69,9 +69,9 @@ return [
 
     'networks' => $networks,
 
-    'timeout_seconds' => (int) env('BLOCKCHAIN_TIMEOUT_SECONDS', 15),
+    'timeout_seconds' => (int) env('BLOCKCHAIN_TIMEOUT_SECONDS', 25),
 
-    'receipt_attempts' => (int) env('BLOCKCHAIN_RECEIPT_ATTEMPTS', 10),
+    'receipt_attempts' => (int) env('BLOCKCHAIN_RECEIPT_ATTEMPTS', 150),
 
     /*
     |--------------------------------------------------------------------------

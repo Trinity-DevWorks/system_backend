@@ -112,6 +112,8 @@ Route::middleware([
     Route::post('auth/reset-password', ResetPasswordController::class)
         ->middleware('throttle:password-reset');
 
+    Route::get('proofs/safe-config', [InvoiceProofPortalController::class, 'safeConfig'])
+        ->middleware('throttle:60,1');
     Route::get('proofs/history', [InvoiceProofPortalController::class, 'historyChallenge'])
         ->middleware('throttle:60,1');
     Route::post('proofs/history', [InvoiceProofPortalController::class, 'history'])

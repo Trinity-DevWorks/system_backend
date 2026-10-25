@@ -26,6 +26,12 @@ readonly class InvoiceProofDisclosureData
      *     salt: string,
      *     proof: list<array{position: 'left'|'right', hash: string}>
      * }>  $fields
+     * @param  list<array{
+     *     wallet: string,
+     *     wallet_type: string,
+     *     role: string,
+     *     party_side: string
+     * }>  $verifiers
      */
     public function __construct(
         public int $schemaVersion,
@@ -38,10 +44,17 @@ readonly class InvoiceProofDisclosureData
         public ?int $blockNumber,
         public string $generatedAt,
         public array $fields,
+        public array $verifiers = [],
     ) {}
 
     /**
      * @param  list<int>  $indices
+     * @param  list<array{
+     *     wallet: string,
+     *     wallet_type: string,
+     *     role: string,
+     *     party_side: string
+     * }>  $verifiers
      */
     public static function fromTree(
         InvoiceSnapshot $snapshot,
@@ -50,6 +63,7 @@ readonly class InvoiceProofDisclosureData
         ?int $chainId,
         ?string $contractAddress,
         ?InvoiceChainRegistration $registration,
+        array $verifiers = [],
     ): self {
         $leaves = $tree->leaves();
         $fields = [];
@@ -74,6 +88,7 @@ readonly class InvoiceProofDisclosureData
             blockNumber: $registration?->block_number,
             generatedAt: Carbon::now()->utc()->toIso8601String(),
             fields: $fields,
+            verifiers: $verifiers,
         );
     }
 
@@ -94,6 +109,7 @@ readonly class InvoiceProofDisclosureData
             'block_number' => $this->blockNumber,
             'generated_at' => $this->generatedAt,
             'fields' => $this->fields,
+            'verifiers' => $this->verifiers,
         ];
     }
 }

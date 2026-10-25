@@ -83,6 +83,10 @@ readonly class InvoiceProofPortalData
         public ?array $replacedByInvoice = null,
         public ?array $replacesInvoice = null,
         public array $attestations = [],
+        public ?string $blockchainNetwork = null,
+        public ?string $safeTxServiceUrl = null,
+        public ?string $safeApiKey = null,
+        public ?string $supplierWalletType = null,
     ) {}
 
     /**
@@ -163,6 +167,10 @@ readonly class InvoiceProofPortalData
             replacedByInvoiceNumber: self::successorInvoiceNumber($proof->replacedBy),
             replacedByInvoice: $replacedByInvoice,
             replacesInvoice: $replacesInvoice,
+            blockchainNetwork: $proof->blockchainNetwork,
+            safeTxServiceUrl: $proof->safeTxServiceUrl,
+            safeApiKey: $proof->safeApiKey,
+            supplierWalletType: $proof->supplierWalletType,
         );
     }
 
@@ -372,6 +380,10 @@ readonly class InvoiceProofPortalData
             'replaced_by_invoice' => $this->replacedByInvoice,
             'replaces_invoice' => $this->replacesInvoice,
             'other_invoices' => $this->otherInvoices,
+            'blockchain_network' => $this->blockchainNetwork,
+            'safe_tx_service_url' => $this->safeTxServiceUrl,
+            'safe_api_key' => $this->safeApiKey,
+            'supplier_wallet_type' => $this->supplierWalletType,
         ];
     }
 }

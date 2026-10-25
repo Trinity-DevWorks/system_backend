@@ -389,7 +389,45 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
             throw new RuntimeException('Registrar private key does not match BLOCKCHAIN registrar address.');
         }
 
-        $nonceHex = $this->rpc('eth_getTransactionCount', [$from, 'pending']);
+        $this->waitUntilAccountIdle($from);
+
+        try {
+            return $this->signAndSendRaw($from, $tx);
+        } catch (RuntimeException $exception) {
+            if (! self::isInFlightLimit($exception->getMessage())) {
+                throw $exception;
+            }
+            $this->waitUntilAccountIdle($from);
+
+            return $this->signAndSendRaw($from, $tx);
+        }
+    }
+
+    /**
+     * EIP-7702 delegated EOAs (common Sepolia registrar wallets) may have only
+     * one pending transaction. A receipt timeout still leaves that tx in-flight,
+     * so the next setVerifier must wait instead of sending nonce N+1.
+     */
+    private function waitUntilAccountIdle(string $from): void
+    {
+        for ($attempt = 0; $attempt < $this->receiptAttempts; $attempt++) {
+            $latest = $this->rpc('eth_getTransactionCount', [$from, 'latest']);
+            $pending = $this->rpc('eth_getTransactionCount', [$from, 'pending']);
+            if (is_string($latest) && is_string($pending) && self::hexToInt($latest) >= self::hexToInt($pending)) {
+                return;
+            }
+            usleep(200_000);
+        }
+
+        throw new RuntimeException('Timed out waiting for a previous registrar transaction to confirm.');
+    }
+
+    /**
+     * @param  array{from: string, to: string, data: string, gas?: string}  $tx
+     */
+    private function signAndSendRaw(string $from, array $tx): mixed
+    {
+        $nonceHex = $this->rpc('eth_getTransactionCount', [$from, 'latest']);
         $gasPriceHex = $this->rpc('eth_gasPrice', []);
         if (! is_string($nonceHex) || ! is_string($gasPriceHex)) {
             throw new RuntimeException('Could not read nonce or gas price from the RPC.');
@@ -409,6 +447,14 @@ final class JsonRpcInvoiceRegistryGateway implements InvoiceRegistryGateway
         );
 
         return $this->rpc('eth_sendRawTransaction', [$raw]);
+    }
+
+    private static function isInFlightLimit(string $message): bool
+    {
+        $haystack = strtolower($message);
+
+        return str_contains($haystack, 'in-flight transaction limit')
+            || str_contains($haystack, 'delegated accounts');
     }
 
     private static function hexToInt(string $hex): int

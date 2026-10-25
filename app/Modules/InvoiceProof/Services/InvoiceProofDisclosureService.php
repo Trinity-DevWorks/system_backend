@@ -10,7 +10,11 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofDisclosureData;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofFieldsData;
 use App\Modules\InvoiceProof\Enums\InvoiceChainRegistrationStatus;
+use App\Modules\InvoiceProof\Enums\InvoicePartySide;
+use App\Modules\InvoiceProof\Enums\InvoiceVerifierChainStatus;
 use App\Modules\InvoiceProof\Models\InvoiceSnapshot;
+use App\Modules\InvoiceProof\Models\InvoiceVerifier;
+use App\Modules\InvoiceProof\Support\WalletAddress;
 use App\Modules\InvoiceProof\Support\CanonicalInvoiceMerkle;
 use App\Modules\InvoiceProof\Support\InvoiceProofBytes;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
@@ -121,6 +125,7 @@ class InvoiceProofDisclosureService
             $chainEnabled ? (int) config('blockchain.chain_id') : null,
             $chainEnabled ? $this->configuredContractAddress() : null,
             $chainEnabled ? $registration : null,
+            $this->appointedVerifiers(),
         );
     }
 
@@ -180,6 +185,36 @@ class InvoiceProofDisclosureService
         }
 
         return [$snapshot, $tree];
+    }
+
+    /**
+     * Hint for the public verifier page: wallets this company appointed on chain.
+     * Not part of the Merkle seal. Older proof files omit this key.
+     *
+     * @return list<array{wallet: string, wallet_type: string, role: string, party_side: string}>
+     */
+    private function appointedVerifiers(): array
+    {
+        $rows = [];
+        foreach (
+            InvoiceVerifier::query()
+                ->where('chain_status', InvoiceVerifierChainStatus::Active)
+                ->orderBy('name')
+                ->get() as $verifier
+        ) {
+            $wallet = WalletAddress::normalize($verifier->wallet_address);
+            if ($wallet === null || $verifier->wallet_type === null) {
+                continue;
+            }
+            $rows[] = [
+                'wallet' => $wallet,
+                'wallet_type' => $verifier->wallet_type->value,
+                'role' => $verifier->role->value,
+                'party_side' => ($verifier->party_side ?? InvoicePartySide::Supplier)->value,
+            ];
+        }
+
+        return $rows;
     }
 
     private function configuredContractAddress(): ?string

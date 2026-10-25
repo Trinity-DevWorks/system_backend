@@ -110,7 +110,7 @@ class AppServiceProvider extends ServiceProvider
                 contractAddress: $contract,
                 registrarAddress: $registrar,
                 timeoutSeconds: max(1, (int) config('blockchain.timeout_seconds', 15)),
-                receiptAttempts: max(1, (int) config('blockchain.receipt_attempts', 10)),
+                receiptAttempts: max(1, (int) config('blockchain.receipt_attempts', 150)),
                 chainId: (int) config('blockchain.chain_id', 0),
                 registrarPrivateKey: BlockchainNetwork::registrarPrivateKey(),
             );

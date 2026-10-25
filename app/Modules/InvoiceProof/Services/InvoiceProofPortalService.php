@@ -16,6 +16,8 @@ use App\Modules\InvoiceProof\DTOs\BuyerInvoiceHistoryItemData;
 use App\Modules\InvoiceProof\DTOs\BuyerPortalLinkData;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofPortalChallengeData;
 use App\Modules\InvoiceProof\DTOs\InvoiceProofPortalData;
+use App\Modules\InvoiceProof\DTOs\InvoiceProofSafeConfigData;
+use App\Modules\InvoiceProof\Support\BlockchainNetwork;
 use App\Modules\InvoiceProof\Support\EthereumPersonalSign;
 use App\Modules\InvoiceProof\Support\InvoiceApprovalStatement;
 use App\Modules\InvoiceProof\Support\ProofPortalHistoryChallenge;
@@ -47,6 +49,21 @@ class InvoiceProofPortalService
     {
         $tenantId = (string) tenant('id');
         ProofPortalLink::assertValid($tenantId, $invoiceId, $exp, $sig);
+    }
+
+    /**
+     * Safe Transaction Service URL and key used to propose/confirm on Sepolia.
+     * Public so the verifier page can confirm without embedding the key in a proof file.
+     */
+    public function safeConfig(): InvoiceProofSafeConfigData
+    {
+        $enabled = (bool) config('blockchain.enabled');
+
+        return new InvoiceProofSafeConfigData(
+            chainId: $enabled ? (int) config('blockchain.chain_id') : null,
+            safeTxServiceUrl: $enabled ? BlockchainNetwork::safeTxServiceUrl() : null,
+            safeApiKey: $enabled ? BlockchainNetwork::safeApiKey() : null,
+        );
     }
 
     public function issueLink(SalesInvoice $invoice): BuyerPortalLinkData

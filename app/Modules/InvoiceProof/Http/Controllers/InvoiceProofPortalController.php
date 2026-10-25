@@ -35,6 +35,14 @@ class InvoiceProofPortalController extends Controller
         );
     }
 
+    public function safeConfig(): JsonResponse
+    {
+        return ApiResponse::success(
+            $this->invoiceProofPortalService->safeConfig()->toArray(),
+            'Safe confirmation service loaded.'
+        );
+    }
+
     public function history(UnlockInvoiceProofPortalRequest $request): JsonResponse
     {
         return ApiResponse::success(
