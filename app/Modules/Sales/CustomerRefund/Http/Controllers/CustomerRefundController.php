@@ -11,15 +11,18 @@ use App\Modules\Sales\CustomerRefund\Http\Requests\StoreCustomerRefundRequest;
 use App\Modules\Sales\CustomerRefund\Http\Requests\SyncCustomerRefundAllocationsRequest;
 use App\Modules\Sales\CustomerRefund\Http\Requests\UpdateCustomerRefundRequest;
 use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
+use App\Modules\Sales\CustomerRefund\Services\CustomerRefundPdfService;
 use App\Modules\Sales\CustomerRefund\Services\CustomerRefundService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class CustomerRefundController extends Controller
 {
     public function __construct(
         private readonly CustomerRefundService $customerRefundService,
+        private readonly CustomerRefundPdfService $customerRefundPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -105,5 +108,15 @@ class CustomerRefundController extends Controller
         $refund = $this->customerRefundService->reverse($customerRefund, $userId !== null ? (string) $userId : null);
 
         return ApiResponse::success(CustomerRefundResponseData::fromModel($refund), 'Customer refund reversed successfully.');
+    }
+
+    public function pdf(Request $request, CustomerRefund $customerRefund): Response
+    {
+        $pdf = $this->customerRefundPdfService->render(
+            $customerRefund,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->customerRefundPdfService->downloadFilename($customerRefund));
     }
 }

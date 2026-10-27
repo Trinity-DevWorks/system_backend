@@ -10,7 +10,7 @@ use Illuminate\Support\Collection;
 
 readonly class PurchaseOrderLineResponseData
 {
-    public static function fromModel(PurchaseOrderLine $line): array
+    public static function fromModel(PurchaseOrderLine $line, ?string $orderExchangeRate = null): array
     {
         $line->loadMissing([
             'item:id,item_code,name,is_active,allow_purchase,track_inventory,track_lots',
@@ -36,7 +36,14 @@ readonly class PurchaseOrderLineResponseData
             'open_quantity' => $openQty,
             'item_uom_id' => $line->item_uom_id,
             'unit_price' => $line->unit_price !== null ? (string) $line->unit_price : null,
-            'line_total' => self::lineTotal($line->unit_price, $orderedQty),
+            'discount_percent' => (string) $line->discount_percent,
+            'discount_amount' => (string) $line->discount_amount,
+            'tax_rate' => (string) $line->tax_rate,
+            'line_subtotal' => (string) $line->line_subtotal,
+            'tax_amount' => (string) $line->tax_amount,
+            'line_total' => $line->unit_price !== null ? (string) $line->line_total : null,
+            // Default goods receipt cost (net, converted to the primary currency at the order rate).
+            'primary_unit_cost' => $line->primaryUnitCost($orderExchangeRate),
             'notes' => $line->notes,
             'item' => self::itemBrief($line->item),
             'item_uom' => $line->itemUom ? [
@@ -57,10 +64,10 @@ readonly class PurchaseOrderLineResponseData
      * @param  Collection<int, PurchaseOrderLine>  $lines
      * @return array<int, array<string, mixed>>
      */
-    public static function collectionToArray(Collection $lines): array
+    public static function collectionToArray(Collection $lines, ?string $orderExchangeRate = null): array
     {
         return $lines
-            ->map(fn (PurchaseOrderLine $line): array => self::fromModel($line))
+            ->map(fn (PurchaseOrderLine $line): array => self::fromModel($line, $orderExchangeRate))
             ->values()
             ->all();
     }
@@ -83,14 +90,5 @@ readonly class PurchaseOrderLineResponseData
             'track_inventory' => (bool) $item->track_inventory,
             'track_lots' => (bool) $item->track_lots,
         ];
-    }
-
-    private static function lineTotal(mixed $unitPrice, string $quantity): ?string
-    {
-        if ($unitPrice === null) {
-            return null;
-        }
-
-        return bcmul((string) $unitPrice, $quantity, 4);
     }
 }

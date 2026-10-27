@@ -376,6 +376,159 @@ class AccountingApiTest extends TestCase
         $this->assertBalance(-27.75, self::EXCHANGE_GAIN);
     }
 
+    public function test_purchase_invoice_at_another_rate_than_the_order_clears_grni_at_the_receipt_value(): void
+    {
+        $orderId = (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/stock/purchase-orders'), [
+                'supplier_id' => $this->catalog['supplier_id'],
+                'warehouse_id' => $this->catalog['warehouse_id'],
+                'currency_id' => $this->catalog['eur_id'],
+                'order_date' => '2026-09-01',
+                'lines' => [[
+                    'item_id' => $this->catalog['stock_item_id'],
+                    'quantity' => 2,
+                    'unit_price' => 70,
+                ]],
+            ])
+            ->assertCreated()
+            ->json('data.id');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/stock/purchase-orders/{$orderId}/confirm"))
+            ->assertOk();
+
+        // 70 EUR at the order rate of 3.5 EUR per USD is a primary cost of 20.
+        $receipt = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/stock/goods-receipts'), [
+                'purchase_order_id' => $orderId,
+                'received_date' => '2026-09-01',
+            ])
+            ->assertCreated();
+        $this->assertEqualsWithDelta(20, (float) $receipt->json('data.lines.0.unit_cost'), 0.0001);
+        $receiptId = (string) $receipt->json('data.id');
+        $receiptLineId = (int) $receipt->json('data.lines.0.id');
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/stock/goods-receipts/{$receiptId}/post"))
+            ->assertOk();
+        $this->assertBalance(40, self::INVENTORY);
+        $this->assertBalance(-40, self::GRNI);
+
+        // The supplier bills the same 140 EUR, but the euro moved to 2.8: 50 USD net, 5.5 VAT.
+        $invoiceId = (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/purchase-invoices'), [
+                'supplier_id' => $this->catalog['supplier_id'],
+                'goods_receipt_id' => $receiptId,
+                'warehouse_id' => $this->catalog['warehouse_id'],
+                'currency_id' => $this->catalog['eur_id'],
+                'exchange_rate' => 2.8,
+                'invoice_date' => '2026-09-03',
+                'lines' => [[
+                    'goods_receipt_line_id' => $receiptLineId,
+                    'item_id' => $this->catalog['stock_item_id'],
+                    'quantity' => 2,
+                    'unit_price' => 70,
+                ]],
+            ])
+            ->assertCreated()
+            ->json('data.id');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/purchase-invoices/{$invoiceId}/post"))
+            ->assertOk();
+
+        $this->assertBalance(-55.5, self::PAYABLE);
+        $this->assertBalance(0, self::GRNI);
+        // GRNI clears at the receipt value (40); the 10 exchange difference goes to price difference.
+        $this->assertBalance(10, self::PRICE_DIFFERENCE);
+        $this->assertBalance(5.5, self::VAT_INPUT);
+        $this->assertBalance(40, self::INVENTORY);
+        $this->assertInventoryMatchesStock();
+    }
+
+    public function test_journal_entries_carry_the_document_branch(): void
+    {
+        [$homeId, $eastId] = $this->tenant->run(function (): array {
+            $home = Branch::query()->where('is_default', true)->firstOrFail();
+            $east = Branch::query()->create([
+                'name' => 'East',
+                'shortcut_name' => 'EST',
+                'is_active' => true,
+                'is_default' => false,
+            ]);
+
+            return [(int) $home->id, (int) $east->id];
+        });
+
+        $this->withHeaders(['X-Branch-Id' => (string) $eastId]);
+        $invoiceId = $this->postSalesInvoice(100, $this->catalog['service_item_id']);
+        $receiptId = (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/customer-receipts'), [
+                'customer_id' => $this->catalog['customer_id'],
+                'currency_id' => $this->catalog['usd_id'],
+                'payment_method_id' => $this->catalog['cash_method_id'],
+                'payment_date' => '2026-09-02',
+                'amount' => 111,
+                'allocations' => [['sales_invoice_id' => $invoiceId, 'amount' => 111]],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.branch_id', $eastId)
+            ->json('data.id');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/customer-receipts/{$receiptId}/post"))
+            ->assertOk();
+
+        $this->withHeaders(['X-Branch-Id' => (string) $homeId]);
+        $purchaseId = (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/purchase-invoices'), [
+                'supplier_id' => $this->catalog['supplier_id'],
+                'warehouse_id' => $this->catalog['warehouse_id'],
+                'currency_id' => $this->catalog['usd_id'],
+                'invoice_date' => '2026-09-01',
+                'lines' => [[
+                    'item_id' => $this->catalog['service_item_id'],
+                    'quantity' => 1,
+                    'unit_price' => 50,
+                ]],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.branch_id', $homeId)
+            ->json('data.id');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/purchase-invoices/{$purchaseId}/post"))
+            ->assertOk();
+
+        $this->withHeaders(['X-Branch-Id' => (string) $eastId]);
+        $paymentId = (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/supplier-payments'), [
+                'supplier_id' => $this->catalog['supplier_id'],
+                'currency_id' => $this->catalog['usd_id'],
+                'payment_method_id' => $this->catalog['cash_method_id'],
+                'payment_date' => '2026-09-02',
+                'amount' => 55.5,
+                'allocations' => [['purchase_invoice_id' => $purchaseId, 'amount' => 55.5]],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.branch_id', $eastId)
+            ->json('data.id');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/supplier-payments/{$paymentId}/post"))
+            ->assertOk();
+
+        $this->tenant->run(function () use ($invoiceId, $receiptId, $purchaseId, $paymentId, $homeId, $eastId): void {
+            $branches = fn (string $id): array => JournalEntry::query()
+                ->where('source_id', $id)
+                ->pluck('branch_id')
+                ->map(fn ($branch): ?int => $branch !== null ? (int) $branch : null)
+                ->unique()
+                ->values()
+                ->all();
+
+            $this->assertSame([$eastId], $branches($invoiceId));
+            $this->assertSame([$eastId], $branches($receiptId));
+            $this->assertSame([$homeId], $branches($purchaseId));
+            $this->assertSame([$eastId], $branches($paymentId));
+        });
+    }
+
     public function test_stock_count_shortage_posts_to_inventory_shortage(): void
     {
         $this->openingStock('10', '5');

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Stock\Enums\StockCountStatus;
 use App\Modules\Inventory\Stock\Models\StockCount;
 use App\Modules\Warehouse\Models\Warehouse;
@@ -22,6 +23,7 @@ readonly class StockCountResponseData
 
         $payload = [
             'id' => $document->id,
+            ...DocumentBranchPayload::of($document),
             'cnt_number' => $document->cnt_number,
             'warehouse_id' => $document->warehouse_id,
             'status' => $document->status->value,

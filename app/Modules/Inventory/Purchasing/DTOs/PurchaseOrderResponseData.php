@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Supplier\Models\Supplier;
@@ -18,6 +19,7 @@ readonly class PurchaseOrderResponseData
         $order->loadMissing([
             'supplier:id,supplier_code,name,is_active',
             'warehouse:id,name,shortcut_name,is_active',
+            'currency:id,code,name,symbol',
             'createdByUser:id,name,email',
             'confirmedByUser:id,name,email',
             'sentByUser:id,name,email',
@@ -25,9 +27,23 @@ readonly class PurchaseOrderResponseData
 
         $payload = [
             'id' => $order->id,
+            ...DocumentBranchPayload::of($order),
             'po_number' => $order->po_number,
             'supplier_id' => $order->supplier_id,
             'warehouse_id' => $order->warehouse_id,
+            'currency_id' => $order->currency_id,
+            'currency' => $order->currency ? [
+                'id' => $order->currency->id,
+                'code' => $order->currency->code,
+                'name' => $order->currency->name,
+                'symbol' => $order->currency->symbol,
+            ] : null,
+            'currency_code' => $order->currency?->code,
+            'exchange_rate' => (string) $order->exchange_rate,
+            'subtotal' => (string) $order->subtotal,
+            'discount_total' => (string) $order->discount_total,
+            'tax_total' => (string) $order->tax_total,
+            'grand_total' => (string) $order->grand_total,
             'status' => $order->status->value,
             'order_date' => $order->order_date?->toDateString(),
             'expected_date' => $order->expected_date?->toDateString(),
@@ -50,9 +66,10 @@ readonly class PurchaseOrderResponseData
                 'lines.item',
                 'lines.itemUom.uom',
             ]);
-            $lines = PurchaseOrderLineResponseData::collectionToArray($order->lines);
+            $lines = PurchaseOrderLineResponseData::collectionToArray($order->lines, (string) $order->exchange_rate);
             $payload['lines'] = $lines;
-            $payload['total_amount'] = self::sumLineTotals($lines);
+            // Kept for older clients: the stored grand total, never recomputed from lines.
+            $payload['total_amount'] = (string) $order->grand_total;
             $payload['can_receive'] = in_array($order->status, [PurchaseOrderStatus::Confirmed, PurchaseOrderStatus::Sent], true)
                 && self::hasOpenQuantity($lines);
         }
@@ -120,26 +137,6 @@ readonly class PurchaseOrderResponseData
             'name' => $user->name,
             'email' => $user->email,
         ];
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $lines
-     */
-    private static function sumLineTotals(array $lines): ?string
-    {
-        $total = null;
-
-        foreach ($lines as $line) {
-            if ($line['line_total'] === null) {
-                continue;
-            }
-
-            $total = $total === null
-                ? (string) $line['line_total']
-                : bcadd($total, (string) $line['line_total'], 4);
-        }
-
-        return $total;
     }
 
     /**

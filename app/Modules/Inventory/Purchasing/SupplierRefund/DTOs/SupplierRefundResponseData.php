@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\SupplierRefund\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Enums\SupplierRefundStatus;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefund;
@@ -29,6 +30,7 @@ readonly class SupplierRefundResponseData
 
         $payload = [
             'id' => $refund->id,
+            ...DocumentBranchPayload::of($refund),
             'refund_number' => $refund->refund_number,
             'supplier_id' => $refund->supplier_id,
             'currency_id' => $refund->currency_id,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\CustomerReceipt\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
@@ -29,6 +30,7 @@ readonly class CustomerReceiptResponseData
 
         $payload = [
             'id' => $receipt->id,
+            ...DocumentBranchPayload::of($receipt),
             'receipt_number' => $receipt->receipt_number,
             'customer_id' => $receipt->customer_id,
             'currency_id' => $receipt->currency_id,

@@ -4,84 +4,76 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\Services;
 
-use App\Modules\CompanySetting\Support\TenantDisplayFormat;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Support\DocumentPdf\DocumentMoney;
+use App\Support\DocumentPdf\DocumentPdfOptions;
+use App\Support\DocumentPdf\DocumentPdfRenderer;
+use App\Support\DocumentPdf\DocumentPdfSupport;
+use Barryvdh\DomPDF\PDF;
 
 class PurchaseOrderPdfService
 {
     public function __construct(
-        private readonly PurchaseOrderService $purchaseOrderService
+        private readonly PurchaseOrderService $purchaseOrderService,
+        private readonly DocumentPdfRenderer $renderer,
     ) {}
 
-    public function render(PurchaseOrder $order): \Barryvdh\DomPDF\PDF
+    public function render(PurchaseOrder $order, ?string $locale = null): PDF
     {
         PurchaseOrderRules::assertPrintable($order);
+
+        $options = DocumentPdfOptions::fromRequest($locale);
+        $money = DocumentMoney::forOptions($options);
+        $labels = $this->renderer->labelsFor($options);
 
         $order = $this->purchaseOrderService->find($order->id);
         $order->loadMissing([
             'supplier:id,supplier_code,name,email,phone,company_name',
             'warehouse:id,name,shortcut_name',
+            'currency:id,code',
             'lines.item:id,item_code,name',
             'lines.itemUom.uom:id,code,name',
         ]);
 
-        $lines = [];
-        $total = null;
-
-        foreach ($order->lines as $line) {
-            $item = $line->item;
-            $uomLabel = $line->itemUom?->uom?->code
-                ?? $line->itemUom?->uom?->name
-                ?? '—';
-            $unitPrice = $line->unit_price !== null ? (string) $line->unit_price : null;
-            $lineTotal = $unitPrice !== null
-                ? bcmul($unitPrice, (string) $line->quantity, 4)
-                : null;
-
-            if ($lineTotal !== null) {
-                $total = $total === null
-                    ? $lineTotal
-                    : bcadd($total, $lineTotal, 4);
-            }
-
-            $lines[] = [
-                'name' => $item?->name ?? '—',
-                'item_code' => $item?->item_code ?? '—',
-                'quantity' => TenantDisplayFormat::quantity($line->quantity),
-                'uom' => $uomLabel,
-                'unit_price' => $unitPrice !== null ? TenantDisplayFormat::money($unitPrice) : null,
-                'line_total' => $lineTotal !== null ? TenantDisplayFormat::money($lineTotal) : null,
-            ];
+        $meta = [
+            ['label' => $labels['date'], 'value' => $money->date($order->order_date) ?: '—'],
+        ];
+        if ($order->expected_date) {
+            $meta[] = ['label' => $labels['expected_date'], 'value' => $money->date($order->expected_date) ?: '—'];
+        }
+        if ($order->currency) {
+            $meta[] = ['label' => $labels['currency'], 'value' => $money->dash($order->currency->code)];
         }
 
-        $companyName = (string) (tenant('name') ?? config('app.name', 'Company'));
+        $title = $options->isArabic() ? $money->text('أمر شراء') : 'PURCHASE ORDER';
 
-        return Pdf::loadView('purchasing.purchase-order', [
-            'companyName' => $companyName,
-            'poNumber' => $order->po_number ?? 'Purchase Order',
-            'orderDate' => TenantDisplayFormat::date($order->order_date) ?: '—',
-            'expectedDate' => $order->expected_date
-                ? (TenantDisplayFormat::date($order->expected_date) ?: null)
-                : null,
-            'supplierName' => $order->supplier?->company_name ?: ($order->supplier?->name ?? '—'),
-            'supplierCode' => $order->supplier?->supplier_code,
-            'supplierEmail' => $order->supplier?->email,
-            'supplierPhone' => $order->supplier?->phone,
-            'warehouseName' => $order->warehouse?->name ?? '—',
-            'warehouseShortcut' => $order->warehouse?->shortcut_name,
-            'lines' => $lines,
-            'totalAmount' => $total !== null ? TenantDisplayFormat::money($total) : null,
-            'notes' => $order->notes,
-            'generatedAt' => TenantDisplayFormat::dateTime(now()) ?: now()->format('Y-m-d H:i'),
-        ])->setPaper('a4');
+        return $this->renderer->render('document-pdf.document', [
+            'documentTitle' => $title,
+            'documentNumber' => $money->dash($order->po_number),
+            'statusWatermark' => DocumentPdfSupport::watermark($order->status),
+            'meta' => $meta,
+            'parties' => [
+                DocumentPdfSupport::partyBlock($labels['supplier'], $order->supplier, $money, 'supplier_code'),
+                [
+                    'title' => $labels['deliver_to'],
+                    'name' => $money->dash($order->warehouse?->name),
+                    'lines' => array_values(array_filter([
+                        $order->warehouse?->shortcut_name
+                            ? $money->text((string) $order->warehouse->shortcut_name)
+                            : null,
+                    ])),
+                ],
+            ],
+            'lineColumns' => DocumentPdfSupport::commercialColumns(),
+            'lines' => DocumentPdfSupport::commercialLines($order->lines, $money),
+            'totals' => DocumentPdfSupport::commercialTotals($order, $money, $labels),
+            'notes' => $money->text($order->notes),
+        ], $options);
     }
 
     public function downloadFilename(PurchaseOrder $order): string
     {
-        $number = $order->po_number ?? 'purchase-order';
-
-        return preg_replace('/[^\w\-]+/', '-', $number).'.pdf';
+        return DocumentPdfOptions::sanitizeFilename($order->po_number ?? '', 'purchase-order');
     }
 }

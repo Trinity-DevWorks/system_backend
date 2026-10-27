@@ -49,6 +49,8 @@ use App\Modules\Inventory\Stock\Models\StockAdjustmentLine;
 use App\Modules\Inventory\Stock\Models\StockAdjustmentReason;
 use App\Modules\Inventory\Stock\Models\StockCount;
 use App\Modules\Inventory\Stock\Models\StockCountLine;
+use App\Modules\Inventory\Stock\Models\StockRevaluation;
+use App\Modules\Inventory\Stock\Models\StockRevaluationLine;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferClosure;
 use App\Modules\Inventory\Stock\Models\StockTransferClosureLine;
@@ -173,6 +175,8 @@ class AppServiceProvider extends ServiceProvider
             'stock_adjustment' => StockAdjustment::class,
             'stock_adjustment_line' => StockAdjustmentLine::class,
             'stock_adjustment_reason' => StockAdjustmentReason::class,
+            'stock_revaluation' => StockRevaluation::class,
+            'stock_revaluation_line' => StockRevaluationLine::class,
             'production' => Production::class,
             'production_line' => ProductionLine::class,
             'bundle_explosion' => BundleExplosion::class,

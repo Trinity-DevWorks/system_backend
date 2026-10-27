@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Inventory\Stock\Enums\StockCountStatus;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -17,11 +18,13 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property StockCountStatus $status
  * @property Carbon|null $count_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'cnt_number',
     'warehouse_id',
     'status',
@@ -34,6 +37,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class StockCount extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
 
     public const REFERENCE_TYPE = 'stock_count';

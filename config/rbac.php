@@ -21,8 +21,11 @@ use App\Modules\Rbac\RbacResourceCatalog;
 $crud = ['view', 'add', 'edit', 'delete'];
 $viewEdit = ['view', 'edit'];
 
+// `print` (document PDFs) is separate from `view` and only works together with it.
+// See docs/printing-plan.md, Permissions.
+
 return [
-    'actions' => ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse', 'reopen'],
+    'actions' => ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse', 'reopen', 'print'],
 
     'resources' => [
         'notifications' => [
@@ -88,7 +91,7 @@ return [
         ],
         'stock' => [
             'label' => 'Stock Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'salesmen' => [
             'label' => 'Salesman Management',
@@ -114,31 +117,31 @@ return [
         ],
         'customers' => [
             'label' => 'Customer Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'print'],
         ],
         'sales_quotations' => [
             'label' => 'Sales Quotation Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'print'],
         ],
         'sales_orders' => [
             'label' => 'Sales Order Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'print'],
         ],
         'sales_invoices' => [
             'label' => 'Sales Invoice Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'customer_receipts' => [
             'label' => 'Customer Receipt Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'sales_credit_notes' => [
             'label' => 'Sales Credit Note Management',
-            'actions' => [...$crud, 'reverse', 'export'],
+            'actions' => [...$crud, 'reverse', 'export', 'print'],
         ],
         'customer_refunds' => [
             'label' => 'Customer Refund Management',
-            'actions' => [...$crud, 'reverse', 'export'],
+            'actions' => [...$crud, 'reverse', 'export', 'print'],
         ],
 
         'supplier_groups' => [
@@ -147,23 +150,23 @@ return [
         ],
         'suppliers' => [
             'label' => 'Supplier Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'print'],
         ],
         'purchase_invoices' => [
             'label' => 'Purchase Invoice Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'supplier_payments' => [
             'label' => 'Supplier Payment Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'purchase_debit_notes' => [
             'label' => 'Purchase Debit Note Management',
-            'actions' => [...$crud, 'reverse', 'export'],
+            'actions' => [...$crud, 'reverse', 'export', 'print'],
         ],
         'supplier_refunds' => [
             'label' => 'Supplier Refund Management',
-            'actions' => [...$crud, 'reverse', 'export'],
+            'actions' => [...$crud, 'reverse', 'export', 'print'],
         ],
         'accounts' => [
             'label' => 'Chart of Accounts',
@@ -175,11 +178,11 @@ return [
         ],
         'journal_entries' => [
             'label' => 'Journal Entries',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'accounting_reports' => [
             'label' => 'Accounting Reports',
-            'actions' => ['view', 'export'],
+            'actions' => ['view', 'export', 'print'],
         ],
         'vat_settlements' => [
             'label' => 'VAT Settlements',
@@ -188,6 +191,10 @@ return [
         'accounting_periods' => [
             'label' => 'Accounting Periods',
             'actions' => ['view', 'edit', 'reopen'],
+        ],
+        'business_reports' => [
+            'label' => 'Business Reports',
+            'actions' => ['view', 'export'],
         ],
     ],
 ];

@@ -58,6 +58,8 @@ class PurchaseOrderQueryService
             ->with([
                 'supplier:id,supplier_code,name,is_active',
                 'warehouse:id,name,shortcut_name,is_active',
+                'currency:id,code,name,symbol',
+                'branch:id,name,shortcut_name',
                 'createdByUser:id,name,email',
                 'confirmedByUser:id,name,email',
                 'sentByUser:id,name,email',

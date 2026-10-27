@@ -11,15 +11,18 @@ use App\Modules\Sales\CustomerReceipt\Http\Requests\StoreCustomerReceiptRequest;
 use App\Modules\Sales\CustomerReceipt\Http\Requests\SyncCustomerReceiptAllocationsRequest;
 use App\Modules\Sales\CustomerReceipt\Http\Requests\UpdateCustomerReceiptRequest;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
+use App\Modules\Sales\CustomerReceipt\Services\CustomerReceiptPdfService;
 use App\Modules\Sales\CustomerReceipt\Services\CustomerReceiptService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class CustomerReceiptController extends Controller
 {
     public function __construct(
         private readonly CustomerReceiptService $customerReceiptService,
+        private readonly CustomerReceiptPdfService $customerReceiptPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -131,5 +134,15 @@ class CustomerReceiptController extends Controller
             CustomerReceiptResponseData::fromModel($receipt),
             'Customer receipt reversed successfully.'
         );
+    }
+
+    public function pdf(Request $request, CustomerReceipt $customerReceipt): Response
+    {
+        $pdf = $this->customerReceiptPdfService->render(
+            $customerReceipt,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->customerReceiptPdfService->downloadFilename($customerReceipt));
     }
 }

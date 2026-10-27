@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesInvoice\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
@@ -26,12 +27,14 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property SalesInvoiceStatus $status
  * @property Carbon|null $invoice_date
  * @property Carbon|null $due_on
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'invoice_number',
     'customer_id',
     'sales_order_id',
@@ -63,7 +66,16 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class SalesInvoice extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * Order → invoice keeps the order's branch when the warehouse does not decide it.
+     */
+    public function documentBranchFromParent(): ?int
+    {
+        return $this->branchOfDocument(SalesOrder::class, $this->sales_order_id);
+    }
 
     public const REFERENCE_TYPE = 'sales_invoice';
 

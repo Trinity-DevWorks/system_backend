@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesOrder\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
@@ -32,6 +33,7 @@ readonly class SalesOrderResponseData
 
         $payload = [
             'id' => $order->id,
+            ...DocumentBranchPayload::of($order),
             'order_number' => $order->order_number,
             'customer_id' => $order->customer_id,
             'warehouse_id' => $order->warehouse_id,

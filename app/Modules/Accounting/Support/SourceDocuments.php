@@ -27,6 +27,7 @@ final class SourceDocuments
         'supplier_payment' => ['table' => 'supplier_payments', 'number' => 'payment_number'],
         'supplier_refund' => ['table' => 'supplier_refunds', 'number' => 'refund_number'],
         'stock_adjustment' => ['table' => 'stock_adjustments', 'number' => 'adj_number'],
+        'stock_revaluation' => ['table' => 'stock_revaluations', 'number' => 'srv_number'],
         'stock_count' => ['table' => 'stock_counts', 'number' => 'cnt_number'],
         'stock_transfer_closure' => ['table' => 'stock_transfer_closures', 'number' => 'closure_number'],
         'opening_stock' => ['table' => 'opening_stocks', 'number' => 'os_number'],

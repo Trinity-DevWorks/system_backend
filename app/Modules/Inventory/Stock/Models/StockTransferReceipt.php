@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Inventory\Stock\Enums\StockTransferReceiptStatus;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -17,11 +18,13 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property StockTransferReceiptStatus $status
  * @property Carbon|null $received_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'receipt_number',
     'stock_transfer_id',
     'warehouse_id',
@@ -35,7 +38,16 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class StockTransferReceipt extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * A receipt belongs to the receiving side of its transfer.
+     */
+    public function documentBranchFromParent(): ?int
+    {
+        return $this->branchOfDocument(StockTransfer::class, $this->stock_transfer_id, 'to_branch_id');
+    }
 
     public const REFERENCE_TYPE = 'stock_transfer_receipt';
 

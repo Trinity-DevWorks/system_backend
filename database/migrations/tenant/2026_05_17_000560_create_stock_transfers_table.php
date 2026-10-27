@@ -10,6 +10,9 @@ return new class extends Migration
     {
         Schema::create('stock_transfers', function (Blueprint $table) {
             $table->uuid('id')->primary();
+            // Issuing branches, frozen once the transfer leaves draft (see docs/printing-plan.md D3).
+            $table->foreignId('from_branch_id')->index()->constrained('branches')->restrictOnDelete();
+            $table->foreignId('to_branch_id')->index()->constrained('branches')->restrictOnDelete();
             $table->string('transfer_number', 32)->nullable()->unique();
             $table->foreignId('from_warehouse_id')->constrained('warehouses')->restrictOnDelete();
             $table->foreignId('to_warehouse_id')->constrained('warehouses')->restrictOnDelete();

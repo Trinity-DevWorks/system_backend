@@ -15,7 +15,7 @@ return [
             'description' => 'Users, roles, permissions, company profile, company settings, branches, notifications, and base tenant access.',
             'is_core' => true,
             'sort_order' => 10,
-            'resources' => ['users', 'roles', 'permissions', 'company_profile', 'company_settings', 'branches', 'notifications'],
+            'resources' => ['users', 'roles', 'permissions', 'company_profile', 'company_settings', 'branches', 'notifications', 'business_reports'],
         ],
         'master_data' => [
             'name' => 'Master Data',

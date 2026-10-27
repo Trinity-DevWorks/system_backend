@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\CustomerRefund\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Sales\CustomerRefund\Enums\CustomerRefundStatus;
@@ -29,6 +30,7 @@ readonly class CustomerRefundResponseData
 
         $payload = [
             'id' => $refund->id,
+            ...DocumentBranchPayload::of($refund),
             'refund_number' => $refund->refund_number,
             'customer_id' => $refund->customer_id,
             'currency_id' => $refund->currency_id,

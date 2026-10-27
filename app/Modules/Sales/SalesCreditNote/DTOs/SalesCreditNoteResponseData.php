@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesCreditNote\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteStatus;
@@ -33,6 +34,7 @@ readonly class SalesCreditNoteResponseData
 
         $payload = [
             'id' => $note->id,
+            ...DocumentBranchPayload::of($note),
             'credit_note_number' => $note->credit_note_number,
             'sales_invoice_id' => $note->sales_invoice_id,
             'customer_id' => $note->customer_id,

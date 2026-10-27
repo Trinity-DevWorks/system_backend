@@ -3,6 +3,7 @@
 namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Stock\Enums\StockTransferStatus;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Support\StockTransferLineQuantity;
@@ -24,6 +25,8 @@ readonly class StockTransferResponseData
 
         $payload = [
             'id' => $transfer->id,
+            ...DocumentBranchPayload::of($transfer, 'from_branch_id', 'fromBranch'),
+            ...DocumentBranchPayload::of($transfer, 'to_branch_id', 'toBranch'),
             'transfer_number' => $transfer->transfer_number,
             'from_warehouse_id' => $transfer->from_warehouse_id,
             'to_warehouse_id' => $transfer->to_warehouse_id,

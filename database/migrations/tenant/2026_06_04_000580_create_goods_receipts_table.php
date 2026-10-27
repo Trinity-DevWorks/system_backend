@@ -12,10 +12,15 @@ return new class extends Migration
     {
         Schema::create('goods_receipts', function (Blueprint $table) {
             $table->uuid('id')->primary();
+            // Issuing branch, frozen once the document leaves draft (see docs/printing-plan.md D3).
+            $table->foreignId('branch_id')->index()->constrained('branches')->restrictOnDelete();
             $table->string('grn_number', 32)->nullable()->unique();
             $table->foreignUuid('purchase_order_id')->nullable()->constrained('purchase_orders')->restrictOnDelete();
             $table->foreignUuid('supplier_id')->nullable()->constrained('suppliers')->nullOnDelete();
             $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
+            // Reference snapshot of the purchase order's currency and rate. Costs stay in the primary currency (D1).
+            $table->foreignId('currency_id')->nullable()->constrained('currencies')->restrictOnDelete();
+            $table->decimal('exchange_rate', 24, 12)->nullable();
             $table->string('status', 24)->default('draft');
             $table->date('received_date');
             $table->text('notes')->nullable();

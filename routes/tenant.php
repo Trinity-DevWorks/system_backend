@@ -51,6 +51,7 @@ use App\Modules\Inventory\Stock\Http\Controllers\StockAdjustmentReasonController
 use App\Modules\Inventory\Stock\Http\Controllers\StockBalanceController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockCountController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockMovementController;
+use App\Modules\Inventory\Stock\Http\Controllers\StockRevaluationController;
 use App\Modules\Inventory\Stock\Http\Controllers\StockTransferController;
 use App\Modules\Inventory\Stock\Http\Controllers\SuggestedUnitCostController;
 use App\Modules\Inventory\UnitGroup\Http\Controllers\UnitGroupController;
@@ -69,6 +70,8 @@ use App\Modules\Rbac\Http\Controllers\RolePermissionController;
 use App\Modules\Rbac\Http\Controllers\UserAttachmentController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
+use App\Modules\Reports\Http\Controllers\OverviewController;
+use App\Modules\Reports\Http\Controllers\ReportController;
 use App\Modules\Sales\CustomerReceipt\Http\Controllers\CustomerReceiptController;
 use App\Modules\Sales\CustomerRefund\Http\Controllers\CustomerRefundController;
 use App\Modules\Sales\SalesCreditNote\Http\Controllers\SalesCreditNoteController;
@@ -219,6 +222,34 @@ Route::middleware([
                 ->middleware('check.permission:company_profile,view');
             Route::delete('company-profile/attachments/{attachment}', [CompanyProfileAttachmentController::class, 'destroy'])
                 ->middleware('check.permission:company_profile,edit');
+
+            Route::get('overview', [OverviewController::class, 'show']);
+
+            Route::middleware(['check.permission:business_reports,view'])->group(function () {
+                Route::middleware(['ensure.module:sales'])->group(function () {
+                    Route::get('reports/sales-by-period', [ReportController::class, 'salesByPeriod']);
+                    Route::get('reports/customer-aging', [ReportController::class, 'customerAging']);
+                });
+                Route::middleware(['ensure.module:purchasing'])->group(function () {
+                    Route::get('reports/purchases-by-period', [ReportController::class, 'purchasesByPeriod']);
+                    Route::get('reports/supplier-aging', [ReportController::class, 'supplierAging']);
+                });
+                Route::get('reports/stock-valuation', [ReportController::class, 'stockValuation'])
+                    ->middleware('ensure.module:inventory');
+            });
+
+            Route::middleware(['check.permission:business_reports,export'])->group(function () {
+                Route::middleware(['ensure.module:sales'])->group(function () {
+                    Route::get('reports/sales-by-period/export', [ReportController::class, 'exportSalesByPeriod']);
+                    Route::get('reports/customer-aging/export', [ReportController::class, 'exportCustomerAging']);
+                });
+                Route::middleware(['ensure.module:purchasing'])->group(function () {
+                    Route::get('reports/purchases-by-period/export', [ReportController::class, 'exportPurchasesByPeriod']);
+                    Route::get('reports/supplier-aging/export', [ReportController::class, 'exportSupplierAging']);
+                });
+                Route::get('reports/stock-valuation/export', [ReportController::class, 'exportStockValuation'])
+                    ->middleware('ensure.module:inventory');
+            });
         });
 
         Route::middleware(['ensure.module:master_data'])->group(function () {
@@ -302,6 +333,8 @@ Route::middleware([
                 ->middleware('check.permission:stock,view');
             Route::post('stock/transfers', [StockTransferController::class, 'store'])
                 ->middleware('check.permission:stock,add');
+            Route::get('stock/transfers/{stock_transfer}/pdf', [StockTransferController::class, 'pdf'])
+                ->middleware('check.permission:stock,print');
             Route::get('stock/transfers/{stock_transfer}', [StockTransferController::class, 'show'])
                 ->middleware('check.permission:stock,view');
             Route::put('stock/transfers/{stock_transfer}', [StockTransferController::class, 'update'])
@@ -338,7 +371,7 @@ Route::middleware([
             Route::post('stock/purchase-orders/{purchase_order}/cancel', [PurchaseOrderController::class, 'cancel'])
                 ->middleware('check.permission:stock,edit');
             Route::get('stock/purchase-orders/{purchase_order}/pdf', [PurchaseOrderController::class, 'pdf'])
-                ->middleware('check.permission:stock,view');
+                ->middleware('check.permission:stock,print');
             Route::post('stock/purchase-orders/{purchase_order}/mark-sent', [PurchaseOrderController::class, 'markAsSent'])
                 ->middleware('check.permission:stock,edit');
 
@@ -346,6 +379,8 @@ Route::middleware([
                 ->middleware('check.permission:stock,view');
             Route::post('stock/goods-receipts', [GoodsReceiptController::class, 'store'])
                 ->middleware('check.permission:stock,add');
+            Route::get('stock/goods-receipts/{goods_receipt}/pdf', [GoodsReceiptController::class, 'pdf'])
+                ->middleware('check.permission:stock,print');
             Route::get('stock/goods-receipts/{goods_receipt}', [GoodsReceiptController::class, 'show'])
                 ->middleware('check.permission:stock,view');
             Route::put('stock/goods-receipts/{goods_receipt}', [GoodsReceiptController::class, 'update'])
@@ -402,6 +437,25 @@ Route::middleware([
             Route::post('stock/adjustments/{stock_adjustment}/post', [StockAdjustmentController::class, 'post'])
                 ->middleware('check.permission:stock,edit');
             Route::post('stock/adjustments/{stock_adjustment}/reverse', [StockAdjustmentController::class, 'reverse'])
+                ->middleware('check.permission:stock,reverse');
+
+            Route::get('stock/revaluations/balance-hint', [StockRevaluationController::class, 'balanceHint'])
+                ->middleware('check.permission:stock,view');
+            Route::get('stock/revaluations', [StockRevaluationController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::post('stock/revaluations', [StockRevaluationController::class, 'store'])
+                ->middleware('check.permission:stock,add');
+            Route::get('stock/revaluations/{stock_revaluation}', [StockRevaluationController::class, 'show'])
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/revaluations/{stock_revaluation}', [StockRevaluationController::class, 'update'])
+                ->middleware('check.permission:stock,edit');
+            Route::delete('stock/revaluations/{stock_revaluation}', [StockRevaluationController::class, 'destroy'])
+                ->middleware('check.permission:stock,delete');
+            Route::put('stock/revaluations/{stock_revaluation}/lines', [StockRevaluationController::class, 'syncLines'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/revaluations/{stock_revaluation}/post', [StockRevaluationController::class, 'post'])
+                ->middleware('check.permission:stock,edit');
+            Route::post('stock/revaluations/{stock_revaluation}/reverse', [StockRevaluationController::class, 'reverse'])
                 ->middleware('check.permission:stock,reverse');
 
             Route::get('stock/productions', [ProductionController::class, 'index'])
@@ -563,6 +617,8 @@ Route::middleware([
                 ->middleware('check.permission:customer_receipts,view');
             Route::post('customer-receipts', [CustomerReceiptController::class, 'store'])
                 ->middleware('check.permission:customer_receipts,add');
+            Route::get('customer-receipts/{customer_receipt}/pdf', [CustomerReceiptController::class, 'pdf'])
+                ->middleware('check.permission:customer_receipts,print');
             Route::get('customer-receipts/{customer_receipt}', [CustomerReceiptController::class, 'show'])
                 ->middleware('check.permission:customer_receipts,view');
             Route::put('customer-receipts/{customer_receipt}', [CustomerReceiptController::class, 'update'])
@@ -582,6 +638,8 @@ Route::middleware([
                 ->middleware('check.permission:sales_credit_notes,view');
             Route::post('sales-credit-notes', [SalesCreditNoteController::class, 'store'])
                 ->middleware('check.permission:sales_credit_notes,add');
+            Route::get('sales-credit-notes/{sales_credit_note}/pdf', [SalesCreditNoteController::class, 'pdf'])
+                ->middleware('check.permission:sales_credit_notes,print');
             Route::get('sales-credit-notes/{sales_credit_note}', [SalesCreditNoteController::class, 'show'])
                 ->middleware('check.permission:sales_credit_notes,view');
             Route::put('sales-credit-notes/{sales_credit_note}', [SalesCreditNoteController::class, 'update'])
@@ -603,6 +661,8 @@ Route::middleware([
                 ->middleware('check.permission:customer_refunds,view');
             Route::post('customer-refunds', [CustomerRefundController::class, 'store'])
                 ->middleware('check.permission:customer_refunds,add');
+            Route::get('customer-refunds/{customer_refund}/pdf', [CustomerRefundController::class, 'pdf'])
+                ->middleware('check.permission:customer_refunds,print');
             Route::get('customer-refunds/{customer_refund}', [CustomerRefundController::class, 'show'])
                 ->middleware('check.permission:customer_refunds,view');
             Route::put('customer-refunds/{customer_refund}', [CustomerRefundController::class, 'update'])
@@ -620,6 +680,8 @@ Route::middleware([
                 ->middleware('check.permission:sales_quotations,view');
             Route::post('sales-quotations', [SalesQuotationController::class, 'store'])
                 ->middleware('check.permission:sales_quotations,add');
+            Route::get('sales-quotations/{sales_quotation}/pdf', [SalesQuotationController::class, 'pdf'])
+                ->middleware('check.permission:sales_quotations,print');
             Route::get('sales-quotations/{sales_quotation}', [SalesQuotationController::class, 'show'])
                 ->middleware('check.permission:sales_quotations,view');
             Route::put('sales-quotations/{sales_quotation}', [SalesQuotationController::class, 'update'])
@@ -645,6 +707,8 @@ Route::middleware([
                 ->middleware('check.permission:sales_orders,add');
             Route::get('sales-orders/{sales_order}/remaining-lines', [SalesOrderController::class, 'remainingLines'])
                 ->middleware('check.permission:sales_orders,view');
+            Route::get('sales-orders/{sales_order}/pdf', [SalesOrderController::class, 'pdf'])
+                ->middleware('check.permission:sales_orders,print');
             Route::get('sales-orders/{sales_order}', [SalesOrderController::class, 'show'])
                 ->middleware('check.permission:sales_orders,view');
             Route::put('sales-orders/{sales_order}', [SalesOrderController::class, 'update'])
@@ -666,6 +730,8 @@ Route::middleware([
                 ->middleware('check.permission:sales_invoices,view');
             Route::post('sales-invoices', [SalesInvoiceController::class, 'store'])
                 ->middleware('check.permission:sales_invoices,add');
+            Route::get('sales-invoices/{sales_invoice}/pdf', [SalesInvoiceController::class, 'pdf'])
+                ->middleware('check.permission:sales_invoices,print');
             Route::get('sales-invoices/{sales_invoice}', [SalesInvoiceController::class, 'show'])
                 ->middleware('check.permission:sales_invoices,view');
             Route::put('sales-invoices/{sales_invoice}', [SalesInvoiceController::class, 'update'])
@@ -746,6 +812,8 @@ Route::middleware([
                 ->middleware('check.permission:supplier_payments,view');
             Route::post('supplier-payments', [SupplierPaymentController::class, 'store'])
                 ->middleware('check.permission:supplier_payments,add');
+            Route::get('supplier-payments/{supplier_payment}/pdf', [SupplierPaymentController::class, 'pdf'])
+                ->middleware('check.permission:supplier_payments,print');
             Route::get('supplier-payments/{supplier_payment}', [SupplierPaymentController::class, 'show'])
                 ->middleware('check.permission:supplier_payments,view');
             Route::put('supplier-payments/{supplier_payment}', [SupplierPaymentController::class, 'update'])
@@ -765,6 +833,8 @@ Route::middleware([
                 ->middleware('check.permission:purchase_debit_notes,view');
             Route::post('purchase-debit-notes', [PurchaseDebitNoteController::class, 'store'])
                 ->middleware('check.permission:purchase_debit_notes,add');
+            Route::get('purchase-debit-notes/{purchase_debit_note}/pdf', [PurchaseDebitNoteController::class, 'pdf'])
+                ->middleware('check.permission:purchase_debit_notes,print');
             Route::get('purchase-debit-notes/{purchase_debit_note}', [PurchaseDebitNoteController::class, 'show'])
                 ->middleware('check.permission:purchase_debit_notes,view');
             Route::put('purchase-debit-notes/{purchase_debit_note}', [PurchaseDebitNoteController::class, 'update'])
@@ -786,6 +856,8 @@ Route::middleware([
                 ->middleware('check.permission:supplier_refunds,view');
             Route::post('supplier-refunds', [SupplierRefundController::class, 'store'])
                 ->middleware('check.permission:supplier_refunds,add');
+            Route::get('supplier-refunds/{supplier_refund}/pdf', [SupplierRefundController::class, 'pdf'])
+                ->middleware('check.permission:supplier_refunds,print');
             Route::get('supplier-refunds/{supplier_refund}', [SupplierRefundController::class, 'show'])
                 ->middleware('check.permission:supplier_refunds,view');
             Route::put('supplier-refunds/{supplier_refund}', [SupplierRefundController::class, 'update'])
@@ -803,6 +875,8 @@ Route::middleware([
                 ->middleware('check.permission:purchase_invoices,view');
             Route::post('purchase-invoices', [PurchaseInvoiceController::class, 'store'])
                 ->middleware('check.permission:purchase_invoices,add');
+            Route::get('purchase-invoices/{purchase_invoice}/pdf', [PurchaseInvoiceController::class, 'pdf'])
+                ->middleware('check.permission:purchase_invoices,print');
             Route::get('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'show'])
                 ->middleware('check.permission:purchase_invoices,view');
             Route::put('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'update'])
@@ -875,6 +949,8 @@ Route::middleware([
             Route::put('account-mappings', [AccountMappingController::class, 'update'])
                 ->middleware('check.permission:account_mappings,edit');
 
+            Route::get('journal-entries/{journal_entry}/pdf', [JournalEntryController::class, 'pdf'])
+                ->middleware('check.permission:journal_entries,print');
             Route::put('journal-entries/{journal_entry}/lines', [JournalEntryController::class, 'replaceLines'])
                 ->middleware('check.permission:journal_entries,edit');
             Route::post('journal-entries/{journal_entry}/post', [JournalEntryController::class, 'post'])

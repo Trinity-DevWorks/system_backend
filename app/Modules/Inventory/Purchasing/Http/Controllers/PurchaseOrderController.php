@@ -131,7 +131,7 @@ class PurchaseOrderController extends Controller
         );
 
         return ApiResponse::success(
-            PurchaseOrderLineResponseData::collectionToArray($lines),
+            PurchaseOrderLineResponseData::collectionToArray($lines, (string) $purchaseOrder->exchange_rate),
             'Purchase order lines synced successfully.'
         );
     }
@@ -160,9 +160,12 @@ class PurchaseOrderController extends Controller
         );
     }
 
-    public function pdf(PurchaseOrder $purchaseOrder): Response
+    public function pdf(Request $request, PurchaseOrder $purchaseOrder): Response
     {
-        $pdf = $this->purchaseOrderPdfService->render($purchaseOrder);
+        $pdf = $this->purchaseOrderPdfService->render(
+            $purchaseOrder,
+            $request->query('locale')
+        );
 
         return $pdf->download($this->purchaseOrderPdfService->downloadFilename($purchaseOrder));
     }

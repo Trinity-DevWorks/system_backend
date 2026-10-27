@@ -20,17 +20,39 @@ class CurrencyService
 {
     private const CACHE_LIST = 'currencies.list';
 
-    private const PRIMARY_DEPENDENT_TABLES = [
+    /**
+     * Tables whose prices, costs or exchange rates are relative to the primary currency. Any row in
+     * one of them locks the primary currency. Tests\Unit\PrimaryCurrencyLockCoverageTest fails when
+     * a new document table (exchange rate, or an issuing branch plus a document number) is missing.
+     *
+     * @var list<string>
+     */
+    public const PRIMARY_DEPENDENT_TABLES = [
         'item_uoms',
         'supplier_items',
         'stock_movements',
+        'journal_entries',
+        'journal_entry_lines',
+        'sales_quotations',
+        'sales_orders',
+        'sales_invoices',
+        'sales_credit_notes',
+        'customer_receipts',
+        'customer_refunds',
         'purchase_orders',
         'goods_receipts',
         'purchase_invoices',
-        'sales_invoices',
-        'customer_receipts',
+        'purchase_debit_notes',
         'supplier_payments',
-        'journal_entry_lines',
+        'supplier_refunds',
+        'opening_stocks',
+        'stock_adjustments',
+        'stock_counts',
+        'productions',
+        'bundle_explosions',
+        'stock_transfers',
+        'stock_transfer_receipts',
+        'stock_transfer_closures',
     ];
 
     public function __construct(

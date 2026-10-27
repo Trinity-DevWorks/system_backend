@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Enums\PurchaseDebitNoteStatus;
@@ -20,12 +21,14 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property PurchaseDebitNoteStatus $status
  * @property PurchaseDebitNoteType $type
  * @property Carbon|null $debit_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'debit_note_number',
     'purchase_invoice_id',
     'supplier_id',
@@ -51,7 +54,25 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class PurchaseDebitNote extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * No header warehouse: the branch follows the original invoice.
+     *
+     * @return array<string, string|null>
+     */
+    public function documentBranchColumns(): array
+    {
+        return ['branch_id' => null];
+    }
+
+    public function documentBranchFromParent(): ?int
+    {
+        $branchId = PurchaseInvoice::query()->whereKey($this->purchase_invoice_id)->value('branch_id');
+
+        return $branchId !== null ? (int) $branchId : null;
+    }
 
     public const REFERENCE_TYPE = 'purchase_debit_note';
 

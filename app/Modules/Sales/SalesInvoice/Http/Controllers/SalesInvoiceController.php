@@ -12,15 +12,18 @@ use App\Modules\Sales\SalesInvoice\Http\Requests\StoreSalesInvoiceRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\SyncSalesInvoiceLinesRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\UpdateSalesInvoiceRequest;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\SalesInvoice\Services\SalesInvoicePdfService;
 use App\Modules\Sales\SalesInvoice\Services\SalesInvoiceService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class SalesInvoiceController extends Controller
 {
     public function __construct(
         private readonly SalesInvoiceService $salesInvoiceService,
+        private readonly SalesInvoicePdfService $salesInvoicePdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -139,5 +142,15 @@ class SalesInvoiceController extends Controller
             $this->salesInvoiceService->itemAvailability($itemId),
             'Item availability fetched successfully.'
         );
+    }
+
+    public function pdf(Request $request, SalesInvoice $salesInvoice): Response
+    {
+        $pdf = $this->salesInvoicePdfService->render(
+            $salesInvoice,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->salesInvoicePdfService->downloadFilename($salesInvoice));
     }
 }

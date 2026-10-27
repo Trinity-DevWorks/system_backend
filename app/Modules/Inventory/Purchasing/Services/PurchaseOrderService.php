@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\Services;
 
 use App\Modules\CompanySetting\Support\PriceMath;
+use App\Modules\Currency\Models\Currency;
+use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
@@ -13,7 +15,11 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseOrderLineQuantity;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderMaxStockGuard;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
+use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\DocumentTaxContext;
+use App\Support\DocumentTaxMath;
+use App\Support\ExchangeRateSnapshot;
 use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -26,6 +32,7 @@ class PurchaseOrderService
         private readonly WarehouseService $warehouseService,
         private readonly DomainNotificationPublisher $notifications,
         private readonly PurchaseOrderMaxStockGuard $maxStockGuard,
+        private readonly ExchangeRateService $exchangeRateService,
     ) {}
 
     /**
@@ -50,6 +57,8 @@ class PurchaseOrderService
             ->with([
                 'supplier',
                 'warehouse',
+                'currency',
+                'branch',
                 'createdByUser',
                 'confirmedByUser',
                 'sentByUser',
@@ -72,6 +81,8 @@ class PurchaseOrderService
      * @param  array{
      *   supplier_id:string,
      *   warehouse_id:int,
+     *   currency_id?:?int,
+     *   exchange_rate?:?numeric,
      *   order_date?:string,
      *   expected_date?:?string,
      *   notes?:?string,
@@ -80,6 +91,7 @@ class PurchaseOrderService
      *     quantity:numeric,
      *     item_uom_id?:?int,
      *     unit_price?:?numeric,
+     *     discount_percent?:?numeric,
      *     notes?:?string
      *   }>
      * }  $data
@@ -93,6 +105,7 @@ class PurchaseOrderService
             $order = PurchaseOrder::query()->create([
                 'supplier_id' => (string) $data['supplier_id'],
                 'warehouse_id' => (int) $data['warehouse_id'],
+                ...$this->resolveCurrency($data, null),
                 'status' => PurchaseOrderStatus::Draft,
                 'order_date' => $data['order_date'] ?? now()->toDateString(),
                 'expected_date' => $this->normalizeDate($data['expected_date'] ?? null),
@@ -113,6 +126,8 @@ class PurchaseOrderService
      * @param  array{
      *   supplier_id?:string,
      *   warehouse_id?:int,
+     *   currency_id?:?int,
+     *   exchange_rate?:?numeric,
      *   order_date?:string,
      *   expected_date?:?string,
      *   notes?:?string
@@ -141,6 +156,7 @@ class PurchaseOrderService
                     ? (string) $data['supplier_id']
                     : $order->supplier_id,
                 'warehouse_id' => $nextWarehouseId,
+                ...$this->resolveCurrency($data, $order),
                 'order_date' => array_key_exists('order_date', $data)
                     ? (string) $data['order_date']
                     : $order->order_date,
@@ -156,6 +172,9 @@ class PurchaseOrderService
                 $this->maxStockGuard->assertOrder($order);
             }
 
+            // Supplier exemption and the order date drive the tax on each line.
+            $this->recalculateLines($order);
+
             return $this->find($order->id);
         });
     }
@@ -166,6 +185,7 @@ class PurchaseOrderService
      *   quantity:numeric,
      *   item_uom_id?:?int,
      *   unit_price?:?numeric,
+     *   discount_percent?:?numeric,
      *   notes?:?string
      * }>  $lines
      */
@@ -264,6 +284,7 @@ class PurchaseOrderService
      *   quantity:numeric,
      *   item_uom_id?:?int,
      *   unit_price?:?numeric,
+     *   discount_percent?:?numeric,
      *   notes?:?string
      * }>  $lines
      */
@@ -288,7 +309,9 @@ class PurchaseOrderService
 
             $normalized[$itemId] = [
                 ...$resolved,
+                'item' => $item,
                 'unit_price' => $this->normalizeUnitPrice($row['unit_price'] ?? null),
+                'discount_percent' => PriceMath::normalize($row['discount_percent'] ?? 0),
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }
@@ -301,6 +324,7 @@ class PurchaseOrderService
 
         PurchaseOrderLine::query()->where('purchase_order_id', $order->id)->delete();
 
+        $taxContext = $this->taxContext($order);
         foreach ($normalized as $itemId => $line) {
             PurchaseOrderLine::query()->create([
                 'purchase_order_id' => $order->id,
@@ -311,9 +335,125 @@ class PurchaseOrderService
                 'received_base_quantity' => 0,
                 'item_uom_id' => $line['item_uom_id'],
                 'unit_price' => $line['unit_price'],
+                'discount_percent' => $line['discount_percent'],
+                ...$this->lineMoney($line['item'], $line['quantity'], $line['unit_price'], $line['discount_percent'], $taxContext),
                 'notes' => $line['notes'],
             ]);
         }
+
+        $this->recalculateTotals($order);
+    }
+
+    /**
+     * Recompute every line's discount and tax with the current supplier exemption and order date.
+     */
+    private function recalculateLines(PurchaseOrder $order): void
+    {
+        $taxContext = $this->taxContext($order);
+        $lines = PurchaseOrderLine::query()->where('purchase_order_id', $order->id)->with('item')->get();
+        foreach ($lines as $line) {
+            $item = $line->item ?? Item::query()->findOrFail($line->item_id);
+            $line->update($this->lineMoney(
+                $item,
+                (string) $line->quantity,
+                $line->unit_price !== null ? (string) $line->unit_price : null,
+                (string) $line->discount_percent,
+                $taxContext,
+            ));
+        }
+
+        $this->recalculateTotals($order);
+    }
+
+    /**
+     * Totals are stored on the order (never recomputed at print or list time), docs/printing-plan.md D2.
+     */
+    private function recalculateTotals(PurchaseOrder $order): void
+    {
+        $includeTax = DocumentTaxContext::pricesIncludeTax();
+        $payload = [];
+        foreach (PurchaseOrderLine::query()->where('purchase_order_id', $order->id)->get() as $line) {
+            $payload[] = [
+                'merchandise' => bcmul((string) $line->quantity, (string) ($line->unit_price ?? '0'), 8),
+                'discount_amount' => (string) $line->discount_amount,
+                'tax_amount' => (string) $line->tax_amount,
+            ];
+        }
+
+        $totals = DocumentTaxMath::sumTotals($payload, 0, $includeTax);
+        $order->update([
+            'subtotal' => $totals['subtotal'],
+            'discount_total' => $totals['discount_total'],
+            'tax_total' => $totals['tax_total'],
+            'grand_total' => $totals['grand_total'],
+        ]);
+    }
+
+    /**
+     * @return array{exempt:bool,date:string,include_tax:bool}
+     */
+    private function taxContext(PurchaseOrder $order): array
+    {
+        $order->loadMissing('supplier');
+        $date = $order->order_date?->toDateString() ?? now()->toDateString();
+        $supplier = $order->supplier instanceof Supplier ? $order->supplier : null;
+
+        return [
+            'exempt' => DocumentTaxContext::supplierIsExemptOnDate($supplier, $date),
+            'date' => $date,
+            'include_tax' => DocumentTaxContext::pricesIncludeTax(),
+        ];
+    }
+
+    /**
+     * Same line math as the purchase invoice, so a PO converts to an invoice with identical amounts.
+     *
+     * @param  array{exempt:bool,date:string,include_tax:bool}  $context
+     * @return array{discount_amount:string,tax_rate:string,line_subtotal:string,tax_amount:string,line_total:string}
+     */
+    private function lineMoney(Item $item, string $quantity, ?string $unitPrice, string $discountPercent, array $context): array
+    {
+        $taxRate = $context['exempt'] ? '0.0000' : DocumentTaxContext::ratePercentForItem($item, null, $context['date']);
+        $math = DocumentTaxMath::line($quantity, $unitPrice ?? '0', $discountPercent, $taxRate, $context['include_tax']);
+
+        return [
+            'discount_amount' => $math['discount_amount'],
+            'tax_rate' => $taxRate,
+            'line_subtotal' => $math['line_subtotal'],
+            'tax_amount' => $math['tax_amount'],
+            'line_total' => $math['line_total'],
+        ];
+    }
+
+    /**
+     * Currency defaults to the primary currency; the rate snapshot follows ExchangeRateSnapshot like every document.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{currency_id?:int,exchange_rate?:string}
+     */
+    private function resolveCurrency(array $data, ?PurchaseOrder $existing): array
+    {
+        $currencyGiven = array_key_exists('currency_id', $data) && $data['currency_id'] !== null && $data['currency_id'] !== '';
+        $rateGiven = array_key_exists('exchange_rate', $data) && $data['exchange_rate'] !== null && $data['exchange_rate'] !== '';
+        if ($existing !== null && ! $currencyGiven && ! $rateGiven) {
+            return [];
+        }
+
+        $currencyId = $currencyGiven
+            ? (int) $data['currency_id']
+            : ($existing !== null ? (int) $existing->currency_id : (int) (Currency::getPrimary()?->id ?? 0));
+
+        $keepRate = $existing !== null && (int) $existing->currency_id === $currencyId ? $existing->exchange_rate : null;
+
+        return [
+            'currency_id' => $currencyId,
+            'exchange_rate' => ExchangeRateSnapshot::resolve(
+                $this->exchangeRateService,
+                $currencyId,
+                $rateGiven ? $data['exchange_rate'] : $keepRate,
+                'PURCHASE_ORDER',
+            ),
+        ];
     }
 
     private function lockDraftOrder(PurchaseOrder $order): PurchaseOrder

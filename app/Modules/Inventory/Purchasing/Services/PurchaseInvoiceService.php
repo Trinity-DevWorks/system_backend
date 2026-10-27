@@ -414,7 +414,7 @@ class PurchaseInvoiceService
     {
         $currencyId = isset($data['currency_id']) && $data['currency_id'] !== '' && $data['currency_id'] !== null
             ? (int) $data['currency_id']
-            : (int) ($existing?->currency_id ?? Currency::getPrimary()?->id);
+            : (int) ($existing?->currency_id ?? $order?->currency_id ?? $receipt?->currency_id ?? Currency::getPrimary()?->id);
 
         if ($currencyId <= 0) {
             abort(422, 'A primary currency is required.', ['X-Error-Code' => 'PURCHASE_INVOICE_PRIMARY_CURRENCY_REQUIRED']);
@@ -493,7 +493,7 @@ class PurchaseInvoiceService
         $order = $invoice->purchase_order_id
             ? PurchaseOrder::query()->find($invoice->purchase_order_id)
             : null;
-        $exempt = $this->supplierIsExempt($supplier, $date);
+        $exempt = DocumentTaxContext::supplierIsExemptOnDate($supplier, $date);
 
         PurchaseInvoiceLine::query()->where('purchase_invoice_id', $invoice->id)->delete();
 
@@ -671,23 +671,6 @@ class PurchaseInvoiceService
         return InventoryCostingMath::moneyRound(
             ExchangeRateSnapshot::toPrimary($documentValue, (string) $invoice->exchange_rate, 8),
         );
-    }
-
-    private function supplierIsExempt(?Supplier $supplier, string $documentDate): bool
-    {
-        if ($supplier === null || ! $supplier->is_exempted) {
-            return false;
-        }
-
-        $date = Carbon::parse($documentDate)->startOfDay();
-        if ($supplier->exempted_from !== null && $date->lt(Carbon::parse($supplier->exempted_from)->startOfDay())) {
-            return false;
-        }
-        if ($supplier->exempted_to !== null && $date->gt(Carbon::parse($supplier->exempted_to)->startOfDay())) {
-            return false;
-        }
-
-        return true;
     }
 
     /**

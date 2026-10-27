@@ -52,7 +52,7 @@ class RbacResourceCatalogTest extends TestCase
     public function test_stock_allows_full_crud_and_reverse(): void
     {
         $this->assertSame(
-            ['view', 'add', 'edit', 'delete', 'reverse'],
+            ['view', 'add', 'edit', 'delete', 'reverse', 'print'],
             RbacResourceCatalog::actions('stock'),
         );
         $this->assertTrue(RbacResourceCatalog::allows('stock', 'add'));

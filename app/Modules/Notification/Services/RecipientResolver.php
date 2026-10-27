@@ -63,6 +63,7 @@ class RecipientResolver
             'export' => 'can_export',
             'reverse' => 'can_reverse',
             'reopen' => 'can_reopen',
+            'print' => 'can_print',
             default => null,
         };
 

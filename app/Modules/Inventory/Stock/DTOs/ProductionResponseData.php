@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Stock\Enums\ProductionStatus;
@@ -32,6 +33,7 @@ readonly class ProductionResponseData
 
         $payload = [
             'id' => $document->id,
+            ...DocumentBranchPayload::of($document),
             'prd_number' => $document->prd_number,
             'warehouse_id' => $document->warehouse_id,
             'item_id' => $document->item_id,

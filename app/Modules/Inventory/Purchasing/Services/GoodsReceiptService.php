@@ -213,7 +213,7 @@ class GoodsReceiptService
 
                 $item = $line->item ?? Item::query()->findOrFail($line->item_id);
                 $itemUomId = $line->item_uom_id ? (int) $line->item_uom_id : null;
-                $enteredCost = $line->unit_cost ?? $poLine?->unit_price;
+                $enteredCost = $line->unit_cost ?? $this->purchaseOrderUnitCost($poLine);
                 $unitCost = $this->resolveBaseUnitCost($item, $line, $poLine, $itemUomId);
                 $inboundValue = $enteredCost !== null && $enteredCost !== ''
                     ? InventoryCostingMath::extended($line->quantity, $enteredCost)
@@ -380,6 +380,8 @@ class GoodsReceiptService
                 'purchase_order_id' => $order->id,
                 'supplier_id' => $order->supplier_id,
                 'warehouse_id' => (int) $order->warehouse_id,
+                'currency_id' => (int) $order->currency_id,
+                'exchange_rate' => (string) $order->exchange_rate,
                 'status' => GoodsReceiptStatus::Draft,
                 'received_date' => $data['received_date'] ?? now()->toDateString(),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
@@ -452,7 +454,7 @@ class GoodsReceiptService
                 'purchase_order_line_id' => (int) $poLine->id,
                 'quantity' => (float) $open,
                 'item_uom_id' => $poLine->item_uom_id ? (int) $poLine->item_uom_id : null,
-                'unit_cost' => $poLine->unit_price,
+                'unit_cost' => $this->purchaseOrderUnitCost($poLine),
             ];
         }
 
@@ -535,7 +537,7 @@ class GoodsReceiptService
                 'purchase_order_line_id' => $poLineId,
                 'item_id' => (string) $poLine->item_id,
                 'lot_id' => $lotId,
-                'unit_cost' => $this->normalizeUnitCost($row['unit_cost'] ?? $poLine->unit_price),
+                'unit_cost' => $this->normalizeUnitCost($row['unit_cost'] ?? $this->purchaseOrderUnitCost($poLine)),
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }
@@ -696,9 +698,20 @@ class GoodsReceiptService
         ?PurchaseOrderLine $poLine,
         ?int $itemUomId,
     ): ?string {
-        $entered = $line->unit_cost ?? $poLine?->unit_price;
+        $entered = $line->unit_cost ?? $this->purchaseOrderUnitCost($poLine);
 
         return StockAdjustmentQuantity::resolveBaseUnitCost($item, $entered, $itemUomId);
+    }
+
+    /**
+     * Default receipt cost: the PO line's net price (after discount, before VAT) converted to the
+     * primary currency at the PO's stored rate. Stock is always valued in the primary currency (D1);
+     * the purchase invoice later clears GRNI at this value and books any rate or price difference
+     * to the purchase price difference account.
+     */
+    private function purchaseOrderUnitCost(?PurchaseOrderLine $poLine): ?string
+    {
+        return $poLine?->primaryUnitCost();
     }
 
     private function lockDraft(GoodsReceipt $receipt): GoodsReceipt

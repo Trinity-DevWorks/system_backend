@@ -96,6 +96,118 @@ class InventoryCostingService
     }
 
     /**
+     * Value-only revaluation. Caller must hold the balance row lock. Quantity is unchanged.
+     *
+     * @return array{unit_cost: string, value_delta: string}
+     */
+    public function revalue(
+        Item $item,
+        StockBalance $balance,
+        string $newUnitCost,
+        int $movementId,
+    ): array {
+        $newUnitCost = $this->normalizeCost($newUnitCost) ?? Math::money(0);
+        $qty = Math::qty($balance->quantity);
+        $oldValue = Math::money($balance->inventory_value);
+        $oldUnitCost = Math::money($balance->unit_cost);
+
+        if (bccomp($qty, '0', Math::QTY_SCALE) <= 0) {
+            abort(422, 'Cannot revalue zero or negative on-hand quantity.', [
+                'X-Error-Code' => 'STOCK_REVALUATION_NO_QTY',
+            ]);
+        }
+
+        if (bccomp($newUnitCost, $oldUnitCost, Math::MONEY_SCALE) === 0) {
+            abort(422, 'New unit cost must differ from the current balance cost.', [
+                'X-Error-Code' => 'STOCK_REVALUATION_NO_CHANGE',
+            ]);
+        }
+
+        $newValue = Math::value($qty, $newUnitCost);
+        $valueDelta = bcsub($newValue, $oldValue, Math::MONEY_SCALE);
+        $method = $this->methodFor($item);
+
+        if ($method->usesLayers()) {
+            InventoryCostLayer::query()
+                ->where('item_id', $item->id)
+                ->where('warehouse_id', $balance->warehouse_id)
+                ->when(
+                    $balance->lot_id === null,
+                    fn ($query) => $query->whereNull('lot_id'),
+                    fn ($query) => $query->where('lot_id', $balance->lot_id),
+                )
+                ->delete();
+
+            InventoryCostLayer::query()->create([
+                'item_id' => $item->id,
+                'warehouse_id' => $balance->warehouse_id,
+                'lot_id' => $balance->lot_id,
+                'source_movement_id' => $movementId,
+                'quantity_remaining' => $qty,
+                'unit_cost' => $newUnitCost,
+            ]);
+        }
+
+        $balance->forceFill([
+            'unit_cost' => $newUnitCost,
+            'inventory_value' => $newValue,
+        ])->save();
+
+        return [
+            'unit_cost' => $newUnitCost,
+            'value_delta' => $valueDelta,
+        ];
+    }
+
+    /**
+     * Reverse a revaluation movement on a locked balance. Does not restore the
+     * pre-revaluation FIFO/Actual layer split — recreates one layer at old cost.
+     */
+    public function unwindRevalue(
+        Item $item,
+        StockBalance $balance,
+        string $originalValueDelta,
+        string $oldUnitCost,
+        int $originalMovementId,
+        int $reverseMovementId,
+    ): void {
+        $qty = Math::qty($balance->quantity);
+        $oldValue = Math::money($balance->inventory_value);
+        $newValue = bcsub($oldValue, Math::money($originalValueDelta), Math::MONEY_SCALE);
+        $restoredUnitCost = $this->normalizeCost($oldUnitCost) ?? Math::money(0);
+
+        if (bccomp($qty, '0', Math::QTY_SCALE) <= 0) {
+            $newValue = Math::money(0);
+            $restoredUnitCost = Math::money(0);
+        } elseif (bccomp($newValue, '0', Math::MONEY_SCALE) < 0) {
+            $newValue = Math::money(0);
+        }
+
+        $method = $this->methodFor($item);
+        if ($method->usesLayers()) {
+            InventoryCostLayer::query()
+                ->where('source_movement_id', $originalMovementId)
+                ->delete();
+
+            if (bccomp($qty, '0', Math::QTY_SCALE) > 0) {
+                InventoryCostLayer::query()->create([
+                    'item_id' => $item->id,
+                    'warehouse_id' => $balance->warehouse_id,
+                    'lot_id' => $balance->lot_id,
+                    'source_movement_id' => $reverseMovementId,
+                    'quantity_remaining' => $qty,
+                    'unit_cost' => $restoredUnitCost,
+                ]);
+            }
+        }
+
+        $balance->forceFill([
+            'unit_cost' => $restoredUnitCost,
+            'inventory_value' => $newValue,
+        ])->save();
+    }
+
+    /**
      * Undo one posted movement's quantity and value on a locked balance row.
      * Inbound layers that were already issued cannot be unwound.
      */

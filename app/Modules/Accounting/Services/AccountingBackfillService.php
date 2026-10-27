@@ -15,6 +15,7 @@ use App\Modules\Inventory\Stock\Models\OpeningStock;
 use App\Modules\Inventory\Stock\Models\Production;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockCount;
+use App\Modules\Inventory\Stock\Models\StockRevaluation;
 use App\Modules\Inventory\Stock\Models\StockTransferClosure;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
@@ -48,6 +49,7 @@ class AccountingBackfillService
         SupplierRefund::class => ['refund_date', 'supplierRefund'],
         StockAdjustment::class => ['adjustment_date', 'stockAdjustment'],
         StockCount::class => ['count_date', 'stockCount'],
+        StockRevaluation::class => ['revaluation_date', 'stockRevaluation'],
         Production::class => ['production_date', 'production'],
     ];
 

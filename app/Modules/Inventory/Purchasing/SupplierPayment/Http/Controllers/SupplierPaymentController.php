@@ -11,15 +11,18 @@ use App\Modules\Inventory\Purchasing\SupplierPayment\Http\Requests\StoreSupplier
 use App\Modules\Inventory\Purchasing\SupplierPayment\Http\Requests\SyncSupplierPaymentAllocationsRequest;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Http\Requests\UpdateSupplierPaymentRequest;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
+use App\Modules\Inventory\Purchasing\SupplierPayment\Services\SupplierPaymentPdfService;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Services\SupplierPaymentService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class SupplierPaymentController extends Controller
 {
     public function __construct(
         private readonly SupplierPaymentService $supplierPaymentService,
+        private readonly SupplierPaymentPdfService $supplierPaymentPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -131,5 +134,15 @@ class SupplierPaymentController extends Controller
             SupplierPaymentResponseData::fromModel($payment),
             'Supplier payment reversed successfully.'
         );
+    }
+
+    public function pdf(Request $request, SupplierPayment $supplierPayment): Response
+    {
+        $pdf = $this->supplierPaymentPdfService->render(
+            $supplierPayment,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->supplierPaymentPdfService->downloadFilename($supplierPayment));
     }
 }

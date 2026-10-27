@@ -18,6 +18,12 @@ return new class extends Migration
             $table->decimal('received_base_quantity', 14, 6)->default(0);
             $table->foreignId('item_uom_id')->nullable()->constrained('item_uoms')->nullOnDelete();
             $table->decimal('unit_price', 14, 4)->nullable();
+            $table->decimal('discount_percent', 8, 4)->default(0);
+            $table->decimal('discount_amount', 20, 4)->default(0);
+            $table->decimal('tax_rate', 8, 4)->default(0);
+            $table->decimal('line_subtotal', 20, 4)->default(0);
+            $table->decimal('tax_amount', 20, 4)->default(0);
+            $table->decimal('line_total', 20, 4)->default(0);
             $table->text('notes')->nullable();
             $table->timestamps();
 

@@ -10,6 +10,8 @@ return new class extends Migration
     {
         Schema::create('stock_transfer_receipts', function (Blueprint $table) {
             $table->uuid('id')->primary();
+            // Issuing branch, frozen once the document leaves draft (see docs/printing-plan.md D3).
+            $table->foreignId('branch_id')->index()->constrained('branches')->restrictOnDelete();
             $table->string('receipt_number', 32)->nullable()->unique();
             $table->foreignUuid('stock_transfer_id')->constrained('stock_transfers')->restrictOnDelete();
             $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesCreditNote\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteStatus;
@@ -20,12 +21,14 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property SalesCreditNoteStatus $status
  * @property SalesCreditNoteType $type
  * @property Carbon|null $credit_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'credit_note_number',
     'sales_invoice_id',
     'customer_id',
@@ -51,7 +54,25 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class SalesCreditNote extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * No header warehouse: the branch follows the original invoice.
+     *
+     * @return array<string, string|null>
+     */
+    public function documentBranchColumns(): array
+    {
+        return ['branch_id' => null];
+    }
+
+    public function documentBranchFromParent(): ?int
+    {
+        $branchId = SalesInvoice::query()->whereKey($this->sales_invoice_id)->value('branch_id');
+
+        return $branchId !== null ? (int) $branchId : null;
+    }
 
     public const REFERENCE_TYPE = 'sales_credit_note';
 

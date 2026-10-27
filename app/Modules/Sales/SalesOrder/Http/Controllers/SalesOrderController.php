@@ -14,15 +14,18 @@ use App\Modules\Sales\SalesOrder\Http\Requests\StoreSalesOrderRequest;
 use App\Modules\Sales\SalesOrder\Http\Requests\SyncSalesOrderLinesRequest;
 use App\Modules\Sales\SalesOrder\Http\Requests\UpdateSalesOrderRequest;
 use App\Modules\Sales\SalesOrder\Models\SalesOrder;
+use App\Modules\Sales\SalesOrder\Services\SalesOrderPdfService;
 use App\Modules\Sales\SalesOrder\Services\SalesOrderService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class SalesOrderController extends Controller
 {
     public function __construct(
         private readonly SalesOrderService $salesOrderService,
+        private readonly SalesOrderPdfService $salesOrderPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -142,5 +145,15 @@ class SalesOrderController extends Controller
             SalesInvoiceResponseData::fromModel($invoice),
             'Sales invoice created from the order successfully.'
         );
+    }
+
+    public function pdf(Request $request, SalesOrder $salesOrder): Response
+    {
+        $pdf = $this->salesOrderPdfService->render(
+            $salesOrder,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->salesOrderPdfService->downloadFilename($salesOrder));
     }
 }

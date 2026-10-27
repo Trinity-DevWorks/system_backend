@@ -134,7 +134,7 @@ class RoleService
     }
 
     /**
-     * @return array<int, array{permission_id: int, can_view: bool, can_add: bool, can_edit: bool, can_delete: bool, can_import: bool, can_export: bool, can_reverse: bool, can_reopen: bool}>
+     * @return array<int, array{permission_id: int, can_view: bool, can_add: bool, can_edit: bool, can_delete: bool, can_import: bool, can_export: bool, can_reverse: bool, can_reopen: bool, can_print: bool}>
      */
     private function defaultDeniedPermissionRows(): array
     {
@@ -151,6 +151,7 @@ class RoleService
                 'can_export' => false,
                 'can_reverse' => false,
                 'can_reopen' => false,
+                'can_print' => false,
             ])
             ->values()
             ->all();
@@ -185,6 +186,7 @@ class RoleService
                     'can_export' => false,
                     'can_reverse' => false,
                     'can_reopen' => false,
+                    'can_print' => false,
                 ];
 
             RolePermission::query()->create([

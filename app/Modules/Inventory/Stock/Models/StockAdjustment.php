@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Inventory\Stock\Enums\StockAdjustmentStatus;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -17,11 +18,13 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property StockAdjustmentStatus $status
  * @property Carbon|null $adjustment_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'adj_number',
     'warehouse_id',
     'stock_adjustment_reason_id',
@@ -35,6 +38,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class StockAdjustment extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
 
     public const REFERENCE_TYPE = 'stock_adjustment';

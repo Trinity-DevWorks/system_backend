@@ -12,16 +12,19 @@ use App\Modules\Accounting\Http\Requests\ReplaceJournalEntryLinesRequest;
 use App\Modules\Accounting\Http\Requests\StoreJournalEntryRequest;
 use App\Modules\Accounting\Http\Requests\UpdateJournalEntryRequest;
 use App\Modules\Accounting\Models\JournalEntry;
+use App\Modules\Accounting\Services\JournalEntryPdfService;
 use App\Modules\Accounting\Services\JournalEntryService;
 use App\Modules\Accounting\Support\SourceDocuments;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class JournalEntryController extends Controller
 {
     public function __construct(
-        private readonly JournalEntryService $journalEntryService
+        private readonly JournalEntryService $journalEntryService,
+        private readonly JournalEntryPdfService $journalEntryPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -99,6 +102,16 @@ class JournalEntryController extends Controller
         $this->journalEntryService->delete($journalEntry);
 
         return ApiResponse::success(null, 'Journal entry deleted successfully.');
+    }
+
+    public function pdf(Request $request, JournalEntry $journalEntry): Response
+    {
+        $pdf = $this->journalEntryPdfService->render(
+            $journalEntry,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->journalEntryPdfService->downloadFilename($journalEntry));
     }
 
     private function userId(Request $request): ?string

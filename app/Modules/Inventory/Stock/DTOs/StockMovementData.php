@@ -10,6 +10,7 @@ use App\Modules\Inventory\Stock\Models\OpeningStock;
 use App\Modules\Inventory\Stock\Models\Production;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockCount;
+use App\Modules\Inventory\Stock\Models\StockRevaluation;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 
 readonly class StockMovementData
@@ -346,6 +347,30 @@ readonly class StockMovementData
             unitCost: self::normalizeUnitCost($unitCost),
             lotId: $lotId,
             valueDelta: self::normalizeValueDelta($valueDelta),
+        );
+    }
+
+    public static function forRevaluation(
+        string $itemId,
+        int $warehouseId,
+        string $newUnitCost,
+        ?string $notes,
+        ?string $userId,
+        ?int $lotId = null,
+        ?string $stockRevaluationId = null,
+    ): self {
+        return new self(
+            itemId: $itemId,
+            warehouseId: $warehouseId,
+            quantityDelta: self::formatDelta(0),
+            type: StockMovementType::Revaluation,
+            referenceType: $stockRevaluationId !== null ? StockRevaluation::REFERENCE_TYPE : null,
+            referenceId: $stockRevaluationId,
+            itemUomId: null,
+            notes: self::normalizeNotes($notes),
+            userId: $userId,
+            unitCost: self::normalizeUnitCost($newUnitCost),
+            lotId: $lotId,
         );
     }
 

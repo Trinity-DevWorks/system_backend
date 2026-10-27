@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\SupplierPayment\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Enums\SupplierPaymentStatus;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
@@ -19,11 +20,13 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property SupplierPaymentStatus $status
  * @property Carbon|null $payment_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'payment_number',
     'supplier_id',
     'currency_id',
@@ -41,7 +44,18 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class SupplierPayment extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * No warehouse: the branch comes from the user's active branch.
+     *
+     * @return array<string, string|null>
+     */
+    public function documentBranchColumns(): array
+    {
+        return ['branch_id' => null];
+    }
 
     public const REFERENCE_TYPE = 'supplier_payment';
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Stock\Enums\StockAdjustmentStatus;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockAdjustmentReason;
@@ -24,6 +25,7 @@ readonly class StockAdjustmentResponseData
 
         $payload = [
             'id' => $document->id,
+            ...DocumentBranchPayload::of($document),
             'adj_number' => $document->adj_number,
             'warehouse_id' => $document->warehouse_id,
             'stock_adjustment_reason_id' => $document->stock_adjustment_reason_id,

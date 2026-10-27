@@ -25,6 +25,7 @@ class SyncPurchaseOrderLinesRequest extends FormRequest
             'lines.*.quantity' => ['required', 'numeric', 'min:0.000001', 'max:999999.999999'],
             'lines.*.item_uom_id' => ['nullable', 'integer', Rule::exists('item_uoms', 'id')],
             'lines.*.unit_price' => ['nullable', 'numeric', 'min:0', 'max:9999999999.9999'],
+            'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
         ];
     }

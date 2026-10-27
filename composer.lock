@@ -5838,16 +5838,16 @@
         },
         {
             "name": "stancl/tenancy",
-            "version": "v3.10.0",
+            "version": "v3.10.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/archtechx/tenancy.git",
-                "reference": "ab64f4599daf1152830e7d9a3c4af2d3e151b2e7"
+                "reference": "c4cf5dc6d557fb7404feb11a6ddfe0985ddd9526"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/archtechx/tenancy/zipball/ab64f4599daf1152830e7d9a3c4af2d3e151b2e7",
-                "reference": "ab64f4599daf1152830e7d9a3c4af2d3e151b2e7",
+                "url": "https://api.github.com/repos/archtechx/tenancy/zipball/c4cf5dc6d557fb7404feb11a6ddfe0985ddd9526",
+                "reference": "c4cf5dc6d557fb7404feb11a6ddfe0985ddd9526",
                 "shasum": ""
             },
             "require": {
@@ -5905,7 +5905,7 @@
             ],
             "support": {
                 "issues": "https://github.com/archtechx/tenancy/issues",
-                "source": "https://github.com/archtechx/tenancy/tree/v3.10.0"
+                "source": "https://github.com/archtechx/tenancy/tree/v3.10.1"
             },
             "funding": [
                 {
@@ -5917,7 +5917,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-03-18T18:16:25+00:00"
+            "time": "2026-08-05T03:57:48+00:00"
         },
         {
             "name": "stancl/virtualcolumn",

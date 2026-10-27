@@ -39,6 +39,7 @@ readonly class RoleResponseData
                     'can_export' => (bool) $p->pivot->can_export,
                     'can_reverse' => (bool) $p->pivot->can_reverse,
                     'can_reopen' => (bool) $p->pivot->can_reopen,
+                    'can_print' => (bool) $p->pivot->can_print,
                 ];
             })->values()->all();
         }

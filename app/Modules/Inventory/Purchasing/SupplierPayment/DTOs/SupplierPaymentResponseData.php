@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\SupplierPayment\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
@@ -29,6 +30,7 @@ readonly class SupplierPaymentResponseData
 
         $payload = [
             'id' => $payment->id,
+            ...DocumentBranchPayload::of($payment),
             'payment_number' => $payment->payment_number,
             'supplier_id' => $payment->supplier_id,
             'currency_id' => $payment->currency_id,

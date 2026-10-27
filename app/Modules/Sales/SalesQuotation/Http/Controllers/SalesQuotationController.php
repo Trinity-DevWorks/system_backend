@@ -12,15 +12,18 @@ use App\Modules\Sales\SalesQuotation\Http\Requests\StoreSalesQuotationRequest;
 use App\Modules\Sales\SalesQuotation\Http\Requests\SyncSalesQuotationLinesRequest;
 use App\Modules\Sales\SalesQuotation\Http\Requests\UpdateSalesQuotationRequest;
 use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
+use App\Modules\Sales\SalesQuotation\Services\SalesQuotationPdfService;
 use App\Modules\Sales\SalesQuotation\Services\SalesQuotationService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class SalesQuotationController extends Controller
 {
     public function __construct(
         private readonly SalesQuotationService $salesQuotationService,
+        private readonly SalesQuotationPdfService $salesQuotationPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -148,5 +151,15 @@ class SalesQuotationController extends Controller
             )),
             'Sales quotation converted successfully.'
         );
+    }
+
+    public function pdf(Request $request, SalesQuotation $salesQuotation): Response
+    {
+        $pdf = $this->salesQuotationPdfService->render(
+            $salesQuotation,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->salesQuotationPdfService->downloadFilename($salesQuotation));
     }
 }

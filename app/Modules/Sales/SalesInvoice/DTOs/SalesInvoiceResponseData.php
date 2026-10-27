@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesInvoice\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
@@ -33,6 +34,7 @@ readonly class SalesInvoiceResponseData
 
         $payload = [
             'id' => $invoice->id,
+            ...DocumentBranchPayload::of($invoice),
             'invoice_number' => $invoice->invoice_number,
             'customer_id' => $invoice->customer_id,
             'sales_order_id' => $invoice->sales_order_id,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\DTOs;
 
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 
@@ -28,6 +29,7 @@ readonly class PurchaseInvoiceResponseData
 
         $payload = [
             'id' => $invoice->id,
+            ...DocumentBranchPayload::of($invoice),
             'invoice_number' => $invoice->invoice_number,
             'supplier_id' => $invoice->supplier_id,
             'goods_receipt_id' => $invoice->goods_receipt_id,

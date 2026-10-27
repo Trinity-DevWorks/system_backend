@@ -12,15 +12,18 @@ use App\Modules\Inventory\Stock\Http\Requests\StoreStockTransferRequest;
 use App\Modules\Inventory\Stock\Http\Requests\SyncStockTransferLinesRequest;
 use App\Modules\Inventory\Stock\Http\Requests\UpdateStockTransferRequest;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
+use App\Modules\Inventory\Stock\Services\StockTransferPdfService;
 use App\Modules\Inventory\Stock\Services\StockTransferService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class StockTransferController extends Controller
 {
     public function __construct(
-        private readonly StockTransferService $stockTransferService
+        private readonly StockTransferService $stockTransferService,
+        private readonly StockTransferPdfService $stockTransferPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -152,5 +155,15 @@ class StockTransferController extends Controller
             StockTransferResponseData::fromModel($transfer),
             'Stock transfer cancelled successfully.'
         );
+    }
+
+    public function pdf(Request $request, StockTransfer $stockTransfer): Response
+    {
+        $pdf = $this->stockTransferPdfService->render(
+            $stockTransfer,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->stockTransferPdfService->downloadFilename($stockTransfer));
     }
 }

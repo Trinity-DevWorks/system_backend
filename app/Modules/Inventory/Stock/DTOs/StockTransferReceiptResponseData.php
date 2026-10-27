@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Stock\Models\StockTransferReceipt;
 use App\Modules\Inventory\Stock\Models\StockTransferReceiptLine;
 use Illuminate\Support\Collection;
@@ -20,6 +21,7 @@ readonly class StockTransferReceiptResponseData
 
         $payload = [
             'id' => $receipt->id,
+            ...DocumentBranchPayload::of($receipt),
             'receipt_number' => $receipt->receipt_number,
             'stock_transfer_id' => $receipt->stock_transfer_id,
             'warehouse_id' => $receipt->warehouse_id,

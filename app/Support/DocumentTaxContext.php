@@ -7,6 +7,7 @@ namespace App\Support;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Inventory\Item\Models\Item;
+use App\Modules\Supplier\Models\Supplier;
 use App\Modules\VatGroup\Models\VatGroup;
 use Illuminate\Support\Carbon;
 
@@ -60,6 +61,26 @@ final class DocumentTaxContext
             return false;
         }
         if ($to !== null && $date->gt(Carbon::parse($to)->startOfDay())) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Same rule as customers: a supplier flagged exempt within its date window is charged no input VAT.
+     */
+    public static function supplierIsExemptOnDate(?Supplier $supplier, string $documentDate): bool
+    {
+        if ($supplier === null || ! $supplier->is_exempted) {
+            return false;
+        }
+
+        $date = Carbon::parse($documentDate)->startOfDay();
+        if ($supplier->exempted_from !== null && $date->lt(Carbon::parse($supplier->exempted_from)->startOfDay())) {
+            return false;
+        }
+        if ($supplier->exempted_to !== null && $date->gt(Carbon::parse($supplier->exempted_to)->startOfDay())) {
             return false;
         }
 

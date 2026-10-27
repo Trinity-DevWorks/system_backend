@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
@@ -21,12 +22,14 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property PurchaseInvoiceStatus $status
  * @property Carbon|null $invoice_date
  * @property Carbon|null $due_on
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'invoice_number',
     'supplier_id',
     'goods_receipt_id',
@@ -56,7 +59,17 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class PurchaseInvoice extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * GRN / PO → invoice keeps the source branch when the warehouse does not decide it.
+     */
+    public function documentBranchFromParent(): ?int
+    {
+        return $this->branchOfDocument(GoodsReceipt::class, $this->goods_receipt_id)
+            ?? $this->branchOfDocument(PurchaseOrder::class, $this->purchase_order_id);
+    }
 
     public const REFERENCE_TYPE = 'purchase_invoice';
 

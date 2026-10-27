@@ -34,6 +34,7 @@ use App\Modules\Inventory\Stock\Models\Production;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockCount;
 use App\Modules\Inventory\Stock\Models\StockMovement;
+use App\Modules\Inventory\Stock\Models\StockRevaluation;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferClosure;
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
@@ -46,9 +47,9 @@ use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteType;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Supplier\Models\SupplierBalance;
-use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\ModuleEntitlementService;
 use App\Support\ExchangeRateSnapshot;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -108,7 +109,7 @@ class JournalPostingService
             ->primary($this->account(AccountRole::CostOfGoodsSold), JournalMath::neg($value), null, null, $label)
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label);
 
-        $this->create(SalesInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->warehouseBranch($invoice->warehouse_id), $builder, $userId);
+        $this->create(SalesInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->documentBranch($invoice), $builder, $userId);
     }
 
     public function goodsReceipt(GoodsReceipt $receipt, ?string $userId, ?string $date = null): void
@@ -124,7 +125,7 @@ class JournalPostingService
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
             ->primary($this->account(AccountRole::GoodsReceivedNotInvoiced), JournalMath::neg($value), null, null, $label);
 
-        $this->create(GoodsReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->received_date->toDateString(), $label, $this->warehouseBranch($receipt->warehouse_id), $builder, $userId);
+        $this->create(GoodsReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->received_date->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
     }
 
     public function purchaseInvoice(PurchaseInvoice $invoice, ?string $userId, ?string $date = null): void
@@ -167,7 +168,7 @@ class JournalPostingService
 
         $builder->balanceTo($this->account(AccountRole::PurchasePriceDifference), $label);
 
-        $this->create(PurchaseInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->warehouseBranch($invoice->warehouse_id), $builder, $userId);
+        $this->create(PurchaseInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->documentBranch($invoice), $builder, $userId);
     }
 
     public function customerReceipt(CustomerReceipt $receipt, ?string $userId, ?string $date = null): void
@@ -207,7 +208,7 @@ class JournalPostingService
         }
 
         $this->exchangeDifference($builder, $label);
-        $this->create(CustomerReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->payment_date->toDateString(), $label, null, $builder, $userId);
+        $this->create(CustomerReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->payment_date->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
     }
 
     public function supplierPayment(SupplierPayment $payment, ?string $userId, ?string $date = null): void
@@ -247,7 +248,7 @@ class JournalPostingService
         }
 
         $this->exchangeDifference($builder, $label);
-        $this->create(SupplierPayment::REFERENCE_TYPE, $id, $date ?? $payment->payment_date->toDateString(), $label, null, $builder, $userId);
+        $this->create(SupplierPayment::REFERENCE_TYPE, $id, $date ?? $payment->payment_date->toDateString(), $label, $this->documentBranch($payment), $builder, $userId);
     }
 
     public function salesCreditNote(SalesCreditNote $note, ?string $userId, ?string $date = null): void
@@ -277,7 +278,7 @@ class JournalPostingService
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
             ->primary($this->account(AccountRole::CostOfGoodsSold), JournalMath::neg($value), null, null, $label);
 
-        $this->create(SalesCreditNote::REFERENCE_TYPE, $id, $date ?? $note->credit_date->toDateString(), $label, $this->documentWarehouseBranch($note), $builder, $userId);
+        $this->create(SalesCreditNote::REFERENCE_TYPE, $id, $date ?? $note->credit_date->toDateString(), $label, $this->documentBranch($note), $builder, $userId);
     }
 
     public function creditApplication(SalesCreditNote $note, SalesInvoice $invoice, string $amount, ?string $userId, ?string $date = null): void
@@ -296,6 +297,8 @@ class JournalPostingService
             (string) $note->customer_id,
             $userId,
             $date,
+            'Credit application',
+            $this->documentBranch($note),
         );
     }
 
@@ -362,7 +365,7 @@ class JournalPostingService
         }
 
         $this->exchangeDifference($builder, $label);
-        $this->create(CustomerRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, null, $builder, $userId);
+        $this->create(CustomerRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, $this->documentBranch($refund), $builder, $userId);
     }
 
     public function purchaseDebitNote(PurchaseDebitNote $note, ?string $userId, ?string $date = null): void
@@ -402,7 +405,7 @@ class JournalPostingService
         }
 
         $builder->balanceTo($this->account(AccountRole::PurchasePriceDifference), $label);
-        $this->create(PurchaseDebitNote::REFERENCE_TYPE, $id, $date ?? $note->debit_date->toDateString(), $label, $this->documentWarehouseBranch($note), $builder, $userId);
+        $this->create(PurchaseDebitNote::REFERENCE_TYPE, $id, $date ?? $note->debit_date->toDateString(), $label, $this->documentBranch($note), $builder, $userId);
     }
 
     public function debitApplication(PurchaseDebitNote $note, PurchaseInvoice $invoice, string $amount, ?string $userId, ?string $date = null): void
@@ -422,6 +425,7 @@ class JournalPostingService
             $userId,
             $date,
             'Debit application',
+            $this->documentBranch($note),
         );
     }
 
@@ -484,7 +488,7 @@ class JournalPostingService
         }
 
         $this->exchangeDifference($builder, $label);
-        $this->create(SupplierRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, null, $builder, $userId);
+        $this->create(SupplierRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, $this->documentBranch($refund), $builder, $userId);
     }
 
     public function stockAdjustment(StockAdjustment $document, ?string $userId, ?string $date = null): void
@@ -494,7 +498,7 @@ class JournalPostingService
             (string) $document->id,
             'Stock adjustment '.$document->adj_number,
             $date ?? $document->adjustment_date->toDateString(),
-            $document->warehouse_id,
+            $this->documentBranch($document),
             $userId,
             false,
         );
@@ -507,7 +511,20 @@ class JournalPostingService
             (string) $document->id,
             'Stock count '.$document->cnt_number,
             $date ?? $document->count_date->toDateString(),
-            $document->warehouse_id,
+            $this->documentBranch($document),
+            $userId,
+            false,
+        );
+    }
+
+    public function stockRevaluation(StockRevaluation $document, ?string $userId, ?string $date = null): void
+    {
+        $this->stockVariance(
+            StockRevaluation::REFERENCE_TYPE,
+            (string) $document->id,
+            'Stock revaluation '.$document->srv_number,
+            $date ?? $document->revaluation_date->toDateString(),
+            $this->documentBranch($document),
             $userId,
             false,
         );
@@ -520,7 +537,7 @@ class JournalPostingService
             (string) $document->id,
             'Production '.$document->prd_number,
             $date ?? $document->production_date->toDateString(),
-            $document->warehouse_id,
+            $this->documentBranch($document),
             $userId,
             true,
         );
@@ -563,7 +580,7 @@ class JournalPostingService
             $id,
             $date ?? $closedOn,
             $label,
-            $this->warehouseBranch($closure->warehouse_id),
+            $this->documentBranch($closure),
             $builder,
             $userId,
         );
@@ -582,7 +599,7 @@ class JournalPostingService
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
             ->primary($this->account(AccountRole::OpeningBalanceEquity), JournalMath::neg($value), null, null, $label);
 
-        $this->create(OpeningStock::REFERENCE_TYPE, $id, $date ?? $document->opening_date->toDateString(), $label, $this->warehouseBranch($document->warehouse_id), $builder, $userId);
+        $this->create(OpeningStock::REFERENCE_TYPE, $id, $date ?? $document->opening_date->toDateString(), $label, $this->documentBranch($document), $builder, $userId);
     }
 
     /**
@@ -666,7 +683,7 @@ class JournalPostingService
         $this->journalEntryService->reverseEntry($original, $userId, $date);
     }
 
-    private function stockVariance(string $type, string $id, string $label, string $date, mixed $warehouseId, ?string $userId, bool $netOnly): void
+    private function stockVariance(string $type, string $id, string $label, string $date, ?int $branchId, ?string $userId, bool $netOnly): void
     {
         if (! $this->shouldPost($type, $id)) {
             return;
@@ -700,7 +717,7 @@ class JournalPostingService
                 ->primary($this->account(AccountRole::Inventory), $decrease, null, null, $label);
         }
 
-        $this->create($type, $id, $date, $label, $this->warehouseBranch($warehouseId), $builder, $userId);
+        $this->create($type, $id, $date, $label, $branchId, $builder, $userId);
     }
 
     private function openingBalance(
@@ -742,6 +759,7 @@ class JournalPostingService
         ?string $userId,
         ?string $date,
         string $kind = 'Credit application',
+        ?int $branchId = null,
     ): void {
         if (! $this->enabled() || $this->sameRate($noteRate, $invoiceRate)) {
             return;
@@ -752,7 +770,7 @@ class JournalPostingService
             ->foreign($this->account($partyRole), $amount, $currencyId, $noteRate, $partyType, $partyId, $label)
             ->foreign($this->account($partyRole), JournalMath::neg($amount), $currencyId, $invoiceRate, $partyType, $partyId, $label);
         $this->exchangeDifference($builder, $label);
-        $this->create($sourceType, $noteId.':'.(string) Str::ulid(), $date ?? Carbon::today()->toDateString(), $label, null, $builder, $userId);
+        $this->create($sourceType, $noteId.':'.(string) Str::ulid(), $date ?? Carbon::today()->toDateString(), $label, $branchId, $builder, $userId);
     }
 
     private function reverseApplications(string $sourceType, string $noteId, ?string $userId): void
@@ -777,17 +795,15 @@ class JournalPostingService
         }
     }
 
-    private function documentWarehouseBranch(SalesCreditNote|PurchaseDebitNote $note): ?int
+    /**
+     * The branch stored on the document when it was issued (docs/printing-plan.md D3). Never looked up
+     * from the warehouse, so moving a warehouse to another branch does not move posted entries.
+     */
+    private function documentBranch(Model $document): ?int
     {
-        $warehouseId = $note->lines()->whereNotNull('warehouse_id')->value('warehouse_id');
-        if ($warehouseId === null) {
-            $invoice = $note instanceof SalesCreditNote
-                ? SalesInvoice::query()->find($note->sales_invoice_id)
-                : PurchaseInvoice::query()->find($note->purchase_invoice_id);
-            $warehouseId = $invoice?->warehouse_id;
-        }
+        $branchId = $document->getAttribute('branch_id');
 
-        return $this->warehouseBranch($warehouseId);
+        return $branchId !== null ? (int) $branchId : null;
     }
 
     private function sameRate(mixed $left, mixed $right): bool
@@ -854,16 +870,6 @@ class JournalPostingService
             PaymentMethodType::Cheque => AccountRole::ChequesToCollect,
             default => AccountRole::Bank,
         });
-    }
-
-    private function warehouseBranch(mixed $warehouseId): ?int
-    {
-        if ($warehouseId === null) {
-            return null;
-        }
-        $branchId = Warehouse::query()->whereKey((int) $warehouseId)->value('branch_id');
-
-        return $branchId !== null ? (int) $branchId : null;
     }
 
     /**

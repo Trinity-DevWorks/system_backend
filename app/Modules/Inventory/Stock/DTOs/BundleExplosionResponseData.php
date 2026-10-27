@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\Enums\BundleExplosionStatus;
 use App\Modules\Inventory\Stock\Models\BundleExplosion;
@@ -24,6 +25,7 @@ readonly class BundleExplosionResponseData
 
         $payload = [
             'id' => $document->id,
+            ...DocumentBranchPayload::of($document),
             'bex_number' => $document->bex_number,
             'warehouse_id' => $document->warehouse_id,
             'item_id' => $document->item_id,

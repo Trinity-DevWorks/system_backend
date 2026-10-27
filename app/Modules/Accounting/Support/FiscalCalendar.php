@@ -87,6 +87,22 @@ final class FiscalCalendar
     }
 
     /**
+     * Current fiscal month to date. Fiscal years start on the first of a month,
+     * so the fiscal month that contains today is that calendar month.
+     *
+     * @return array{from: string, to: string}
+     */
+    public function currentMonthToDate(): array
+    {
+        $today = $this->today();
+
+        return [
+            'from' => Carbon::parse($today)->startOfMonth()->toDateString(),
+            'to' => $today,
+        ];
+    }
+
+    /**
      * Same length, ending the day before `$from`.
      *
      * @return array{from: string, to: string}
