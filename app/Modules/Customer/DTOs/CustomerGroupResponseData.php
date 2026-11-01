@@ -14,6 +14,7 @@ readonly class CustomerGroupResponseData
         public string $code,
         public string $name,
         public bool $isActive,
+        public ?int $priceListId,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -25,6 +26,7 @@ readonly class CustomerGroupResponseData
             code: $group->code,
             name: $group->name,
             isActive: (bool) $group->is_active,
+            priceListId: $group->price_list_id !== null ? (int) $group->price_list_id : null,
             createdAt: (string) $group->created_at,
             updatedAt: (string) $group->updated_at,
         );
@@ -52,6 +54,7 @@ readonly class CustomerGroupResponseData
             'code' => $this->code,
             'name' => $this->name,
             'is_active' => $this->isActive,
+            'price_list_id' => $this->priceListId,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];

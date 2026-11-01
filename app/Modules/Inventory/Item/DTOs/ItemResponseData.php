@@ -17,6 +17,8 @@ readonly class ItemResponseData
 {
     public function __construct(
         public string $id,
+        public ?string $parentItemId,
+        public bool $isVariantParent,
         public string $name,
         public ?string $sku,
         public ?string $itemCode,
@@ -63,6 +65,8 @@ readonly class ItemResponseData
 
         return new self(
             id: $item->id,
+            parentItemId: $item->parent_item_id,
+            isVariantParent: (bool) $item->is_variant_parent,
             name: $item->name,
             sku: $item->sku,
             itemCode: $item->item_code,
@@ -122,6 +126,8 @@ readonly class ItemResponseData
     {
         return [
             'id' => $this->id,
+            'parent_item_id' => $this->parentItemId,
+            'is_variant_parent' => $this->isVariantParent,
             'name' => $this->name,
             'sku' => $this->sku,
             'item_code' => $this->itemCode,

@@ -28,6 +28,7 @@ readonly class SalesInvoiceLineResponseData
             'id' => $line->id,
             'sales_invoice_id' => $line->sales_invoice_id,
             'sales_order_line_id' => $line->sales_order_line_id,
+            'delivery_note_line_id' => $line->delivery_note_line_id,
             'order_remaining_quantity' => self::orderRemainingQuantity($line),
             'item_id' => $line->item_id,
             'item_uom_id' => $line->item_uom_id,

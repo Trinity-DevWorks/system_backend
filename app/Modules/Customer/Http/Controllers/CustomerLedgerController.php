@@ -12,6 +12,7 @@ use App\Modules\Customer\DTOs\CustomerLedgerEntryResponseData;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerLedgerEntry;
 use App\Modules\Customer\Services\CustomerLedgerService;
+use App\Support\Decimal;
 use App\Support\Export\LedgerStatementDocument;
 use App\Support\Export\TabularExportService;
 use Illuminate\Http\JsonResponse;
@@ -121,10 +122,8 @@ class CustomerLedgerController extends Controller
         foreach ($customer->balances as $cb) {
             $currencyId = (int) $cb->currency_id;
             $balStr = $this->ledgerService->balanceInCurrency($customer, $currencyId);
-            $balance = (float) $balStr;
-            $creditLimit = (float) $cb->credit_limit;
-            $outstanding = max(0.0, $balance);
-            $remainingCredit = max(0.0, $creditLimit - $outstanding);
+            $outstanding = Decimal::max('0', $balStr);
+            $remainingCredit = Decimal::max('0', Decimal::sub($cb->credit_limit, $outstanding));
 
             $currencies[] = [
                 'currency_id' => $currencyId,

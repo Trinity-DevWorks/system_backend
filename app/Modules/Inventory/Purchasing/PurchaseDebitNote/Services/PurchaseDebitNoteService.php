@@ -21,10 +21,11 @@ use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
 use App\Support\ProportionalCredit;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -212,7 +213,6 @@ class PurchaseDebitNoteService
 
         return DB::transaction(function () use ($data, $userId, $invoice): PurchaseDebitNote {
             $note = PurchaseDebitNote::query()->create([
-                'debit_note_number' => SequentialCodeGenerator::next(PurchaseDebitNote::class, 'debit_note_number', 'PDN-'),
                 'purchase_invoice_id' => $invoice->id,
                 'supplier_id' => $invoice->supplier_id,
                 'currency_id' => $invoice->currency_id,
@@ -295,6 +295,7 @@ class PurchaseDebitNoteService
     {
         return DB::transaction(function () use ($note, $userId): PurchaseDebitNote {
             $locked = PurchaseDebitNote::query()->whereKey($note->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'debit_note_number', DocumentType::PurchaseDebitNote, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->debit_date);
             if ($locked->status !== PurchaseDebitNoteStatus::Draft) {
                 $this->fail('Only a draft debit note can be posted.', 'PURCHASE_DEBIT_NOTE_NOT_DRAFT');
             }

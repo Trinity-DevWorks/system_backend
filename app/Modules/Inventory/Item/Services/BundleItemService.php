@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Item\Services;
 use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Support\BundleItemRules;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -35,7 +36,7 @@ class BundleItemService
             return BundleItem::query()->create([
                 'bundle_item_id' => $bundle->id,
                 'child_item_id' => $data['child_item_id'],
-                'quantity' => number_format((float) $data['quantity'], 6, '.', ''),
+                'quantity' => Decimal::round($data['quantity'], 6),
             ])->load(['childItem.itemType']);
         });
     }
@@ -45,7 +46,7 @@ class BundleItemService
         $this->assertScoped($bundle, $row);
 
         $row->update([
-            'quantity' => number_format((float) $quantity, 6, '.', ''),
+            'quantity' => Decimal::round($quantity, 6),
         ]);
 
         return $row->refresh()->load(['childItem.itemType']);
@@ -70,7 +71,7 @@ class BundleItemService
             $lines = [];
             foreach ($components as $row) {
                 $childId = (string) $row['child_item_id'];
-                $lines[$childId] = number_format((float) $row['quantity'], 6, '.', '');
+                $lines[$childId] = Decimal::round($row['quantity'], 6);
             }
 
             foreach (array_keys($lines) as $childId) {

@@ -52,8 +52,9 @@ return new class extends Migration
             $table->decimal('quantity', 14, 6);
             $table->decimal('base_quantity', 14, 6);
             $table->decimal('invoiced_base_quantity', 14, 6)->default(0);
+            $table->decimal('delivered_base_quantity', 14, 6)->default(0);
             $table->decimal('conversion_factor', 14, 6)->default(1);
-            $table->decimal('unit_price', 14, 4)->default(0);
+            $table->decimal('unit_price', 20, 6)->default(0);
             $table->decimal('discount_percent', 8, 4)->default(0);
             $table->decimal('discount_amount', 20, 4)->default(0);
             $table->decimal('tax_rate', 8, 4)->default(0);
@@ -71,10 +72,26 @@ return new class extends Migration
         Schema::table('sales_quotations', function (Blueprint $table) {
             $table->foreignUuid('sales_order_id')->nullable()->after('created_by')->constrained('sales_orders')->restrictOnDelete();
         });
+
+        Schema::table('sales_invoices', function (Blueprint $table) {
+            $table->foreignUuid('sales_order_id')->nullable()->after('customer_id')->constrained('sales_orders')->restrictOnDelete();
+            $table->index('sales_order_id');
+        });
+
+        Schema::table('sales_invoice_lines', function (Blueprint $table) {
+            $table->foreignId('sales_order_line_id')->nullable()->after('sales_invoice_id')->constrained('sales_order_lines')->restrictOnDelete();
+            $table->index('sales_order_line_id');
+        });
     }
 
     public function down(): void
     {
+        Schema::table('sales_invoice_lines', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('sales_order_line_id');
+        });
+        Schema::table('sales_invoices', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('sales_order_id');
+        });
         Schema::table('sales_quotations', function (Blueprint $table) {
             $table->dropConstrainedForeignId('sales_order_id');
         });

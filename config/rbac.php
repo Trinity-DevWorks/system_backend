@@ -52,6 +52,14 @@ return [
             'label' => 'Company Profile Management',
             'actions' => $viewEdit,
         ],
+        'document_numbering' => [
+            'label' => 'Document Numbering',
+            'actions' => $viewEdit,
+        ],
+        'print_settings' => [
+            'label' => 'Print Settings',
+            'actions' => $viewEdit,
+        ],
         'company_settings' => [
             'label' => 'Company Settings Management',
             'actions' => $viewEdit,
@@ -63,6 +71,10 @@ return [
 
         'brands' => [
             'label' => 'Brand Management',
+            'actions' => $crud,
+        ],
+        'item_attributes' => [
+            'label' => 'Item Attributes (Variants)',
             'actions' => $crud,
         ],
         'categories' => [
@@ -127,9 +139,34 @@ return [
             'label' => 'Sales Order Management',
             'actions' => [...$crud, 'print'],
         ],
+        'cash_bank_accounts' => [
+            'label' => 'Cash & Bank Account Management',
+            'actions' => $crud,
+        ],
+        'treasury_transfers' => [
+            'label' => 'Cash/Bank Transfer Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'expense_vouchers' => [
+            'label' => 'Expense Voucher Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'price_lists' => [
+            'label' => 'Price List Management',
+            'actions' => $crud,
+        ],
+        'delivery_notes' => [
+            'label' => 'Delivery Note Management',
+            'actions' => [...$crud, 'reverse', 'print'],
+        ],
         'sales_invoices' => [
             'label' => 'Sales Invoice Management',
             'actions' => [...$crud, 'reverse', 'print'],
+        ],
+        // Lets a role post invoices / confirm orders above the customer's credit limit.
+        'credit_limit_override' => [
+            'label' => 'Override Customer Credit Limit',
+            'actions' => ['edit'],
         ],
         'customer_receipts' => [
             'label' => 'Customer Receipt Management',

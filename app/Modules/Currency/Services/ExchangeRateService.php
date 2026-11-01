@@ -7,6 +7,8 @@ namespace App\Modules\Currency\Services;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Models\CurrencyPairRate;
 use App\Modules\Currency\Models\CurrencyPairRateHistory;
+use App\Support\Decimal;
+use App\Support\ExchangeRateSnapshot;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -17,10 +19,10 @@ class ExchangeRateService
      *
      * @throws \InvalidArgumentException
      */
-    public function getRate(string $fromCode, string $toCode): float
+    public function getRate(string $fromCode, string $toCode): string
     {
         if ($fromCode === $toCode) {
-            return 1.0;
+            return '1';
         }
 
         $fromCurrency = Currency::query()->where('code', $fromCode)->first();
@@ -36,10 +38,10 @@ class ExchangeRateService
     /**
      * @throws \InvalidArgumentException
      */
-    public function getRateById(int $fromCurrencyId, int $toCurrencyId): float
+    public function getRateById(int $fromCurrencyId, int $toCurrencyId): string
     {
         if ($fromCurrencyId === $toCurrencyId) {
-            return 1.0;
+            return '1';
         }
 
         $pair = CurrencyPairRate::query()
@@ -48,7 +50,7 @@ class ExchangeRateService
             ->first();
 
         if ($pair) {
-            return (float) $pair->rate;
+            return Decimal::of($pair->rate);
         }
 
         $pairReversed = CurrencyPairRate::query()
@@ -57,12 +59,7 @@ class ExchangeRateService
             ->first();
 
         if ($pairReversed) {
-            $r = (float) $pairReversed->rate;
-            if ($r <= 0) {
-                throw new \InvalidArgumentException('Exchange rate must be greater than 0');
-            }
-
-            return 1.0 / $r;
+            return $this->inverse($pairReversed->rate);
         }
 
         $from = Currency::query()->find($fromCurrencyId);
@@ -78,12 +75,13 @@ class ExchangeRateService
      *
      * @throws \InvalidArgumentException
      */
-    public function setPairRate(int $fromCurrencyId, int $toCurrencyId, float $rate, ?string $updatedBy = null): CurrencyPairRate
+    public function setPairRate(int $fromCurrencyId, int $toCurrencyId, string|int|float $rate, ?string $updatedBy = null): CurrencyPairRate
     {
         if ($fromCurrencyId === $toCurrencyId) {
             throw new \InvalidArgumentException('From and to currency must be different');
         }
-        if ($rate <= 0) {
+        $rate = Decimal::of($rate);
+        if (! Decimal::isPositive($rate)) {
             throw new \InvalidArgumentException('Exchange rate must be greater than 0');
         }
 
@@ -144,12 +142,12 @@ class ExchangeRateService
     /**
      * Rate as of a calendar date using history windows, else current pair table.
      *
-     * @return array{rate: float, source: 'current'|'history', effective_from?: string, effective_to?: string|null}
+     * @return array{rate: string, source: 'current'|'history', effective_from?: string, effective_to?: string|null}
      */
     public function getRateAsOfDate(string $fromCode, string $toCode, string $date): array
     {
         if ($fromCode === $toCode) {
-            return ['rate' => 1.0, 'source' => 'current'];
+            return ['rate' => '1', 'source' => 'current'];
         }
 
         $fromCurrency = Currency::query()->where('code', $fromCode)->first();
@@ -177,7 +175,7 @@ class ExchangeRateService
 
         if ($historyRow) {
             return [
-                'rate' => (float) $historyRow->rate,
+                'rate' => Decimal::of($historyRow->rate),
                 'source' => 'history',
                 'effective_from' => $historyRow->effective_from?->toIso8601String(),
                 'effective_to' => $historyRow->effective_to?->toIso8601String(),
@@ -197,13 +195,8 @@ class ExchangeRateService
             ->first();
 
         if ($historyReversed) {
-            $r = (float) $historyReversed->rate;
-            if ($r <= 0) {
-                throw new \InvalidArgumentException('Exchange rate must be greater than 0');
-            }
-
             return [
-                'rate' => 1.0 / $r,
+                'rate' => $this->inverse($historyReversed->rate),
                 'source' => 'history',
                 'effective_from' => $historyReversed->effective_from?->toIso8601String(),
                 'effective_to' => $historyReversed->effective_to?->toIso8601String(),
@@ -286,5 +279,18 @@ class ExchangeRateService
             'currency' => $currency,
             'pairs' => $result,
         ];
+    }
+
+    /**
+     * Rate for the opposite direction of a stored pair (1 / rate), exact to the snapshot scale.
+     */
+    private function inverse(mixed $storedRate): string
+    {
+        $rate = Decimal::of($storedRate);
+        if (! Decimal::isPositive($rate)) {
+            throw new \InvalidArgumentException('Exchange rate must be greater than 0');
+        }
+
+        return Decimal::round(Decimal::div('1', $rate, ExchangeRateSnapshot::SCALE + 6), ExchangeRateSnapshot::SCALE);
     }
 }

@@ -26,6 +26,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property string|null $parent_item_id variant child: the template item
+ * @property bool $is_variant_parent template item; has no stock and is not sold itself
+ */
 #[Fillable([
     'name',
     'sku',
@@ -66,6 +70,7 @@ class Item extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
+            'is_variant_parent' => 'boolean',
             'send_to_kitchen' => 'boolean',
             'qr_enabled' => 'boolean',
             'track_inventory' => 'boolean',

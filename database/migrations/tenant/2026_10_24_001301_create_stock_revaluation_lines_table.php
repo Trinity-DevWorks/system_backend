@@ -18,10 +18,10 @@ return new class extends Migration
             $table->foreignId('lot_id')->nullable()->constrained('inventory_lots')->restrictOnDelete();
             $table->decimal('quantity_on_hand', 14, 6)->nullable();
             $table->decimal('base_quantity', 14, 6)->nullable();
-            $table->decimal('old_unit_cost', 14, 4)->nullable();
-            $table->decimal('old_inventory_value', 14, 4)->nullable();
-            $table->decimal('new_unit_cost', 14, 4);
-            $table->decimal('new_inventory_value', 14, 4)->nullable();
+            $table->decimal('old_unit_cost', 20, 6)->nullable();
+            $table->decimal('old_inventory_value', 20, 4)->nullable();
+            $table->decimal('new_unit_cost', 20, 6);
+            $table->decimal('new_inventory_value', 20, 4)->nullable();
             $table->decimal('value_delta', 14, 4)->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();

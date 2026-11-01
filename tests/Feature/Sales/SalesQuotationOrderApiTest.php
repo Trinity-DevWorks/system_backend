@@ -18,6 +18,7 @@ use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
+use App\Modules\Inventory\Stock\Services\StockReservationService;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\Sales\SalesOrder\Models\SalesOrderLine;
@@ -79,7 +80,7 @@ class SalesQuotationOrderApiTest extends TestCase
             ->assertJsonPath('data.status', 'draft');
 
         $quoteId = (string) $quote->json('data.id');
-        $this->assertMatchesRegularExpression('/^QT-\d{6}$/', (string) $quote->json('data.quotation_number'));
+        $this->assertMatchesRegularExpression('/^QT-[A-Z0-9]+-\d{4}-\d{6}$/', (string) $quote->json('data.quotation_number'));
         $lineTotal = (string) $quote->json('data.lines.0.line_total');
 
         $sent = $this->asTenantRequest($this->token)
@@ -112,7 +113,7 @@ class SalesQuotationOrderApiTest extends TestCase
             ->assertJsonPath('data.customer_id', $this->catalog['customer_id'])
             ->assertJsonPath('data.currency_id', $this->catalog['usd_id']);
 
-        $this->assertMatchesRegularExpression('/^SO-\d{6}$/', (string) $order->json('data.order_number'));
+        $this->assertMatchesRegularExpression('/^SO-[A-Z0-9]+-\d{4}-\d{6}$/', (string) $order->json('data.order_number'));
         $this->assertSame($lineTotal, (string) $order->json('data.lines.0.line_total'));
         $this->assertEqualsWithDelta(5.0, (float) $order->json('data.lines.0.quantity'), 0.0001);
 
@@ -248,6 +249,98 @@ class SalesQuotationOrderApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'posted')
             ->assertJsonPath('data.sales_order_id', null);
+    }
+
+    public function test_confirmed_order_reserves_stock_and_blocks_other_sales(): void
+    {
+        // 10 on hand. Order A reserves 8.
+        $orderA = $this->createStockOrder(8);
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-orders/{$orderA}/confirm"))->assertOk();
+
+        // Order B cannot reserve 3 more (only 2 available).
+        $orderB = $this->createStockOrder(3);
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-orders/{$orderB}/confirm"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'STOCK_INSUFFICIENT_TO_RESERVE');
+
+        // A direct invoice may use the 2 free units but not reserved ones.
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices/'.$this->createStockInvoice(3).'/post'))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'STOCK_RESERVED');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices/'.$this->createStockInvoice(2).'/post'))
+            ->assertOk();
+
+        // The order's own invoice consumes its reservation.
+        $invoiceId = (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-orders/{$orderA}/invoice"))
+            ->assertCreated()
+            ->json('data.id');
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoiceId}/post"))->assertOk();
+        $this->assertSame('0.000000', $this->reserved());
+
+        // Reversing that invoice puts the reservation back.
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoiceId}/reverse"))->assertOk();
+        $this->assertSame('8.000000', $this->reserved());
+    }
+
+    public function test_cancel_and_close_release_reservations(): void
+    {
+        $order = $this->createStockOrder(6);
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-orders/{$order}/confirm"))->assertOk();
+        $this->assertSame('6.000000', $this->reserved());
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-orders/{$order}/close"))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'closed');
+        $this->assertSame('0.000000', $this->reserved());
+
+        $other = $this->createStockOrder(4);
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-orders/{$other}/confirm"))->assertOk();
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-orders/{$other}/cancel"))->assertOk();
+        $this->assertSame('0.000000', $this->reserved());
+
+        // Balances screen exposes reserved / available.
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl('/sales-orders/'.$this->createStockOrder(5).'/confirm'))->assertOk();
+        $row = collect($this->asTenantRequest($this->token)->getJson($this->tenantUrl('/stock/balances'))->assertOk()->json('data'))
+            ->first(fn ($r) => is_array($r) && ($r['item_id'] ?? null) === $this->catalog['stock_item_id']);
+        if (is_array($row)) {
+            $this->assertSame('5.000000', $row['reserved_qty']);
+            $this->assertSame('5.000000', $row['available_qty']);
+        }
+    }
+
+    private function createStockOrder(int|float $qty): string
+    {
+        return (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-orders'), [
+                'customer_id' => $this->catalog['customer_id'],
+                'warehouse_id' => $this->catalog['warehouse_id'],
+                'lines' => [['item_id' => $this->catalog['stock_item_id'], 'quantity' => $qty, 'unit_price' => 10]],
+            ])
+            ->assertCreated()
+            ->json('data.id');
+    }
+
+    private function createStockInvoice(int|float $qty): string
+    {
+        return (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices'), [
+                'customer_id' => $this->catalog['customer_id'],
+                'warehouse_id' => $this->catalog['warehouse_id'],
+                'lines' => [['item_id' => $this->catalog['stock_item_id'], 'quantity' => $qty, 'unit_price' => 10]],
+            ])
+            ->assertCreated()
+            ->json('data.id');
+    }
+
+    private function reserved(): string
+    {
+        return $this->tenant->run(fn (): string => app(StockReservationService::class)
+            ->reservedFor($this->catalog['stock_item_id'], (int) $this->catalog['warehouse_id']));
     }
 
     /**

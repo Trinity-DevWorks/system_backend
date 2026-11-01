@@ -19,10 +19,11 @@ use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteStatus;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Support\CurrencyCashRound;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -138,7 +139,6 @@ class CustomerRefundService
             $refund = CustomerRefund::query()->create([
                 ...$this->headerAttributes($data, null),
                 'customer_id' => (string) $data['customer_id'],
-                'refund_number' => SequentialCodeGenerator::next(CustomerRefund::class, 'refund_number', 'CRF-'),
                 'status' => CustomerRefundStatus::Draft,
                 'created_by' => $userId,
             ]);
@@ -195,6 +195,7 @@ class CustomerRefundService
     {
         return DB::transaction(function () use ($refund, $userId): CustomerRefund {
             $locked = CustomerRefund::query()->whereKey($refund->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'refund_number', DocumentType::CustomerRefund, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->refund_date);
             if ($locked->status !== CustomerRefundStatus::Draft) {
                 $this->fail('Only a draft customer refund can be posted.', 'CUSTOMER_REFUND_NOT_DRAFT');
             }

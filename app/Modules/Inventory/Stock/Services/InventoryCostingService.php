@@ -42,7 +42,7 @@ class InventoryCostingService
             return null;
         }
 
-        $cost = Math::money($base->cost_price);
+        $cost = Math::unitCost($base->cost_price);
 
         return bccomp($cost, '0', Math::MONEY_SCALE) < 0 ? null : $cost;
     }
@@ -106,10 +106,10 @@ class InventoryCostingService
         string $newUnitCost,
         int $movementId,
     ): array {
-        $newUnitCost = $this->normalizeCost($newUnitCost) ?? Math::money(0);
+        $newUnitCost = $this->normalizeCost($newUnitCost) ?? Math::unitCost(0);
         $qty = Math::qty($balance->quantity);
         $oldValue = Math::money($balance->inventory_value);
-        $oldUnitCost = Math::money($balance->unit_cost);
+        $oldUnitCost = Math::unitCost($balance->unit_cost);
 
         if (bccomp($qty, '0', Math::QTY_SCALE) <= 0) {
             abort(422, 'Cannot revalue zero or negative on-hand quantity.', [
@@ -117,7 +117,7 @@ class InventoryCostingService
             ]);
         }
 
-        if (bccomp($newUnitCost, $oldUnitCost, Math::MONEY_SCALE) === 0) {
+        if (bccomp($newUnitCost, $oldUnitCost, Math::UNIT_COST_SCALE) === 0) {
             abort(422, 'New unit cost must differ from the current balance cost.', [
                 'X-Error-Code' => 'STOCK_REVALUATION_NO_CHANGE',
             ]);
@@ -174,11 +174,11 @@ class InventoryCostingService
         $qty = Math::qty($balance->quantity);
         $oldValue = Math::money($balance->inventory_value);
         $newValue = bcsub($oldValue, Math::money($originalValueDelta), Math::MONEY_SCALE);
-        $restoredUnitCost = $this->normalizeCost($oldUnitCost) ?? Math::money(0);
+        $restoredUnitCost = $this->normalizeCost($oldUnitCost) ?? Math::unitCost(0);
 
         if (bccomp($qty, '0', Math::QTY_SCALE) <= 0) {
             $newValue = Math::money(0);
-            $restoredUnitCost = Math::money(0);
+            $restoredUnitCost = Math::unitCost(0);
         } elseif (bccomp($newValue, '0', Math::MONEY_SCALE) < 0) {
             $newValue = Math::money(0);
         }
@@ -245,7 +245,7 @@ class InventoryCostingService
 
         if (bccomp($originalQuantityDelta, '0', Math::QTY_SCALE) < 0 && $method->usesLayers()) {
             $restoreQty = Math::absQty($originalQuantityDelta);
-            $unitCost = $this->normalizeCost($originalUnitCost) ?? Math::money(0);
+            $unitCost = $this->normalizeCost($originalUnitCost) ?? Math::unitCost(0);
             if (bccomp($restoreQty, '0', Math::QTY_SCALE) > 0) {
                 InventoryCostLayer::query()->create([
                     'item_id' => $item->id,
@@ -292,7 +292,7 @@ class InventoryCostingService
     ): string {
         $document = $this->normalizeCost($documentUnitCost);
         $standard = $this->standardUnitCost($item);
-        $average = Math::money($balance->unit_cost);
+        $average = Math::unitCost($balance->unit_cost);
 
         return match ($method) {
             InventoryCostingMethod::Standard => $this->requireCost(
@@ -359,12 +359,12 @@ class InventoryCostingService
 
         $unitCost = match ($method) {
             InventoryCostingMethod::Standard => $this->requireCost(
-                $this->standardUnitCost($item) ?? $this->normalizeCost(Math::money($balance->unit_cost)),
+                $this->standardUnitCost($item) ?? $this->normalizeCost(Math::unitCost($balance->unit_cost)),
                 'Set a cost price on the item base UOM before issuing stock under standard costing.',
                 'STOCK_STANDARD_COST_REQUIRED',
             ),
-            InventoryCostingMethod::MovingAverage => Math::money($balance->unit_cost),
-            default => Math::money($balance->unit_cost),
+            InventoryCostingMethod::MovingAverage => Math::unitCost($balance->unit_cost),
+            default => Math::unitCost($balance->unit_cost),
         };
 
         $newQty = bcsub($oldQty, $qty, Math::QTY_SCALE);
@@ -481,9 +481,9 @@ class InventoryCostingService
             ->get();
 
         if ($preferredUnitCost !== null) {
-            $preferred = Math::money($preferredUnitCost);
+            $preferred = Math::unitCost($preferredUnitCost);
             $layers = $layers->sortBy(function (InventoryCostLayer $layer) use ($preferred): int {
-                return bccomp(Math::money($layer->unit_cost), $preferred, Math::MONEY_SCALE) === 0 ? 0 : 1;
+                return bccomp(Math::unitCost($layer->unit_cost), $preferred, Math::UNIT_COST_SCALE) === 0 ? 0 : 1;
             })->values();
         }
 
@@ -494,7 +494,7 @@ class InventoryCostingService
 
             $layerQty = Math::qty($layer->quantity_remaining);
             $take = bccomp($layerQty, $remaining, Math::QTY_SCALE) <= 0 ? $layerQty : $remaining;
-            $consumedValue = bcadd($consumedValue, Math::value($take, Math::money($layer->unit_cost)), Math::MONEY_SCALE);
+            $consumedValue = bcadd($consumedValue, Math::value($take, Math::unitCost($layer->unit_cost)), Math::MONEY_SCALE);
             $left = bcsub($layerQty, $take, Math::QTY_SCALE);
             $layer->update(['quantity_remaining' => $left]);
             $remaining = bcsub($remaining, $take, Math::QTY_SCALE);
@@ -517,10 +517,10 @@ class InventoryCostingService
     ): void {
         if (bccomp($qty, '0', Math::QTY_SCALE) < 0) {
             $value = Math::money(0);
-            $unitCost = $fallbackUnitCost ?? Math::money($balance->unit_cost);
+            $unitCost = $fallbackUnitCost ?? Math::unitCost($balance->unit_cost);
         } elseif (bccomp($qty, '0', Math::QTY_SCALE) === 0) {
             $value = Math::money(0);
-            $unitCost = Math::money(0);
+            $unitCost = Math::unitCost(0);
         } else {
             $unitCost = Math::unitCostFromValue($qty, $value);
         }
@@ -537,8 +537,8 @@ class InventoryCostingService
             return null;
         }
 
-        $cost = Math::money($value);
-        if (bccomp($cost, '0', Math::MONEY_SCALE) < 0) {
+        $cost = Math::unitCost($value);
+        if (bccomp($cost, '0', Math::UNIT_COST_SCALE) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 

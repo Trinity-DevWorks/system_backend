@@ -28,6 +28,7 @@ readonly class CustomerResponseData
         public ?string $phone,
         public string $type,
         public ?int $customerGroupId,
+        public ?int $priceListId,
         public ?array $customerGroup,
         public ?string $salesmanId,
         public ?array $salesman,
@@ -124,6 +125,7 @@ readonly class CustomerResponseData
             phone: $customer->phone,
             type: $customer->type instanceof CustomerType ? $customer->type->value : (string) $customer->type,
             customerGroupId: $customer->customer_group_id,
+            priceListId: $customer->price_list_id !== null ? (int) $customer->price_list_id : null,
             customerGroup: $group ? ['id' => $group->id, 'name' => $group->name] : null,
             salesmanId: $customer->salesman_id,
             salesman: $sm ? [
@@ -202,6 +204,7 @@ readonly class CustomerResponseData
             'phone' => $this->phone,
             'type' => $this->type,
             'customer_group_id' => $this->customerGroupId,
+            'price_list_id' => $this->priceListId,
             'customer_group' => $this->customerGroup,
             'salesman_id' => $this->salesmanId,
             'salesman' => $this->salesman,

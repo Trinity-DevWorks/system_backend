@@ -43,7 +43,7 @@ class SalesQuotationLine extends Model implements AuditableContract
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',
             'conversion_factor' => 'decimal:6',
-            'unit_price' => 'decimal:4',
+            'unit_price' => 'decimal:6',
             'discount_percent' => 'decimal:4',
             'discount_amount' => 'decimal:4',
             'tax_rate' => 'decimal:4',

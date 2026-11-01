@@ -19,7 +19,8 @@ class CentralAuthController extends Controller
     {
         $user = User::query()->where('email', $request->validated('email'))->first();
 
-        if (! $user || ! Hash::check($request->validated('password'), (string) $user->password)) {
+        // Central login is for platform administrators only; tenant users sign in on their tenant domain.
+        if (! $user || ! Hash::check($request->validated('password'), (string) $user->password) || ! $user->is_super_admin) {
             return ApiResponse::error('Invalid credentials.', 422, null, [], null, null, 'INVALID_CREDENTIALS');
         }
 
@@ -27,7 +28,8 @@ class CentralAuthController extends Controller
             return ApiResponse::forbidden('Account is inactive.', 'ACCOUNT_INACTIVE');
         }
 
-        $plainToken = $user->createToken('central')->plainTextToken;
+        $ttlMinutes = max(1, (int) config('security.central_token_ttl_minutes', 720));
+        $plainToken = $user->createToken('central', ['*'], now()->addMinutes($ttlMinutes))->plainTextToken;
 
         return ApiResponse::success([
             'access_token' => $plainToken,

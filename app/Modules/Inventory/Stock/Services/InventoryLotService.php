@@ -9,6 +9,7 @@ use App\Modules\Inventory\Stock\Models\InventoryLot;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Notification\Services\InstantLotExpiryNotifier;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
 use App\Support\ListPagination;
 use Carbon\Carbon;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -130,7 +131,7 @@ class InventoryLotService
                     'expiry_date' => $lot->expiry_date?->toDateString(),
                     'is_expired' => $lot->isExpired(),
                     'quantity' => isset($qtyByLotId[$lot->id])
-                        ? number_format((float) $qtyByLotId[$lot->id], 6, '.', '')
+                        ? Decimal::round($qtyByLotId[$lot->id], 6)
                         : '0.000000',
                 ];
             })
@@ -261,7 +262,7 @@ class InventoryLotService
                 'warehouse_id' => (int) $row->warehouse_id,
                 'lot_number' => (string) $lot->lot_number,
                 'expiry_date' => $expiry,
-                'quantity' => number_format((float) $row->quantity, 6, '.', ''),
+                'quantity' => Decimal::round($row->quantity, 6),
                 'is_expired' => $expiry < $today,
             ];
         }

@@ -34,7 +34,7 @@ class StockCountLine extends Model implements AuditableContract
             'theoretical_quantity' => 'decimal:6',
             'counted_quantity' => 'decimal:6',
             'variance_quantity' => 'decimal:6',
-            'unit_cost' => 'decimal:4',
+            'unit_cost' => 'decimal:6',
         ];
     }
 

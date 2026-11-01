@@ -25,7 +25,7 @@ final class DocumentLetterhead
      *   logo_data_uri: string|null
      * }
      */
-    public function resolve(bool $arabic = false): array
+    public function resolve(bool $arabic = false, ?DocumentPdfOptions $options = null): array
     {
         $profile = $this->companyProfileService->get();
         $name = trim((string) ($profile->company_name ?? ''));
@@ -40,11 +40,11 @@ final class DocumentLetterhead
         return [
             'company_name' => $shape($name) ?? $name,
             'legal_name' => $shape($profile->legal_name),
-            'tax_number' => $shape($profile->tax_number),
+            'tax_number' => ($options?->showTaxNumber ?? true) ? $shape($profile->tax_number) : null,
             'phone' => $shape($profile->phone),
             'email' => $shape($profile->email),
-            'address' => $shape($profile->address),
-            'logo_data_uri' => $this->logoDataUri($profile->logoAttachment),
+            'address' => ($options?->showAddress ?? true) ? $shape($profile->address) : null,
+            'logo_data_uri' => ($options?->showLogo ?? true) ? $this->logoDataUri($profile->logoAttachment) : null,
         ];
     }
 

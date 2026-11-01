@@ -12,6 +12,7 @@ use App\Modules\Supplier\DTOs\SupplierLedgerEntryResponseData;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierLedgerEntry;
 use App\Modules\Supplier\Services\SupplierLedgerService;
+use App\Support\Decimal;
 use App\Support\Export\LedgerStatementDocument;
 use App\Support\Export\TabularExportService;
 use Illuminate\Http\JsonResponse;
@@ -121,10 +122,8 @@ class SupplierLedgerController extends Controller
         foreach ($supplier->balances as $sb) {
             $currencyId = (int) $sb->currency_id;
             $balStr = $this->ledgerService->balanceInCurrency($supplier, $currencyId);
-            $balance = (float) $balStr;
-            $creditLimit = (float) $sb->credit_limit;
-            $outstanding = max(0.0, $balance);
-            $remainingCredit = max(0.0, $creditLimit - $outstanding);
+            $outstanding = Decimal::max('0', $balStr);
+            $remainingCredit = Decimal::max('0', Decimal::sub($sb->credit_limit, $outstanding));
 
             $currencies[] = [
                 'currency_id' => $currencyId,

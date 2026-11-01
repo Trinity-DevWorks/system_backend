@@ -79,6 +79,16 @@ class StockPipelineService
             'from_warehouse_id',
         );
 
+        $reserved = [];
+        $reservedRows = DB::query()
+            ->fromSub(app(StockReservationService::class)->reservedQuery(), 'rv')
+            ->whereIn('rv.item_id', $itemIds)
+            ->whereIn('rv.warehouse_id', $warehouseIds)
+            ->get();
+        foreach ($reservedRows as $row) {
+            $reserved[StockPipelineQuantities::pairKey((string) $row->item_id, (int) $row->warehouse_id)] = (string) $row->reserved_qty;
+        }
+
         $mapped = [];
         foreach ($unique as $key => [$itemId, $warehouseId]) {
             $mapped[$key] = StockPipelineQuantities::compose(
@@ -86,6 +96,7 @@ class StockPipelineService
                 $onOrder[$key] ?? '0',
                 $inTransitIn[$key] ?? '0',
                 $inTransitOut[$key] ?? '0',
+                $reserved[$key] ?? '0',
             );
         }
 

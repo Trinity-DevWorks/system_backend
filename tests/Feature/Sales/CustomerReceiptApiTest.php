@@ -114,12 +114,13 @@ class CustomerReceiptApiTest extends TestCase
                 ],
             ])
             ->assertCreated()
-            ->assertJsonPath('data.receipt_number', 'CR-000001')
+            ->assertJsonPath('data.receipt_number', null)
             ->json('data.id');
 
         $this->asTenantRequest($this->token)
             ->postJson($this->tenantUrl("/customer-receipts/{$id}/post"))
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonPath('data.receipt_number', fn ($n): bool => is_string($n) && preg_match('/^CR-[A-Z0-9]+-\d{4}-\d{6}$/', $n) === 1);
 
         $this->tenant->run(function () use ($first, $second): void {
             $this->assertEqualsWithDelta(0.0, (float) SalesInvoice::query()->findOrFail($first)->net_to_pay, 0.001);
@@ -444,7 +445,7 @@ class CustomerReceiptApiTest extends TestCase
             ->postJson($this->tenantUrl('/customer-receipts'), $payload)
             ->assertCreated();
 
-        $this->assertMatchesRegularExpression('/^CR-\d{6}$/', (string) $created->json('data.receipt_number'));
+        $this->assertNull($created->json('data.receipt_number'), 'Number is assigned at posting.');
         $id = (string) $created->json('data.id');
 
         $this->asTenantRequest($this->token)

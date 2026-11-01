@@ -1487,6 +1487,83 @@ class AccountingApiTest extends TestCase
             ->assertJsonPath('code', 'FISCAL_YEAR_START_LOCKED');
     }
 
+    public function test_year_end_close_posts_one_entry_per_branch_and_reverses_them_all(): void
+    {
+        Carbon::setTestNow('2027-02-01');
+        $home = $this->postManual([
+            ['account_id' => $this->accountId(self::CASH), 'debit' => 100],
+            ['account_id' => $this->accountId(self::REVENUE), 'credit' => 100],
+        ], '2026-03-01');
+        $north = $this->postManual([
+            ['account_id' => $this->accountId(self::CASH), 'debit' => 30],
+            ['account_id' => $this->accountId(self::REVENUE), 'credit' => 30],
+        ], '2026-04-01');
+        $noBranch = $this->postManual([
+            ['account_id' => $this->accountId(self::CASH), 'debit' => 5],
+            ['account_id' => $this->accountId(self::REVENUE), 'credit' => 5],
+        ], '2026-05-01');
+
+        [$homeId, $northId] = $this->tenant->run(function () use ($home, $north, $noBranch): array {
+            $homeId = (int) Branch::query()->where('is_default', true)->value('id');
+            $northId = (int) Branch::query()->create([
+                'name' => 'North', 'shortcut_name' => 'NTH', 'is_active' => true, 'is_default' => false,
+            ])->id;
+            JournalEntry::query()->whereKey($home)->update(['branch_id' => $homeId]);
+            JournalEntry::query()->whereKey($north)->update(['branch_id' => $northId]);
+            JournalEntry::query()->whereKey($noBranch)->update(['branch_id' => null]);
+
+            return [$homeId, $northId];
+        });
+
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl('/accounting/period'), ['books_closed_through' => '2026-12-31'])
+            ->assertOk();
+        $year = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/accounting/fiscal-years/close'), ['ends_on' => '2026-12-31'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'closed')
+            ->json('data');
+        $this->assertEqualsWithDelta(135, (float) $year['result'], 0.001);
+
+        // One closing entry per branch, plus one without a branch for the old entry that has none.
+        $closings = $this->tenant->run(fn (): array => JournalEntry::query()
+            ->where('source_type', 'year_end_close')
+            ->where('source_event', 'post')
+            ->pluck('branch_id')
+            ->map(fn ($id): ?int => $id === null ? null : (int) $id)
+            ->all());
+        $this->assertEqualsCanonicalizing([$homeId, $northId, null], $closings);
+
+        $this->assertBalance(0, self::REVENUE);
+        $this->assertEqualsWithDelta(0, $this->branchBalance(self::REVENUE, $homeId), 0.001);
+        $this->assertEqualsWithDelta(0, $this->branchBalance(self::REVENUE, $northId), 0.001);
+        $this->assertEqualsWithDelta(-100, $this->branchBalance('1210', $homeId), 0.001);
+        $this->assertEqualsWithDelta(-30, $this->branchBalance('1210', $northId), 0.001);
+
+        // Reversing the year reverses every branch's closing entry.
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/accounting/fiscal-years/'.$year['id'].'/reverse'))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'open');
+        $this->assertBalance(-135, self::REVENUE);
+        $this->assertBalance(0, '1210');
+        $this->assertSame(3, $this->tenant->run(fn (): int => JournalEntry::query()
+            ->where('source_type', 'year_end_close')
+            ->where('source_event', 'reverse')
+            ->count()));
+
+    }
+
+    private function branchBalance(string $code, int $branchId): float
+    {
+        return $this->tenant->run(function () use ($code, $branchId): float {
+            $id = (int) Account::query()->where('code', $code)->value('id');
+            $sum = app(AccountBalanceService::class)->totals(null, null, null, ['branch_id' => $branchId])[$id] ?? ['debit' => '0', 'credit' => '0'];
+
+            return (float) $sum['debit'] - (float) $sum['credit'];
+        });
+    }
+
     public function test_tenant_without_accounting_still_posts_an_invoice_dated_in_the_past(): void
     {
         $this->setAccountingModule(false);

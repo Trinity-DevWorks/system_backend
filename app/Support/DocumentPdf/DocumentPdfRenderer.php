@@ -20,7 +20,7 @@ final class DocumentPdfRenderer
     {
         $money = DocumentMoney::forOptions($options);
         $payload = array_merge([
-            'letterhead' => $this->letterhead->resolve($options->isArabic()),
+            'letterhead' => $this->letterhead->resolve($options->isArabic(), $options),
             'locale' => $options->locale,
             'rtl' => $options->isArabic(),
             'generatedAt' => $money->dateTime(now()) ?: now()->format('Y-m-d H:i'),
@@ -36,10 +36,51 @@ final class DocumentPdfRenderer
             'labels' => $this->labels($options),
         ], $data);
 
+        // Tenant print settings: signatures can only be turned off, never forced on.
+        $payload['showSignatures'] = (bool) $payload['showSignatures'] && $options->showSignatures;
+        $payload['footerText'] = $options->footerText !== null ? $money->text($options->footerText) : null;
+        $payload['termsText'] = $options->termsText !== null ? $money->text($options->termsText) : null;
+
+        if ($options->isReceipt() && $view === 'document-pdf.document') {
+            $pdf = Pdf::loadView('document-pdf.receipt', $payload)->setPaper([0, 0, self::RECEIPT_WIDTH, $this->receiptHeight($payload)]);
+            $pdf->render();
+
+            return $pdf;
+        }
+
         $pdf = Pdf::loadView($view, $payload)->setPaper($options->paper);
         $this->stampPageNumbers($pdf, $payload['labels']);
 
         return $pdf;
+    }
+
+    /** 80mm roll in points. */
+    public const RECEIPT_WIDTH = 226.77;
+
+    /**
+     * Roll paper has no fixed height: estimate it from the content so the receipt prints on one page.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function receiptHeight(array $payload): float
+    {
+        $count = static fn (mixed $v): int => is_array($v) ? count($v) : 0;
+        $textLines = static fn (?string $v): int => $v === null || $v === '' ? 0 : (int) ceil(mb_strlen($v) / 38) + substr_count($v, "\n");
+
+        $height = 200
+            + 30 * $count($payload['lines'] ?? [])
+            + 16 * $count($payload['allocations'] ?? [])
+            + 14 * $count($payload['totals'] ?? [])
+            + 13 * $count($payload['meta'] ?? [])
+            + 40 * $count($payload['parties'] ?? [])
+            + 11 * ($textLines(is_string($payload['notes'] ?? null) ? $payload['notes'] : null)
+                + $textLines(is_string($payload['termsText'] ?? null) ? $payload['termsText'] : null)
+                + $textLines(is_string($payload['footerText'] ?? null) ? $payload['footerText'] : null));
+        if (! empty($payload['letterhead']['logo_data_uri'])) {
+            $height += 50;
+        }
+
+        return (float) max(300, $height);
     }
 
     /**
@@ -57,8 +98,8 @@ final class DocumentPdfRenderer
         }
 
         $text = ($labels['page'] ?? 'Page').' {PAGE_NUM} '.($labels['of'] ?? 'of').' {PAGE_COUNT}';
-        // A4 portrait: ~595 x 842 pt; place in the bottom-right margin area.
-        $canvas->page_text(420, 820, $text, $font, 8, [0.53, 0.53, 0.53]);
+        // Bottom-right margin area, measured from the actual paper size.
+        $canvas->page_text($canvas->get_width() - 175, $canvas->get_height() - 22, $text, $font, 8, [0.53, 0.53, 0.53]);
     }
 
     /**

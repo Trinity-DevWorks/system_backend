@@ -26,9 +26,11 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 /**
  * @property Carbon|null $exempted_from
  * @property Carbon|null $exempted_to
+ * @property int|null $price_list_id
  */
 #[Fillable([
     'customer_group_id',
+    'price_list_id',
     'salesman_id',
     'payment_method_id',
     'payment_terms_id',

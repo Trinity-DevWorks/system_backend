@@ -6,19 +6,20 @@ namespace App\Modules\Inventory\Purchasing\Support;
 
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
+use App\Support\Decimal;
 
 final class PurchaseOrderLineQuantity
 {
     /**
      * @return array{quantity:string,base_quantity:string,item_uom_id:?int}
      */
-    public static function resolve(Item $item, float $quantity, ?int $itemUomId): array
+    public static function resolve(Item $item, mixed $quantity, ?int $itemUomId): array
     {
-        if ($quantity <= 0) {
+        if (! Decimal::isPositive($quantity)) {
             abort(422, 'Purchase order line quantity must be greater than zero.', ['X-Error-Code' => 'PURCHASE_ORDER_LINE_INVALID_QUANTITY']);
         }
 
-        $formattedQty = number_format($quantity, 6, '.', '');
+        $formattedQty = Decimal::round($quantity, 6);
 
         if ($itemUomId === null) {
             return [

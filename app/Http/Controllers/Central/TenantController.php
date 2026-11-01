@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Central;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Central\StoreTenantRequest;
 use App\Http\Responses\ApiResponse;
 use App\Jobs\BootstrapTenantRbac;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\ModuleEntitlementService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Stancl\Tenancy\Database\Models\Domain;
 
@@ -68,14 +67,10 @@ class TenantController extends Controller
         return ApiResponse::success($tenants, 'Tenants fetched successfully.');
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreTenantRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'domain' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255'],
-            'password' => ['required', 'string', 'confirmed', Password::defaults()],
-        ]);
+        /** @var array{name: string, domain: string, email: string, password: string} $validated */
+        $validated = $request->validated();
 
         $domain = strtolower(trim($validated['domain']));
         $tenantId = $this->tenantIdFromHost($domain);

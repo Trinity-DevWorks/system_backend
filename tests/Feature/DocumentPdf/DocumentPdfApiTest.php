@@ -7,6 +7,8 @@ namespace Tests\Feature\DocumentPdf;
 use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Modules\Accounting\Models\Account;
+use App\Modules\CompanyProfile\Models\CompanyProfile;
+use App\Modules\CompanyProfile\Services\CompanyProfileService;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Modules\Currency\Models\Currency;
@@ -24,6 +26,9 @@ use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Enums\WarehouseType;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\PermissionService;
+use App\Support\DocumentPdf\DocumentLetterhead;
+use App\Support\DocumentPdf\DocumentPdfOptions;
+use App\Support\TenantReferenceCache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Concerns\InteractsWithTenant;
@@ -223,7 +228,56 @@ class DocumentPdfApiTest extends TestCase
     /**
      * GET (not getJson) so the body is the raw PDF bytes rather than a JSON error envelope.
      */
-    private function assertPdfDownload(string $path): void
+    public function test_print_settings_change_paper_and_letterhead(): void
+    {
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/print-settings'))
+            ->assertOk()
+            ->assertJsonPath('data.paper', 'a4')
+            ->assertJsonPath('data.show_signatures', true);
+
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl('/print-settings'), [
+                'paper' => 'a5', 'show_logo' => true, 'show_tax_number' => false, 'show_address' => false,
+                'show_signatures' => false, 'footer_text' => 'Thank you', 'terms_text' => 'Goods sold are not returnable.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.paper', 'a5')
+            ->assertJsonPath('data.footer_text', 'Thank you');
+
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl('/print-settings'), ['paper' => 'a3'])
+            ->assertUnprocessable();
+
+        $letterhead = $this->tenant->run(function (): array {
+            CompanyProfile::singleton()->update(['tax_number' => 'TX-1', 'address' => 'Main st']);
+            TenantReferenceCache::forget(CompanyProfileService::CACHE_KEY);
+            $options = DocumentPdfOptions::fromRequest('en');
+            $this->assertSame('a5', $options->paper);
+            $this->assertFalse($options->showSignatures);
+
+            return app(DocumentLetterhead::class)->resolve(false, $options);
+        });
+        $this->assertNull($letterhead['tax_number']);
+        $this->assertNull($letterhead['address']);
+
+        $id = $this->postSalesInvoice();
+        // A5 portrait = 419.53 x 595.28 pt.
+        $this->assertMatchesRegularExpression('/MediaBox\s*\[[\d.\s]+419\.5/', $this->assertPdfDownload("/sales-invoices/{$id}/pdf"));
+    }
+
+    public function test_sales_invoice_prints_as_80mm_receipt_but_other_documents_ignore_it(): void
+    {
+        $id = $this->postSalesInvoice();
+
+        $this->assertMatchesRegularExpression('/MediaBox\s*\[[\d.\s]+226\.7/', $this->assertPdfDownload("/sales-invoices/{$id}/pdf?template=receipt"));
+        $this->assertMatchesRegularExpression('/MediaBox\s*\[[\d.\s]+226\.7/', $this->assertPdfDownload("/sales-invoices/{$id}/pdf?template=receipt&locale=ar"));
+
+        $grn = $this->postGoodsReceipt();
+        $this->assertMatchesRegularExpression('/MediaBox\s*\[[\d.\s]+595\.2/', $this->assertPdfDownload("/stock/goods-receipts/{$grn}/pdf?template=receipt"));
+    }
+
+    private function assertPdfDownload(string $path): string
     {
         $response = $this->asTenantRequest($this->token)
             ->get($this->tenantUrl($path))
@@ -232,6 +286,8 @@ class DocumentPdfApiTest extends TestCase
         $this->assertStringContainsString('application/pdf', (string) $response->headers->get('Content-Type'));
 
         $this->assertStringStartsWith('%PDF', (string) $response->getContent());
+
+        return (string) $response->getContent();
     }
 
     private function stripPrint(string $resourceKey): void

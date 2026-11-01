@@ -107,6 +107,12 @@ See [`.env.example`](../.env.example). Important groups:
 
 Frontend (sibling repo) uses `NEXT_PUBLIC_*` — see `system_frontend/.env.example`.
 
+### Production safety
+
+- Set `APP_ENV=production` and `APP_DEBUG=false`. With `APP_ENV=local`, `config/tenancy.php` also treats `localhost`, `app.localhost` and `127.0.0.1` as central domains, and debug mode leaks stack traces.
+- The central API (`/tenants`, `/modules`, `/tenants/{tenant}/modules`) requires a **super admin** token (`users.is_super_admin` in the central database). Promote an operator with `php artisan tinker` → `User::where('email', '...')->first()->forceFill(['is_super_admin' => true])->save();`.
+- Central tokens expire after `CENTRAL_TOKEN_TTL_MINUTES` (default 720).
+
 ## CI
 
 On every push/PR to `main`:

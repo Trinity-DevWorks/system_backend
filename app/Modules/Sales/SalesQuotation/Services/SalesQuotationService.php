@@ -13,8 +13,9 @@ use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
 use App\Modules\Sales\SalesQuotation\Models\SalesQuotationLine;
 use App\Modules\Sales\SalesQuotation\Support\SalesQuotationRules;
 use App\Modules\Sales\Support\CommercialLineBuilder;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -69,8 +70,8 @@ class SalesQuotationService
                 ...$this->normalizeHeader($data, $customer, null),
                 'status' => SalesQuotationStatus::Draft,
                 'created_by' => $userId,
-                'quotation_number' => SequentialCodeGenerator::next(SalesQuotation::class, 'quotation_number', 'QT-'),
             ]);
+            app(DocumentNumberService::class)->assign($quotation, 'quotation_number', DocumentType::SalesQuotation, $quotation->branch_id !== null ? (int) $quotation->branch_id : null, $quotation->quotation_date);
 
             $this->replaceLines($quotation, $data['lines'] ?? []);
 

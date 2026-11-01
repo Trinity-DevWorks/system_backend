@@ -111,6 +111,19 @@ class SalesOrderController extends Controller
         );
     }
 
+    public function close(Request $request, SalesOrder $salesOrder): JsonResponse
+    {
+        $userId = $request->user()?->id;
+
+        return ApiResponse::success(
+            SalesOrderResponseData::fromModel($this->salesOrderService->close(
+                $salesOrder,
+                $userId !== null ? (string) $userId : null,
+            )),
+            'Sales order closed successfully.'
+        );
+    }
+
     public function cancel(Request $request, SalesOrder $salesOrder): JsonResponse
     {
         $userId = $request->user()?->id;

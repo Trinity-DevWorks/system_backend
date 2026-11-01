@@ -26,6 +26,8 @@ use App\Modules\Customer\Http\Controllers\CustomerContactController;
 use App\Modules\Customer\Http\Controllers\CustomerController;
 use App\Modules\Customer\Http\Controllers\CustomerGroupController;
 use App\Modules\Customer\Http\Controllers\CustomerLedgerController;
+use App\Modules\DocumentNumbering\Http\Controllers\DocumentNumberSettingController;
+use App\Modules\DocumentNumbering\Http\Controllers\PrintSettingController;
 use App\Modules\Inventory\Item\Http\Controllers\BundleItemController;
 use App\Modules\Inventory\Item\Http\Controllers\ItemAttachmentController;
 use App\Modules\Inventory\Item\Http\Controllers\ItemBarcodeController;
@@ -34,6 +36,7 @@ use App\Modules\Inventory\Item\Http\Controllers\ItemUomController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeItemController;
 use App\Modules\Inventory\ItemType\Http\Controllers\ItemTypeController;
+use App\Modules\Inventory\ItemVariant\Http\Controllers\ItemVariantController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseInvoiceController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseOrderController;
@@ -70,10 +73,13 @@ use App\Modules\Rbac\Http\Controllers\RolePermissionController;
 use App\Modules\Rbac\Http\Controllers\UserAttachmentController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
+use App\Modules\Reports\Http\Controllers\AnalyticsReportController;
 use App\Modules\Reports\Http\Controllers\OverviewController;
 use App\Modules\Reports\Http\Controllers\ReportController;
 use App\Modules\Sales\CustomerReceipt\Http\Controllers\CustomerReceiptController;
 use App\Modules\Sales\CustomerRefund\Http\Controllers\CustomerRefundController;
+use App\Modules\Sales\DeliveryNote\Http\Controllers\DeliveryNoteController;
+use App\Modules\Sales\PriceList\Http\Controllers\PriceListController;
 use App\Modules\Sales\SalesCreditNote\Http\Controllers\SalesCreditNoteController;
 use App\Modules\Sales\SalesInvoice\Http\Controllers\SalesInvoiceController;
 use App\Modules\Sales\SalesOrder\Http\Controllers\SalesOrderController;
@@ -87,6 +93,9 @@ use App\Modules\Supplier\Http\Controllers\SupplierController;
 use App\Modules\Supplier\Http\Controllers\SupplierGroupController;
 use App\Modules\Supplier\Http\Controllers\SupplierItemController;
 use App\Modules\Supplier\Http\Controllers\SupplierLedgerController;
+use App\Modules\Treasury\Http\Controllers\CashBankAccountController;
+use App\Modules\Treasury\Http\Controllers\ExpenseVoucherController;
+use App\Modules\Treasury\Http\Controllers\TreasuryTransferController;
 use App\Modules\VatGroup\Http\Controllers\VatGroupController;
 use App\Modules\Warehouse\Http\Controllers\WarehouseController;
 use Illuminate\Broadcasting\BroadcastController;
@@ -190,6 +199,14 @@ Route::middleware([
                 ->middlewareFor(['update'], ['check.permission:branches,edit'])
                 ->middlewareFor(['destroy'], ['check.permission:branches,delete']);
             Route::get('company-settings', [CompanySettingController::class, 'show']);
+            Route::get('document-number-settings', [DocumentNumberSettingController::class, 'index'])
+                ->middleware('check.permission:document_numbering,view');
+            Route::put('document-number-settings', [DocumentNumberSettingController::class, 'update'])
+                ->middleware('check.permission:document_numbering,edit');
+            Route::get('print-settings', [PrintSettingController::class, 'show'])
+                ->middleware('check.permission:print_settings,view');
+            Route::put('print-settings', [PrintSettingController::class, 'update'])
+                ->middleware('check.permission:print_settings,edit');
             Route::put('company-settings', [CompanySettingController::class, 'update'])
                 ->middleware('check.permission:company_settings,edit');
             Route::get('countries', [CountryController::class, 'index']);
@@ -236,6 +253,16 @@ Route::middleware([
                 });
                 Route::get('reports/stock-valuation', [ReportController::class, 'stockValuation'])
                     ->middleware('ensure.module:inventory');
+                Route::get('reports/sales-analysis', [AnalyticsReportController::class, 'show'])->defaults('report', 'sales-analysis')
+                    ->middleware('ensure.module:sales');
+                Route::get('reports/sales-profitability', [AnalyticsReportController::class, 'show'])->defaults('report', 'sales-profitability')
+                    ->middleware('ensure.module:sales');
+                Route::get('reports/lot-expiry', [AnalyticsReportController::class, 'show'])->defaults('report', 'lot-expiry')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/dead-stock', [AnalyticsReportController::class, 'show'])->defaults('report', 'dead-stock')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/item-movement', [AnalyticsReportController::class, 'show'])->defaults('report', 'item-movement')
+                    ->middleware('ensure.module:inventory');
             });
 
             Route::middleware(['check.permission:business_reports,export'])->group(function () {
@@ -248,6 +275,16 @@ Route::middleware([
                     Route::get('reports/supplier-aging/export', [ReportController::class, 'exportSupplierAging']);
                 });
                 Route::get('reports/stock-valuation/export', [ReportController::class, 'exportStockValuation'])
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/sales-analysis/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'sales-analysis')
+                    ->middleware('ensure.module:sales');
+                Route::get('reports/sales-profitability/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'sales-profitability')
+                    ->middleware('ensure.module:sales');
+                Route::get('reports/lot-expiry/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'lot-expiry')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/dead-stock/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'dead-stock')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/item-movement/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'item-movement')
                     ->middleware('ensure.module:inventory');
             });
         });
@@ -536,6 +573,20 @@ Route::middleware([
                 ->middleware('check.permission:items,edit');
             Route::delete('items/{item}/item-uoms/{item_uom}', [ItemUomController::class, 'destroy'])
                 ->middleware('check.permission:items,edit');
+            Route::get('item-attributes', [ItemVariantController::class, 'attributesIndex'])
+                ->middleware('check.permission:item_attributes,view');
+            Route::get('item-attributes/{itemAttribute}', [ItemVariantController::class, 'attributesShow'])
+                ->middleware('check.permission:item_attributes,view');
+            Route::post('item-attributes', [ItemVariantController::class, 'attributesStore'])
+                ->middleware('check.permission:item_attributes,add');
+            Route::put('item-attributes/{itemAttribute}', [ItemVariantController::class, 'attributesUpdate'])
+                ->middleware('check.permission:item_attributes,edit');
+            Route::delete('item-attributes/{itemAttribute}', [ItemVariantController::class, 'attributesDestroy'])
+                ->middleware('check.permission:item_attributes,delete');
+            Route::get('items/{item}/variants', [ItemVariantController::class, 'index'])
+                ->middleware('check.permission:items,view');
+            Route::post('items/{item}/variants/generate', [ItemVariantController::class, 'generate'])
+                ->middleware('check.permission:items,edit');
             Route::get('items/lookup-by-barcode', [ItemBarcodeController::class, 'lookup'])
                 ->middleware('check.permission:items,view');
             Route::get('items/{item}/invoice-line-setup', [ItemController::class, 'invoiceLineSetup'])
@@ -611,6 +662,15 @@ Route::middleware([
         });
 
         Route::middleware(['ensure.module:sales'])->group(function () {
+            // Default line prices for sales documents (same audience as invoice-line-setup).
+            Route::post('pricing/resolve', [PriceListController::class, 'resolve'])
+                ->middleware('check.permission:items,view');
+            Route::apiResource('price-lists', PriceListController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:price_lists,view'])
+                ->middlewareFor(['store'], ['check.permission:price_lists,add'])
+                ->middlewareFor(['update'], ['check.permission:price_lists,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:price_lists,delete']);
+
             Route::get('customer-receipts/open-invoices', [CustomerReceiptController::class, 'openInvoices'])
                 ->middleware('check.permission:customer_receipts,view');
             Route::get('customer-receipts', [CustomerReceiptController::class, 'index'])
@@ -721,6 +781,27 @@ Route::middleware([
                 ->middleware('check.permission:sales_orders,edit');
             Route::post('sales-orders/{sales_order}/cancel', [SalesOrderController::class, 'cancel'])
                 ->middleware('check.permission:sales_orders,edit');
+            Route::post('sales-orders/{sales_order}/close', [SalesOrderController::class, 'close'])
+                ->middleware('check.permission:sales_orders,edit');
+            Route::post('sales-orders/{salesOrder}/deliver', [DeliveryNoteController::class, 'fromOrder'])
+                ->middleware('check.permission:delivery_notes,add');
+            Route::get('sales-orders/{salesOrder}/delivery-template', [DeliveryNoteController::class, 'orderTemplate'])
+                ->middleware('check.permission:delivery_notes,add');
+            Route::get('delivery-notes/deliverable-orders', [DeliveryNoteController::class, 'deliverableOrders'])
+                ->middleware('check.permission:delivery_notes,add');
+            Route::apiResource('delivery-notes', DeliveryNoteController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:delivery_notes,view'])
+                ->middlewareFor(['store'], ['check.permission:delivery_notes,add'])
+                ->middlewareFor(['update'], ['check.permission:delivery_notes,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:delivery_notes,delete']);
+            Route::post('delivery-notes/{delivery_note}/post', [DeliveryNoteController::class, 'post'])
+                ->middleware('check.permission:delivery_notes,edit');
+            Route::post('delivery-notes/{delivery_note}/reverse', [DeliveryNoteController::class, 'reverse'])
+                ->middleware('check.permission:delivery_notes,reverse');
+            Route::post('delivery-notes/{delivery_note}/invoice', [DeliveryNoteController::class, 'invoice'])
+                ->middleware('check.permission:sales_invoices,add');
+            Route::get('delivery-notes/{delivery_note}/pdf', [DeliveryNoteController::class, 'pdf'])
+                ->middleware(['check.permission:delivery_notes,view', 'check.permission:delivery_notes,print']);
             Route::post('sales-orders/{sales_order}/invoice', [SalesOrderController::class, 'invoice'])
                 ->middleware('check.permission:sales_orders,edit');
 
@@ -938,6 +1019,31 @@ Route::middleware([
         });
 
         Route::middleware(['ensure.module:accounting'])->group(function () {
+            // Treasury: cash/bank accounts, transfers between them, expense vouchers.
+            Route::apiResource('cash-bank-accounts', CashBankAccountController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:cash_bank_accounts,view'])
+                ->middlewareFor(['store'], ['check.permission:cash_bank_accounts,add'])
+                ->middlewareFor(['update'], ['check.permission:cash_bank_accounts,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:cash_bank_accounts,delete']);
+            Route::apiResource('treasury-transfers', TreasuryTransferController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:treasury_transfers,view'])
+                ->middlewareFor(['store'], ['check.permission:treasury_transfers,add'])
+                ->middlewareFor(['update'], ['check.permission:treasury_transfers,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:treasury_transfers,delete']);
+            Route::post('treasury-transfers/{treasury_transfer}/post', [TreasuryTransferController::class, 'post'])
+                ->middleware('check.permission:treasury_transfers,edit');
+            Route::post('treasury-transfers/{treasury_transfer}/reverse', [TreasuryTransferController::class, 'reverse'])
+                ->middleware('check.permission:treasury_transfers,reverse');
+            Route::apiResource('expense-vouchers', ExpenseVoucherController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:expense_vouchers,view'])
+                ->middlewareFor(['store'], ['check.permission:expense_vouchers,add'])
+                ->middlewareFor(['update'], ['check.permission:expense_vouchers,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:expense_vouchers,delete']);
+            Route::post('expense-vouchers/{expense_voucher}/post', [ExpenseVoucherController::class, 'post'])
+                ->middleware('check.permission:expense_vouchers,edit');
+            Route::post('expense-vouchers/{expense_voucher}/reverse', [ExpenseVoucherController::class, 'reverse'])
+                ->middleware('check.permission:expense_vouchers,reverse');
+
             Route::apiResource('accounts', AccountController::class)
                 ->middlewareFor(['index', 'show'], ['check.permission:accounts,view'])
                 ->middlewareFor(['store'], ['check.permission:accounts,add'])
@@ -970,6 +1076,14 @@ Route::middleware([
             Route::get('accounting/account-ledger', [AccountingReportController::class, 'accountLedger'])
                 ->middleware('check.permission:accounting_reports,view');
             Route::get('accounting/account-ledger/export', [AccountingReportController::class, 'exportAccountLedger'])
+                ->middleware('check.permission:accounting_reports,export');
+            Route::get('reports/cash-flow', [AnalyticsReportController::class, 'show'])->defaults('report', 'cash-flow')
+                ->middleware('check.permission:accounting_reports,view');
+            Route::get('reports/cash-flow/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'cash-flow')
+                ->middleware('check.permission:accounting_reports,export');
+            Route::get('reports/general-ledger', [AnalyticsReportController::class, 'show'])->defaults('report', 'general-ledger')
+                ->middleware('check.permission:accounting_reports,view');
+            Route::get('reports/general-ledger/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'general-ledger')
                 ->middleware('check.permission:accounting_reports,export');
 
             Route::get('accounting/income-statement', [AccountingReportController::class, 'incomeStatement'])

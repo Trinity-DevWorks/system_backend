@@ -11,7 +11,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['code', 'name', 'is_active'])]
+/**
+ * @property int|null $price_list_id
+ */
+#[Fillable(['code', 'name', 'is_active', 'price_list_id'])]
 class CustomerGroup extends Model implements AuditableContract
 {
     use Auditable;

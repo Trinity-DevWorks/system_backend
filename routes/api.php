@@ -26,13 +26,19 @@ foreach (config('tenancy.central_domains') as $domain) {
         Route::post('/reset-password', ResetPasswordController::class)
             ->middleware('throttle:password-reset');
 
-        Route::get('/tenants', [TenantController::class, 'index']);
-        Route::post('/tenants', [TenantController::class, 'store']);
+        // Public: the Next.js proxy resolves the tenant from the host before anyone signs in.
         Route::get('/tenant/get-tenant-by-name/{name}', [TenantController::class, 'lookupByName'])
-            ->where('name', '[A-Za-z0-9][A-Za-z0-9_-]*');
+            ->where('name', '[A-Za-z0-9][A-Za-z0-9_-]*')
+            ->middleware('throttle:tenant-lookup');
 
-        Route::get('/modules', [ModuleController::class, 'index']);
-        Route::get('/tenants/{tenant}/modules', [TenantModuleController::class, 'show']);
-        Route::put('/tenants/{tenant}/modules', [TenantModuleController::class, 'update']);
+        // Platform administration: super admins only.
+        Route::middleware(['auth:sanctum', 'ensure.active', 'ensure.super_admin', 'throttle:60,1'])->group(function () {
+            Route::get('/tenants', [TenantController::class, 'index']);
+            Route::post('/tenants', [TenantController::class, 'store']);
+
+            Route::get('/modules', [ModuleController::class, 'index']);
+            Route::get('/tenants/{tenant}/modules', [TenantModuleController::class, 'show']);
+            Route::put('/tenants/{tenant}/modules', [TenantModuleController::class, 'update']);
+        });
     });
 }

@@ -21,10 +21,11 @@ use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\CurrencyCashRound;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -139,7 +140,6 @@ class SupplierPaymentService
             $payment = SupplierPayment::query()->create([
                 ...$this->headerAttributes($data, null),
                 'supplier_id' => $supplier->id,
-                'payment_number' => SequentialCodeGenerator::next(SupplierPayment::class, 'payment_number', 'SP-'),
                 'status' => SupplierPaymentStatus::Draft,
                 'created_by' => $userId,
             ]);
@@ -205,6 +205,7 @@ class SupplierPaymentService
     {
         return DB::transaction(function () use ($payment, $userId): SupplierPayment {
             $locked = SupplierPayment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'payment_number', DocumentType::SupplierPayment, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->payment_date);
             if ($locked->status !== SupplierPaymentStatus::Draft) {
                 $this->fail('Only a draft supplier payment can be posted.', 'SUPPLIER_PAYMENT_NOT_DRAFT');
             }

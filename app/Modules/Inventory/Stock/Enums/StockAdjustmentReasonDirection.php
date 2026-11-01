@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Enums;
 
+use App\Support\Decimal;
+
 enum StockAdjustmentReasonDirection: string
 {
     case Increase = 'increase';
@@ -18,12 +20,12 @@ enum StockAdjustmentReasonDirection: string
         return array_column(self::cases(), 'value');
     }
 
-    public function allows(float $quantity): bool
+    public function allows(mixed $quantity): bool
     {
         return match ($this) {
-            self::Increase => $quantity > 0,
-            self::Decrease => $quantity < 0,
-            self::Both => $quantity != 0.0,
+            self::Increase => Decimal::isPositive($quantity),
+            self::Decrease => Decimal::isNegative($quantity),
+            self::Both => ! Decimal::isZero($quantity),
         };
     }
 }

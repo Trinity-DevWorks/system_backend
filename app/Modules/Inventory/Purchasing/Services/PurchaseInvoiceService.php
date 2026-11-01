@@ -30,11 +30,12 @@ use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierItemService;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\DocumentNumberService;
 use App\Support\DocumentTaxContext;
 use App\Support\DocumentTaxMath;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -125,7 +126,6 @@ class PurchaseInvoiceService
             ]);
 
             $invoice->update([
-                'invoice_number' => SequentialCodeGenerator::next(PurchaseInvoice::class, 'invoice_number', 'PI-'),
             ]);
 
             if (! empty($data['lines'])) {
@@ -223,6 +223,7 @@ class PurchaseInvoiceService
     {
         return DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
             $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'invoice_number', DocumentType::PurchaseInvoice, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->invoice_date);
             PurchaseInvoiceRules::assertPostable($locked);
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
 
@@ -532,7 +533,7 @@ class PurchaseInvoiceService
             $linkedUomId = $grnLine?->item_uom_id ?? $poLine?->item_uom_id;
             $qty = PurchaseInvoiceLineQuantity::resolve(
                 $item,
-                (float) $row['quantity'],
+                $row['quantity'],
                 isset($row['item_uom_id']) && $row['item_uom_id'] !== null && $row['item_uom_id'] !== ''
                     ? (int) $row['item_uom_id']
                     : ($linkedUomId !== null ? (int) $linkedUomId : null),
@@ -689,7 +690,7 @@ class PurchaseInvoiceService
             ExchangeRateSnapshot::SCALE,
         );
 
-        return bcdiv($primaryUnitPrice, $conversionFactor, 4);
+        return InventoryCostingMath::unitCost(bcdiv($primaryUnitPrice, $conversionFactor, ExchangeRateSnapshot::SCALE));
     }
 
     private function nullableString(mixed $value): ?string

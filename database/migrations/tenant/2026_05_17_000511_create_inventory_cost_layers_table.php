@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('lot_id')->nullable()->constrained('inventory_lots')->restrictOnDelete();
             $table->foreignId('source_movement_id')->constrained('stock_movements')->restrictOnDelete();
             $table->decimal('quantity_remaining', 14, 6);
-            $table->decimal('unit_cost', 14, 4);
+            $table->decimal('unit_cost', 20, 6);
             $table->timestamps();
 
             $table->index(['item_id', 'warehouse_id', 'id']);

@@ -89,7 +89,7 @@ final class PaymentAllocation
 
         $payment = self::positiveRate($paymentRate);
         $invoice = self::positiveRate($invoiceRate);
-        $value = (float) self::normalize($amount) * (float) $invoice / (float) $payment;
+        $value = Decimal::div(Decimal::mul(self::normalize($amount), $invoice, 24), $payment, 16);
 
         return self::normalize($value);
     }
@@ -168,7 +168,7 @@ final class PaymentAllocation
 
     private static function positiveRate(mixed $rate): string
     {
-        $normalized = number_format((float) $rate, ExchangeRateSnapshot::SCALE, '.', '');
+        $normalized = Decimal::round($rate, ExchangeRateSnapshot::SCALE);
         if (bccomp($normalized, '0', ExchangeRateSnapshot::SCALE) <= 0) {
             abort(422, 'Exchange rate must be greater than zero.', ['X-Error-Code' => 'EXCHANGE_RATE_INVALID']);
         }

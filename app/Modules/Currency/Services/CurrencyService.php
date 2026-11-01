@@ -9,6 +9,7 @@ use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Modules\Currency\DTOs\CurrencyData;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Models\CurrencyPairRate;
+use App\Support\Decimal;
 use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
@@ -48,11 +49,16 @@ class CurrencyService
         'opening_stocks',
         'stock_adjustments',
         'stock_counts',
+        'stock_revaluations',
         'productions',
         'bundle_explosions',
         'stock_transfers',
         'stock_transfer_receipts',
         'stock_transfer_closures',
+        'cash_bank_accounts',
+        'delivery_notes',
+        'treasury_transfers',
+        'expense_vouchers',
     ];
 
     public function __construct(
@@ -114,7 +120,7 @@ class CurrencyService
                 $this->assertPrimaryCanChange((int) $currency->id);
                 CompanySetting::singleton()->update(['primary_currency_id' => $currency->id]);
                 TenantReferenceCache::forget(CompanySettingService::CACHE_KEY);
-            } elseif ($data->rate !== null && $data->rate > 0 && $data->fromCurrencyId !== null && $data->fromCurrencyId !== $currency->id) {
+            } elseif ($data->rate !== null && Decimal::isPositive($data->rate) && $data->fromCurrencyId !== null && $data->fromCurrencyId !== $currency->id) {
                 $toId = $data->toCurrencyId ?? $currency->id;
                 $this->exchangeRateService->setPairRate(
                     $data->fromCurrencyId,
@@ -151,14 +157,14 @@ class CurrencyService
                 TenantReferenceCache::forget(CompanySettingService::CACHE_KEY);
             }
 
-            if (array_key_exists('rate', $patch) && $patch['rate'] !== null && is_numeric($patch['rate']) && (float) $patch['rate'] > 0) {
+            if (array_key_exists('rate', $patch) && $patch['rate'] !== null && is_numeric($patch['rate']) && Decimal::isPositive($patch['rate'])) {
                 $fromId = isset($patch['from_currency_id']) ? (int) $patch['from_currency_id'] : null;
                 if ($fromId && $fromId !== $currency->id) {
                     $toId = isset($patch['to_currency_id']) ? (int) $patch['to_currency_id'] : $currency->id;
                     $this->exchangeRateService->setPairRate(
                         $fromId,
                         $toId,
-                        (float) $patch['rate'],
+                        Decimal::of($patch['rate']),
                         Auth::user()?->name
                     );
                 }

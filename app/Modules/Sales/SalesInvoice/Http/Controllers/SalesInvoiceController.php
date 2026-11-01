@@ -148,7 +148,8 @@ class SalesInvoiceController extends Controller
     {
         $pdf = $this->salesInvoicePdfService->render(
             $salesInvoice,
-            $request->query('locale')
+            $request->query('locale'),
+            is_string($request->query('template')) ? $request->query('template') : null,
         );
 
         return $pdf->download($this->salesInvoicePdfService->downloadFilename($salesInvoice));

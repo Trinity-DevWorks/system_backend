@@ -15,7 +15,7 @@ return [
             'description' => 'Users, roles, permissions, company profile, company settings, branches, notifications, and base tenant access.',
             'is_core' => true,
             'sort_order' => 10,
-            'resources' => ['users', 'roles', 'permissions', 'company_profile', 'company_settings', 'branches', 'notifications', 'business_reports'],
+            'resources' => ['users', 'roles', 'permissions', 'company_profile', 'company_settings', 'document_numbering', 'print_settings', 'branches', 'notifications', 'business_reports'],
         ],
         'master_data' => [
             'name' => 'Master Data',
@@ -42,6 +42,7 @@ return [
                 'unit_groups',
                 'unit_of_measurements',
                 'items',
+                'item_attributes',
             ],
         ],
         'sales' => [
@@ -49,7 +50,7 @@ return [
             'description' => 'Customers, customer groups, salesmen, quotations, sales orders, sales invoices, credit notes, customer receipts, and customer refunds.',
             'is_core' => false,
             'sort_order' => 40,
-            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_quotations', 'sales_orders', 'sales_invoices', 'sales_credit_notes', 'customer_receipts', 'customer_refunds'],
+            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_quotations', 'sales_orders', 'delivery_notes', 'sales_invoices', 'credit_limit_override', 'price_lists', 'sales_credit_notes', 'customer_receipts', 'customer_refunds'],
         ],
         'purchasing' => [
             'name' => 'Purchasing',
@@ -63,7 +64,7 @@ return [
             'description' => 'Chart of accounts, journal entries, financial statements, VAT, and fiscal years.',
             'is_core' => false,
             'sort_order' => 60,
-            'resources' => ['accounts', 'account_mappings', 'journal_entries', 'accounting_reports', 'vat_settlements', 'accounting_periods'],
+            'resources' => ['accounts', 'account_mappings', 'journal_entries', 'accounting_reports', 'vat_settlements', 'accounting_periods', 'cash_bank_accounts', 'treasury_transfers', 'expense_vouchers'],
         ],
     ],
 

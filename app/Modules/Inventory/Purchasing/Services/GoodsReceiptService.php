@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\Services;
 
 use App\Modules\Accounting\Services\JournalPostingService;
-use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
@@ -27,7 +26,8 @@ use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Supplier\Services\SupplierItemService;
 use App\Modules\Warehouse\Services\WarehouseService;
-use App\Support\SequentialCodeGenerator;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -175,6 +175,7 @@ class GoodsReceiptService
     {
         $posted = DB::transaction(function () use ($receipt, $userId): GoodsReceipt {
             $locked = GoodsReceipt::query()->whereKey($receipt->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'grn_number', DocumentType::GoodsReceipt, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->received_date);
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
             GoodsReceiptRules::assertPostable($locked);
             PurchaseOrderRules::assertWarehouse((int) $locked->warehouse_id);
@@ -386,7 +387,6 @@ class GoodsReceiptService
                 'received_date' => $data['received_date'] ?? now()->toDateString(),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
-                'grn_number' => SequentialCodeGenerator::next(GoodsReceipt::class, 'grn_number', 'GRN-'),
             ]);
 
             if (! empty($data['lines'])) {
@@ -429,7 +429,6 @@ class GoodsReceiptService
                 'received_date' => $data['received_date'] ?? now()->toDateString(),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
-                'grn_number' => SequentialCodeGenerator::next(GoodsReceipt::class, 'grn_number', 'GRN-'),
             ]);
 
             if (! empty($data['lines'])) {
@@ -452,7 +451,7 @@ class GoodsReceiptService
 
             $seeded[] = [
                 'purchase_order_line_id' => (int) $poLine->id,
-                'quantity' => (float) $open,
+                'quantity' => $open,
                 'item_uom_id' => $poLine->item_uom_id ? (int) $poLine->item_uom_id : null,
                 'unit_cost' => $this->purchaseOrderUnitCost($poLine),
             ];
@@ -513,7 +512,7 @@ class GoodsReceiptService
 
             $resolved = PurchaseOrderLineQuantity::resolve(
                 $item,
-                (float) $row['quantity'],
+                $row['quantity'],
                 $itemUomId,
             );
             $lotId = $this->resolveLineLotId($item, $row);
@@ -575,7 +574,7 @@ class GoodsReceiptService
 
             $resolved = PurchaseOrderLineQuantity::resolve(
                 $item,
-                (float) $row['quantity'],
+                $row['quantity'],
                 $itemUomId,
             );
             $lotId = $this->resolveLineLotId($item, $row);
@@ -740,8 +739,8 @@ class GoodsReceiptService
             return null;
         }
 
-        $cost = PriceMath::normalize($value);
-        if (bccomp($cost, '0', PriceMath::scale()) < 0) {
+        $cost = InventoryCostingMath::unitCost($value);
+        if (bccomp($cost, '0', InventoryCostingMath::UNIT_COST_SCALE) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 

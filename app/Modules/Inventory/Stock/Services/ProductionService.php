@@ -20,6 +20,9 @@ use App\Modules\Inventory\Stock\Support\ProductionRules;
 use App\Modules\Inventory\Stock\Support\ProductionScale;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -96,7 +99,7 @@ class ProductionService
         $recipe = ProductionRules::assertProducibleItem($item);
         $headerQty = $this->normalizeProduceQty($data['quantity'] ?? null);
         $itemUomId = ProductionQuantity::itemUomIdForCatalogUom($item, (int) $recipe->uom_id);
-        $baseQuantity = StockAdjustmentQuantity::resolveBaseDelta($item, (float) $headerQty, $itemUomId);
+        $baseQuantity = StockAdjustmentQuantity::resolveBaseDelta($item, $headerQty, $itemUomId);
 
         return DB::transaction(function () use ($data, $warehouseId, $item, $recipe, $headerQty, $itemUomId, $baseQuantity, $userId): Production {
             $document = Production::query()->create([
@@ -107,14 +110,12 @@ class ProductionService
                 'production_date' => $data['production_date'] ?? now()->toDateString(),
                 'quantity' => $headerQty,
                 'base_quantity' => $baseQuantity,
-                'yield_quantity' => number_format((float) $recipe->yield_quantity, 6, '.', ''),
+                'yield_quantity' => Decimal::round($recipe->yield_quantity, 6),
                 'item_uom_id' => $itemUomId,
                 'lot_id' => $this->resolveProduceLotId($item, $data),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
             ]);
-
-            $document->update(['prd_number' => $this->formatPrdNumber()]);
 
             if (! empty($data['lines'])) {
                 $this->replaceLines($document, $recipe, $data['lines']);
@@ -166,7 +167,7 @@ class ProductionService
                 $recipe = ProductionRules::assertProducibleItem($item);
                 $updates['item_id'] = $item->id;
                 $updates['recipe_id'] = $recipe->id;
-                $updates['yield_quantity'] = number_format((float) $recipe->yield_quantity, 6, '.', '');
+                $updates['yield_quantity'] = Decimal::round($recipe->yield_quantity, 6);
                 $updates['lot_id'] = null;
                 $rebuild = true;
             } else {
@@ -175,18 +176,18 @@ class ProductionService
 
             $quantity = array_key_exists('quantity', $data) && $data['quantity'] !== null
                 ? $this->normalizeProduceQty($data['quantity'])
-                : number_format((float) $document->quantity, 6, '.', '');
+                : Decimal::round($document->quantity, 6);
 
-            if ($quantity !== number_format((float) $document->quantity, 6, '.', '')) {
+            if ($quantity !== Decimal::round($document->quantity, 6)) {
                 $rebuild = true;
             }
 
             $itemUomId = ProductionQuantity::itemUomIdForCatalogUom($item, (int) $recipe->uom_id);
             $updates['quantity'] = $quantity;
             $updates['item_uom_id'] = $itemUomId;
-            $updates['base_quantity'] = StockAdjustmentQuantity::resolveBaseDelta($item, (float) $quantity, $itemUomId);
+            $updates['base_quantity'] = StockAdjustmentQuantity::resolveBaseDelta($item, $quantity, $itemUomId);
             if ($rebuild) {
-                $updates['yield_quantity'] = number_format((float) $recipe->yield_quantity, 6, '.', '');
+                $updates['yield_quantity'] = Decimal::round($recipe->yield_quantity, 6);
             }
 
             if (array_key_exists('lot_id', $data) || array_key_exists('lot_number', $data) || array_key_exists('expiry_date', $data)) {
@@ -234,6 +235,7 @@ class ProductionService
     {
         return DB::transaction(function () use ($document, $userId): Production {
             $locked = Production::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'prd_number', DocumentType::Production, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->production_date);
             ProductionRules::assertPostable($locked);
             ProductionRules::assertWarehouse((int) $locked->warehouse_id);
 
@@ -297,7 +299,7 @@ class ProductionService
 
             $producedBase = (string) $locked->base_quantity;
             $unitCost = bccomp($producedBase, '0', 6) > 0
-                ? bcdiv($consumedValue, $producedBase, Math::MONEY_SCALE)
+                ? Math::unitCostFromValue($producedBase, $consumedValue)
                 : null;
 
             $this->stockMovementService->post(StockMovementData::forProduction(
@@ -407,8 +409,8 @@ class ProductionService
                 $item,
             );
 
-            $quantity = (float) ($row['quantity'] ?? 0);
-            if ($quantity <= 0) {
+            $quantity = Decimal::of($row['quantity'] ?? 0);
+            if (! Decimal::isPositive($quantity)) {
                 abort(422, 'Ingredient quantity must be greater than zero.', [
                     'X-Error-Code' => 'PRODUCTION_LINE_INVALID_QUANTITY',
                 ]);
@@ -428,14 +430,14 @@ class ProductionService
             }
 
             $theoretical = isset($row['theoretical_quantity']) && $row['theoretical_quantity'] !== null && $row['theoretical_quantity'] !== ''
-                ? number_format((float) $row['theoretical_quantity'], 6, '.', '')
+                ? Decimal::round($row['theoretical_quantity'], 6)
                 : ProductionScale::apply((string) $recipeItem->quantity, $factor);
 
             $seenRecipeItems[$itemId] = true;
             $normalized[$lineKey] = [
                 'item_id' => $itemId,
                 'recipe_item_id' => $recipeItem->id,
-                'quantity' => number_format($quantity, 6, '.', ''),
+                'quantity' => Decimal::round($quantity, 6),
                 'base_quantity' => $baseQuantity,
                 'theoretical_quantity' => $theoretical,
                 'item_uom_id' => $itemUomId,
@@ -552,16 +554,9 @@ class ProductionService
         return $locked;
     }
 
-    private function formatPrdNumber(): string
-    {
-        $seq = Production::query()->count();
-
-        return 'PRD-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
-    }
-
     private function normalizeProduceQty(mixed $value): string
     {
-        $qty = number_format((float) $value, 6, '.', '');
+        $qty = Decimal::round($value, 6);
         if (bccomp($qty, '0', 6) <= 0) {
             abort(422, 'Production quantity must be greater than zero.', [
                 'X-Error-Code' => 'PRODUCTION_QTY_INVALID',

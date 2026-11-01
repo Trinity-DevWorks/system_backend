@@ -214,7 +214,7 @@ final class ReportDocuments
     /**
      * @return list<string>
      */
-    private static function headerFilters(): array
+    public static function headerFilters(): array
     {
         $filters = [];
         $company = trim((string) (tenant('name') ?? ''));

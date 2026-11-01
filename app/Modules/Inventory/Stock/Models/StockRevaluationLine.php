@@ -36,9 +36,9 @@ class StockRevaluationLine extends Model implements AuditableContract
         return [
             'quantity_on_hand' => 'decimal:6',
             'base_quantity' => 'decimal:6',
-            'old_unit_cost' => 'decimal:4',
+            'old_unit_cost' => 'decimal:6',
             'old_inventory_value' => 'decimal:4',
-            'new_unit_cost' => 'decimal:4',
+            'new_unit_cost' => 'decimal:6',
             'new_inventory_value' => 'decimal:4',
             'value_delta' => 'decimal:4',
         ];

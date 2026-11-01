@@ -12,6 +12,7 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Support\FiscalCalendar;
 use App\Modules\Accounting\Support\JournalMath;
 use App\Modules\Accounting\Support\ReportAmounts;
+use App\Modules\Branch\Models\Branch;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -77,7 +78,8 @@ class VatSettlementService
                 'source_type' => JournalEntry::SOURCE_VAT_SETTLEMENT,
                 'source_id' => $periodTo,
                 'source_event' => JournalEntry::EVENT_POST,
-                'branch_id' => null,
+                // VAT is filed for the whole company: book it at head office.
+                'branch_id' => Branch::defaultId(),
                 'description' => 'VAT settlement up to '.$periodTo,
             ], $built['lines'], $userId);
         });

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Services;
 
 use App\Modules\Accounting\Services\JournalPostingService;
-use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Enums\StockRevaluationStatus;
@@ -15,7 +14,8 @@ use App\Modules\Inventory\Stock\Models\StockRevaluationLine;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\StockRevaluationRules;
 use App\Modules\Warehouse\Services\WarehouseService;
-use App\Support\SequentialCodeGenerator;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -95,7 +95,7 @@ class StockRevaluationService
 
         return [
             'quantity' => InventoryCostingMath::qty($balance?->quantity ?? 0),
-            'unit_cost' => InventoryCostingMath::money($balance?->unit_cost ?? 0),
+            'unit_cost' => InventoryCostingMath::unitCost($balance?->unit_cost ?? 0),
             'inventory_value' => InventoryCostingMath::money($balance?->inventory_value ?? 0),
         ];
     }
@@ -120,11 +120,6 @@ class StockRevaluationService
                 'revaluation_date' => $data['revaluation_date'] ?? now()->toDateString(),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
-                'srv_number' => SequentialCodeGenerator::next(
-                    StockRevaluation::class,
-                    'srv_number',
-                    'SRV-'
-                ),
             ]);
 
             if (! empty($data['lines'])) {
@@ -193,6 +188,7 @@ class StockRevaluationService
     {
         return DB::transaction(function () use ($document, $userId): StockRevaluation {
             $locked = StockRevaluation::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'srv_number', DocumentType::StockRevaluation, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->revaluation_date);
             StockRevaluationRules::assertPostable($locked);
             StockRevaluationRules::assertWarehouse((int) $locked->warehouse_id);
 
@@ -229,8 +225,8 @@ class StockRevaluationService
                     ]);
                 }
 
-                $oldUnitCost = InventoryCostingMath::money($balance->unit_cost);
-                $newUnitCost = InventoryCostingMath::money($line->new_unit_cost);
+                $oldUnitCost = InventoryCostingMath::unitCost($balance->unit_cost);
+                $newUnitCost = InventoryCostingMath::unitCost($line->new_unit_cost);
                 if (bccomp($newUnitCost, $oldUnitCost, InventoryCostingMath::MONEY_SCALE) === 0) {
                     abort(422, 'New unit cost must differ from the current balance cost.', [
                         'X-Error-Code' => 'STOCK_REVALUATION_NO_CHANGE',
@@ -381,7 +377,7 @@ class StockRevaluationService
 
         return [
             'quantity' => InventoryCostingMath::qty($balance?->quantity ?? 0),
-            'unit_cost' => InventoryCostingMath::money($balance?->unit_cost ?? 0),
+            'unit_cost' => InventoryCostingMath::unitCost($balance?->unit_cost ?? 0),
             'inventory_value' => InventoryCostingMath::money($balance?->inventory_value ?? 0),
         ];
     }
@@ -442,11 +438,11 @@ class StockRevaluationService
             return null;
         }
 
-        $cost = PriceMath::normalize($value);
-        if (bccomp($cost, '0', PriceMath::scale()) < 0) {
+        $cost = InventoryCostingMath::unitCost($value);
+        if (bccomp($cost, '0', InventoryCostingMath::UNIT_COST_SCALE) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 
-        return InventoryCostingMath::money($cost);
+        return $cost;
     }
 }

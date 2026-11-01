@@ -31,11 +31,11 @@ class ItemUom extends Model
     {
         return [
             'conversion_factor' => 'decimal:12',
-            'selling_price' => 'decimal:4',
-            'cost_price' => 'decimal:4',
-            'takeaway_price' => 'decimal:4',
-            'dine_in_price' => 'decimal:4',
-            'delivery_price' => 'decimal:4',
+            'selling_price' => 'decimal:6',
+            'cost_price' => 'decimal:6',
+            'takeaway_price' => 'decimal:6',
+            'dine_in_price' => 'decimal:6',
+            'delivery_price' => 'decimal:6',
             'is_base' => 'boolean',
             'is_default_sale' => 'boolean',
             'is_default_purchase' => 'boolean',

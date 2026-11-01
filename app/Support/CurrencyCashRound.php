@@ -41,7 +41,7 @@ final class CurrencyCashRound
             return null;
         }
 
-        $normalized = number_format((float) $value, 6, '.', '');
+        $normalized = Decimal::round($value, 6);
         if (bccomp($normalized, '0', 6) <= 0) {
             return null;
         }

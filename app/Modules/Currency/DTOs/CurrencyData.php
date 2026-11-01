@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Currency\DTOs;
 
 use App\Modules\Currency\Http\Requests\StoreCurrencyRequest;
+use App\Support\Decimal;
 
 readonly class CurrencyData
 {
@@ -20,7 +21,7 @@ readonly class CurrencyData
         public ?string $allowedDifferenceInPayment,
         public bool $isActive,
         public bool $isPrimary,
-        public ?float $rate,
+        public ?string $rate,
         public ?int $fromCurrencyId,
         public ?int $toCurrencyId,
     ) {}
@@ -41,7 +42,7 @@ readonly class CurrencyData
             allowedDifferenceInPayment: isset($d['allowed_difference_in_payment']) ? (string) $d['allowed_difference_in_payment'] : null,
             isActive: $d['is_active'] ?? true,
             isPrimary: $d['is_primary'] ?? false,
-            rate: isset($d['rate']) && is_numeric($d['rate']) ? (float) $d['rate'] : null,
+            rate: isset($d['rate']) && is_numeric($d['rate']) ? Decimal::of($d['rate']) : null,
             fromCurrencyId: isset($d['from_currency_id']) ? (int) $d['from_currency_id'] : null,
             toCurrencyId: isset($d['to_currency_id']) ? (int) $d['to_currency_id'] : null,
         );

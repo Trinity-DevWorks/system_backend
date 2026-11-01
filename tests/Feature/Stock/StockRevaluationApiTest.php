@@ -86,7 +86,7 @@ class StockRevaluationApiTest extends TestCase
                 ->firstOrFail();
 
             $this->assertSame('10.000000', (string) $balance->quantity);
-            $this->assertSame('7.0000', (string) $balance->unit_cost);
+            $this->assertSame('7.000000', (string) $balance->unit_cost);
             $this->assertSame('70.0000', (string) $balance->inventory_value);
 
             $movement = StockMovement::query()
@@ -97,7 +97,7 @@ class StockRevaluationApiTest extends TestCase
 
             $this->assertSame('0.000000', (string) $movement->quantity_delta);
             $this->assertSame('20.0000', (string) $movement->value_delta);
-            $this->assertSame('7.0000', (string) $movement->unit_cost);
+            $this->assertSame('7.000000', (string) $movement->unit_cost);
             $this->assertSame('revaluation', $movement->type->value);
         });
 
@@ -118,7 +118,7 @@ class StockRevaluationApiTest extends TestCase
                 ->whereNull('lot_id')
                 ->firstOrFail();
 
-            $this->assertSame('3.0000', (string) $balance->unit_cost);
+            $this->assertSame('3.000000', (string) $balance->unit_cost);
             $this->assertSame('30.0000', (string) $balance->inventory_value);
 
             $movement = StockMovement::query()
@@ -194,7 +194,7 @@ class StockRevaluationApiTest extends TestCase
                 ->whereNull('lot_id')
                 ->firstOrFail();
 
-            $this->assertSame('5.0000', (string) $balance->unit_cost);
+            $this->assertSame('5.000000', (string) $balance->unit_cost);
             $this->assertSame('50.0000', (string) $balance->inventory_value);
             $this->assertSame(0, StockMovement::query()->where('type', 'revaluation')->count());
         });
@@ -218,7 +218,7 @@ class StockRevaluationApiTest extends TestCase
                 ->firstOrFail();
 
             $this->assertSame('10.000000', (string) $balance->quantity);
-            $this->assertSame('5.0000', (string) $balance->unit_cost);
+            $this->assertSame('5.000000', (string) $balance->unit_cost);
             $this->assertSame('50.0000', (string) $balance->inventory_value);
         });
 
@@ -261,7 +261,7 @@ class StockRevaluationApiTest extends TestCase
 
             $this->assertCount(1, $layers);
             $this->assertSame('10.000000', (string) $layers->first()->quantity_remaining);
-            $this->assertSame('7.0000', (string) $layers->first()->unit_cost);
+            $this->assertSame('7.000000', (string) $layers->first()->unit_cost);
         });
     }
 
@@ -278,7 +278,7 @@ class StockRevaluationApiTest extends TestCase
                 ->whereNull('lot_id')
                 ->firstOrFail();
 
-            $this->assertSame('7.0000', (string) $balance->unit_cost);
+            $this->assertSame('7.000000', (string) $balance->unit_cost);
             $this->assertSame('70.0000', (string) $balance->inventory_value);
 
             $this->assertSame(0, JournalEntry::query()
@@ -299,7 +299,7 @@ class StockRevaluationApiTest extends TestCase
             ])))
             ->assertOk()
             ->assertJsonPath('data.quantity', '10.000000')
-            ->assertJsonPath('data.unit_cost', '5.0000')
+            ->assertJsonPath('data.unit_cost', '5.000000')
             ->assertJsonPath('data.inventory_value', '50.0000');
     }
 

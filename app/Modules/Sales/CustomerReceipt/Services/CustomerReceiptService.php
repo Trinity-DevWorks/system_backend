@@ -21,10 +21,11 @@ use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\CurrencyCashRound;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -141,7 +142,6 @@ class CustomerReceiptService
             $receipt = CustomerReceipt::query()->create([
                 ...$this->headerAttributes($data, null),
                 'customer_id' => $customer->id,
-                'receipt_number' => SequentialCodeGenerator::next(CustomerReceipt::class, 'receipt_number', 'CR-'),
                 'status' => CustomerReceiptStatus::Draft,
                 'created_by' => $userId,
             ]);
@@ -207,6 +207,7 @@ class CustomerReceiptService
     {
         return DB::transaction(function () use ($receipt, $userId): CustomerReceipt {
             $locked = CustomerReceipt::query()->whereKey($receipt->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'receipt_number', DocumentType::CustomerReceipt, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->payment_date);
             if ($locked->status !== CustomerReceiptStatus::Draft) {
                 $this->fail('Only a draft customer receipt can be posted.', 'CUSTOMER_RECEIPT_NOT_DRAFT');
             }

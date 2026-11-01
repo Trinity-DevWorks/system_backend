@@ -19,7 +19,7 @@ final class JournalEntryResponseData
     {
         return [
             'id' => (string) $entry->id,
-            'entry_number' => (string) $entry->entry_number,
+            'entry_number' => $entry->entry_number,
             'entry_date' => $entry->entry_date?->toDateString(),
             'source_type' => (string) $entry->source_type,
             'source_id' => $entry->source_id,

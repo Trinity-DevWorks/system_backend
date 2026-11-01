@@ -8,6 +8,7 @@ use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierLedgerEntry;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -119,40 +120,19 @@ class SupplierLedgerService
         return reset($byCur);
     }
 
-    /**
-     * @param  list<int>  $supplierIds
-     * @return array<int, string> supplier_id => balance (sum across currencies — legacy list helper)
-     */
-    public function balancesForSupplierIds(array $supplierIds): array
-    {
-        if ($supplierIds === []) {
-            return [];
-        }
-
-        $grouped = $this->balancesGroupedBySupplierAndCurrency($supplierIds);
-        $out = [];
-        foreach ($supplierIds as $id) {
-            $rows = $grouped[$id] ?? [];
-            $sum = array_sum(array_map(static fn (string $v): float => (float) $v, $rows));
-            $out[$id] = $this->formatMoney($sum);
-        }
-
-        return $out;
-    }
-
     public function postOpeningBalance(Supplier $supplier, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
     {
-        $amount = (float) $openingBalance;
-        if (abs($amount) < 0.0000001) {
+        $amount = $this->formatMoney($openingBalance);
+        if (Decimal::isZero($amount)) {
             return;
         }
 
         $date = $transactionDate ?? now()->toDateString();
 
-        if ($amount > 0) {
-            $this->insertEntry($supplier, $currencyId, '0', (string) $amount, LedgerReferenceType::OpeningBalance, null, $date);
+        if (Decimal::isPositive($amount)) {
+            $this->insertEntry($supplier, $currencyId, '0', $amount, LedgerReferenceType::OpeningBalance, null, $date);
         } else {
-            $this->insertEntry($supplier, $currencyId, (string) abs($amount), '0', LedgerReferenceType::OpeningBalance, null, $date);
+            $this->insertEntry($supplier, $currencyId, Decimal::abs($amount), '0', LedgerReferenceType::OpeningBalance, null, $date);
         }
     }
 
@@ -174,9 +154,7 @@ class SupplierLedgerService
         ?string $referenceId,
         string $transactionDate
     ): SupplierLedgerEntry {
-        $d = (float) $debit;
-        $c = (float) $credit;
-        if ($d <= 0 && $c <= 0) {
+        if (! Decimal::isPositive($debit) && ! Decimal::isPositive($credit)) {
             throw new \InvalidArgumentException('Ledger entry must have a positive debit or credit.');
         }
 

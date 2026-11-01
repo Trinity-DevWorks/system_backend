@@ -22,6 +22,7 @@ use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Supplier\Models\SupplierBalance;
+use App\Modules\Treasury\Models\CashBankAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -70,6 +71,10 @@ class AccountingBackfillService
                     ? $this->journalPostingService->customerOpeningBalance($balance)
                     : $this->journalPostingService->supplierOpeningBalance($balance);
             });
+        }
+
+        foreach (CashBankAccount::query()->where('opening_balance', '!=', 0)->orderBy('id')->get() as $cashBank) {
+            DB::transaction(fn () => $this->journalPostingService->cashBankOpeningBalance($cashBank));
         }
 
         foreach (StockTransferClosure::query()->orderBy('closed_at')->orderBy('created_at')->get() as $closure) {

@@ -140,7 +140,8 @@ class CustomerReceiptController extends Controller
     {
         $pdf = $this->customerReceiptPdfService->render(
             $customerReceipt,
-            $request->query('locale')
+            $request->query('locale'),
+            is_string($request->query('template')) ? $request->query('template') : null,
         );
 
         return $pdf->download($this->customerReceiptPdfService->downloadFilename($customerReceipt));

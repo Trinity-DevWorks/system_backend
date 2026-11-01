@@ -38,7 +38,8 @@ Core/global:
 
 Auth:
 
-- `INVALID_CREDENTIALS` (HTTP 422)
+- `INVALID_CREDENTIALS` (HTTP 422) — also returned by central `/login` for non–super-admin accounts
+- `CENTRAL_FORBIDDEN` (HTTP 403) — central admin API called by a user who is not a super admin (`ensure.super_admin`)
 - `ACCOUNT_INACTIVE` (HTTP 403) — login rejected, or authenticated request by a deactivated user (`ensure.active`)
 - `PASSWORD_RESET_FAILED` (HTTP 422)
 - `PASSWORD_UNCHANGED` (HTTP 422) — new password matches the current password
@@ -84,6 +85,12 @@ Branches:
 - `BRANCH_DEFAULT_UNSET_FORBIDDEN` (HTTP 422)
 - `BRANCH_DEFAULT_DEACTIVATE_OWNER_ONLY` (HTTP 403)
 - `BRANCH_DELETE_HAS_WAREHOUSES` (HTTP 409)
+- `DOCUMENT_BRANCH_REQUIRED` (HTTP 422) — no branch exists to number a document (`DocumentNumberService`)
+- `DOCUMENT_NUMBER_START_TOO_LOW` (HTTP 422) — numbering settings: the first number must be above the last number already issued for that document type
+
+Document numbers: posted documents get `{PREFIX}-{BRANCH}-{YYYY}-{000001}` by default when posted (drafts have no number);
+the prefix, branch/year parts, padding and first number are configurable per type (`GET/PUT document-number-settings`);
+quotations, sales orders and purchase orders get theirs at create. Series are per document type, branch and year.
 
 Inventory:
 
@@ -133,6 +140,10 @@ Inventory:
 - `SUPPLIER_ITEM_SCOPE_MISMATCH` (HTTP 404)
 
 Stock:
+
+- `STOCK_INSUFFICIENT_TO_RESERVE` (HTTP 422) — confirming a sales order needs more than on hand minus what other confirmed orders reserve
+- `STOCK_RESERVED` (HTTP 422) — an outbound movement (sale, transfer, production, ...) would use stock reserved by confirmed sales orders; counts and adjustments are exempt
+- `SALES_ORDER_NOT_CLOSABLE` (HTTP 422) — only confirmed / partially invoiced orders can be closed (closing releases the remaining reservation)
 
 - `STOCK_BALANCE_PARAMS_REQUIRED` (HTTP 422)
 - `STOCK_MOVEMENT_ZERO_QUANTITY` (HTTP 422)
@@ -272,6 +283,15 @@ Sales credit notes:
 - `SALES_CREDIT_NOTE_BUNDLE_LOT_NOT_SUPPORTED` (HTTP 422)
 - `SALES_CREDIT_NOTE_TYPE_INVALID` (HTTP 422)
 - `SALES_INVOICE_HAS_CREDIT_NOTES` (HTTP 422)
+- `CUSTOMER_CREDIT_LIMIT_EXCEEDED` (HTTP 422) — posting an invoice / confirming an order would put the customer's balance (per currency) above the credit limit; needs `credit_limit_override,edit`. A limit of 0 means no limit.
+
+Price lists:
+
+- `PRICE_LIST_ITEM_UOM_MISMATCH` (HTTP 422) — a price row's unit does not belong to its item
+- `PRICE_LIST_ITEM_INVALID` (HTTP 422) — negative price or minimum quantity
+- `PRICE_LIST_DUPLICATE_ITEM` (HTTP 422) — same item, unit and minimum quantity twice in one list
+- `PRICE_LIST_DATES_INVALID` (HTTP 422) — end date before start date
+
 
 Customer refunds:
 
@@ -297,4 +317,47 @@ Supplier refunds use the same set as customer refunds with the `SUPPLIER_REFUND_
 5. When adding a new code:
    - add backend usage in response envelope
    - add frontend translations under `ApiErrors.codes.<CODE>` in `messages/en.json` and `messages/ar.json`
+
+Treasury (cash/bank accounts, transfers, expense vouchers):
+
+- `TREASURY_LEDGER_ACCOUNT_INVALID` (HTTP 422) — a cash/bank account must use an active, non-group asset account
+- `TREASURY_ACCOUNT_IN_USE` (HTTP 409/422) — account used by documents: cannot delete or change its ledger account / currency
+- `TREASURY_ACCOUNT_INACTIVE` (HTTP 422) — cash/bank account missing or inactive
+- `TREASURY_ACCOUNT_REQUIRED` (HTTP 422) — cash/bank account has no ledger account at posting
+- `TREASURY_SAME_ACCOUNT` (HTTP 422) — transfer from and to the same account
+- `TREASURY_AMOUNT_INVALID` (HTTP 422) — amount must be greater than zero
+- `TREASURY_DOCUMENT_NOT_DRAFT` / `TREASURY_DOCUMENT_NOT_POSTED` (HTTP 422) — wrong status for edit/post or reverse
+- `EXPENSE_VOUCHER_ACCOUNT_INVALID` (HTTP 422) — expense lines must use an active, non-group expense account
+- `EXPENSE_VOUCHER_NO_LINES` (HTTP 422) — post needs at least one line with a positive total
+
+Delivery notes (optional step: sales order -> delivery note -> invoice):
+
+- `DELIVERY_NOTE_NOT_DRAFT` / `DELIVERY_NOTE_NOT_POSTED` (HTTP 422) — wrong status for edit/post, reverse or invoice
+- `DELIVERY_NOTE_NO_LINES` (HTTP 422) — post needs at least one line
+- `DELIVERY_NOTE_HAS_INVOICES` (HTTP 422) — reverse the invoices made from it first
+- `DELIVERY_NOTE_NOTHING_TO_INVOICE` (HTTP 422) — every delivered quantity is already invoiced
+- `DELIVERY_NOTE_ORDER_LINE_MISMATCH` (HTTP 422) — line does not match its sales order line (item/unit)
+- `DELIVERY_NOTE_LOT_ITEM_MISMATCH` (HTTP 422) — lot belongs to another item
+- `DELIVERY_NOTE_PDF_NOT_ALLOWED` (HTTP 422) — only posted/reversed delivery notes print
+- `DELIVERY_NOTE_ORDER_CUSTOMER_MISMATCH` (HTTP 422) — the chosen sales order belongs to another customer
+- `SALES_ORDER_NOTHING_TO_DELIVER` (HTTP 422) — everything on the order already shipped
+- `SALES_ORDER_DELIVERY_EXCEEDED` (HTTP 422) — shipping more than the order line (delivery note or direct invoice)
+- `SALES_ORDER_HAS_DELIVERIES` (HTTP 422) — an order with posted deliveries cannot be cancelled (close it)
+- `SALES_INVOICE_DELIVERY_LINE_INVALID` / `SALES_INVOICE_DELIVERY_LINE_MISMATCH` (HTTP 422) — invoice line must come from a posted delivery note of the same customer, item and unit
+- `SALES_INVOICE_DELIVERY_QTY_EXCEEDED` (HTTP 422) — invoicing more than the delivery note delivered
+
+## Item variants
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `ITEM_ATTRIBUTE_IN_USE` | 409 | The attribute is used by item variants. |
+| `ITEM_ATTRIBUTE_VALUE_IN_USE` | 409 | A removed attribute value is used by item variants. |
+| `ITEM_VARIANT_NESTED` | 422 | A variant cannot have its own variants. |
+| `ITEM_VARIANT_PARENT_HAS_STOCK` | 422 | An item with stock history cannot become a variant template. |
+| `ITEM_VARIANT_ATTRIBUTES_LOCKED` | 422 | Attributes are fixed once variants exist; only values can be added. |
+| `ITEM_VARIANT_DUPLICATE_ATTRIBUTE` | 422 | The same attribute was chosen twice. |
+| `ITEM_VARIANT_VALUE_MISMATCH` | 422 | A chosen value does not belong to its attribute. |
+| `ITEM_VARIANT_TOO_MANY` | 422 | More than 200 combinations. |
+| `ITEM_VARIANT_PARENT_NOT_STOCKABLE` | 422 | Stock cannot move for a variant template. |
+| `ITEM_DELETE_HAS_VARIANTS` | 409 | Delete the variants before the template item. |
 

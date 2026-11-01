@@ -17,10 +17,11 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\DocumentNumberService;
 use App\Support\DocumentTaxContext;
 use App\Support\DocumentTaxMath;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -111,8 +112,8 @@ class PurchaseOrderService
                 'expected_date' => $this->normalizeDate($data['expected_date'] ?? null),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
-                'po_number' => SequentialCodeGenerator::next(PurchaseOrder::class, 'po_number', 'PO-'),
             ]);
+            app(DocumentNumberService::class)->assign($order, 'po_number', DocumentType::PurchaseOrder, $order->branch_id !== null ? (int) $order->branch_id : null, $order->order_date);
 
             if (! empty($data['lines'])) {
                 $this->replaceLines($order, $data['lines']);
@@ -303,7 +304,7 @@ class PurchaseOrderService
 
             $resolved = PurchaseOrderLineQuantity::resolve(
                 $item,
-                (float) $row['quantity'],
+                $row['quantity'],
                 isset($row['item_uom_id']) ? (int) $row['item_uom_id'] : null
             );
 

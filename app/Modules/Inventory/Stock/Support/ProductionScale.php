@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Support;
 
+use App\Support\Decimal;
+
 final class ProductionScale
 {
     public static function factor(string $produceQty, string $yieldQty): string
     {
-        $produce = number_format((float) $produceQty, 6, '.', '');
-        $yield = number_format((float) $yieldQty, 6, '.', '');
+        $produce = Decimal::round($produceQty, 6);
+        $yield = Decimal::round($yieldQty, 6);
 
         if (bccomp($produce, '0', 6) <= 0) {
             abort(422, 'Production quantity must be greater than zero.', [
@@ -28,6 +30,6 @@ final class ProductionScale
 
     public static function apply(string $recipeQty, string $factor): string
     {
-        return number_format((float) bcmul($recipeQty, $factor, 12), 6, '.', '');
+        return Decimal::round(Decimal::mul($recipeQty, $factor, 12), 6);
     }
 }

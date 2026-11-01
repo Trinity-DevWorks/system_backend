@@ -19,10 +19,11 @@ use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Support\CurrencyCashRound;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -138,7 +139,6 @@ class SupplierRefundService
             $refund = SupplierRefund::query()->create([
                 ...$this->headerAttributes($data, null),
                 'supplier_id' => (string) $data['supplier_id'],
-                'refund_number' => SequentialCodeGenerator::next(SupplierRefund::class, 'refund_number', 'SRF-'),
                 'status' => SupplierRefundStatus::Draft,
                 'created_by' => $userId,
             ]);
@@ -195,6 +195,7 @@ class SupplierRefundService
     {
         return DB::transaction(function () use ($refund, $userId): SupplierRefund {
             $locked = SupplierRefund::query()->whereKey($refund->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'refund_number', DocumentType::SupplierRefund, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->refund_date);
             if ($locked->status !== SupplierRefundStatus::Draft) {
                 $this->fail('Only a draft supplier refund can be posted.', 'SUPPLIER_REFUND_NOT_DRAFT');
             }

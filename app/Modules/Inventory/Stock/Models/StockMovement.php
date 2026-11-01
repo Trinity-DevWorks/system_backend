@@ -37,7 +37,7 @@ class StockMovement extends Model
     {
         return [
             'quantity_delta' => 'decimal:6',
-            'unit_cost' => 'decimal:4',
+            'unit_cost' => 'decimal:6',
             'value_delta' => 'decimal:4',
             'type' => StockMovementType::class,
         ];

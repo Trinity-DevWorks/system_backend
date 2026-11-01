@@ -8,6 +8,7 @@ use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Customer\Enums\LedgerReferenceType;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerLedgerEntry;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -81,17 +82,17 @@ class CustomerLedgerService
 
     public function postOpeningBalance(Customer $customer, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
     {
-        $amount = (float) $openingBalance;
-        if (abs($amount) < 0.0000001) {
+        $amount = $this->formatMoney($openingBalance);
+        if (Decimal::isZero($amount)) {
             return;
         }
 
         $date = $transactionDate ?? now()->toDateString();
 
-        if ($amount > 0) {
-            $this->insertEntry($customer, $currencyId, (string) $amount, '0', LedgerReferenceType::OpeningBalance, null, $date);
+        if (Decimal::isPositive($amount)) {
+            $this->insertEntry($customer, $currencyId, $amount, '0', LedgerReferenceType::OpeningBalance, null, $date);
         } else {
-            $this->insertEntry($customer, $currencyId, '0', (string) abs($amount), LedgerReferenceType::OpeningBalance, null, $date);
+            $this->insertEntry($customer, $currencyId, '0', Decimal::abs($amount), LedgerReferenceType::OpeningBalance, null, $date);
         }
     }
 
@@ -113,9 +114,7 @@ class CustomerLedgerService
         ?string $referenceId,
         string $transactionDate
     ): CustomerLedgerEntry {
-        $d = (float) $debit;
-        $c = (float) $credit;
-        if ($d <= 0 && $c <= 0) {
+        if (! Decimal::isPositive($debit) && ! Decimal::isPositive($credit)) {
             throw new \InvalidArgumentException('Ledger entry must have a positive debit or credit.');
         }
 

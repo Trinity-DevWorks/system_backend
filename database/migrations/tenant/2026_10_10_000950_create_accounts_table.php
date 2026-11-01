@@ -14,6 +14,7 @@ return new class extends Migration
             $table->id();
             $table->string('code', 20)->unique();
             $table->string('name', 255);
+            $table->string('name_ar', 255)->nullable();
             $table->foreignId('parent_id')->nullable()->constrained('accounts')->restrictOnDelete();
             /** asset | liability | equity | revenue | expense; null on groups whose children mix types */
             $table->string('type', 16)->nullable();
@@ -28,10 +29,17 @@ return new class extends Migration
             $table->index('parent_id');
             $table->index(['type', 'is_active']);
         });
+
+        Schema::table('payment_methods', function (Blueprint $table) {
+            $table->foreignId('account_id')->nullable()->after('currency_id')->constrained('accounts')->restrictOnDelete();
+        });
     }
 
     public function down(): void
     {
+        Schema::table('payment_methods', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('account_id');
+        });
         Schema::dropIfExists('accounts');
     }
 };

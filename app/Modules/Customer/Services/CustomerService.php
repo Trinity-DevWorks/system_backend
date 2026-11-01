@@ -111,6 +111,7 @@ class CustomerService
         return DB::transaction(function () use ($validated): Customer {
             $customer = Customer::query()->create([
                 'customer_group_id' => $validated['customer_group_id'] ?? null,
+                'price_list_id' => $validated['price_list_id'] ?? null,
                 'salesman_id' => $validated['salesman_id'] ?? null,
                 'payment_method_id' => $validated['payment_method_id'] ?? null,
                 'payment_terms_id' => $validated['payment_terms_id'] ?? null,

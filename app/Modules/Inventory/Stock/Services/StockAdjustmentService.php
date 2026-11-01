@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Services;
 
 use App\Modules\Accounting\Services\JournalPostingService;
-use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Enums\StockAdjustmentStatus;
@@ -16,6 +15,9 @@ use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentRules;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -93,8 +95,6 @@ class StockAdjustmentService
                 'created_by' => $userId,
             ]);
 
-            $document->update(['adj_number' => $this->formatAdjNumber()]);
-
             if (! empty($data['lines'])) {
                 $this->replaceLines($document, $data['lines']);
             }
@@ -132,7 +132,7 @@ class StockAdjustmentService
                 $updates['stock_adjustment_reason_id'] = $reason->id;
                 $document->loadMissing('lines');
                 foreach ($document->lines as $line) {
-                    StockAdjustmentRules::assertQuantityMatchesReason($reason, (float) $line->quantity);
+                    StockAdjustmentRules::assertQuantityMatchesReason($reason, (string) $line->quantity);
                 }
             }
 
@@ -171,6 +171,7 @@ class StockAdjustmentService
     {
         return DB::transaction(function () use ($document, $userId): StockAdjustment {
             $locked = StockAdjustment::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'adj_number', DocumentType::StockAdjustment, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->adjustment_date);
             StockAdjustmentRules::assertPostable($locked);
             StockAdjustmentRules::assertWarehouse((int) $locked->warehouse_id);
 
@@ -189,7 +190,7 @@ class StockAdjustmentService
             foreach ($lines as $line) {
                 $item = $line->item ?? Item::query()->findOrFail($line->item_id);
                 StockAdjustmentRules::assertStockableItem($item);
-                StockAdjustmentRules::assertQuantityMatchesReason($reason, (float) $line->quantity);
+                StockAdjustmentRules::assertQuantityMatchesReason($reason, (string) $line->quantity);
 
                 $itemUomId = $line->item_uom_id ? (int) $line->item_uom_id : null;
                 $unitCost = StockAdjustmentQuantity::resolveBaseUnitCost($item, $line->unit_cost, $itemUomId);
@@ -267,7 +268,7 @@ class StockAdjustmentService
             $item = Item::query()->findOrFail($itemId);
             StockAdjustmentRules::assertStockableItem($item);
 
-            $quantity = (float) $row['quantity'];
+            $quantity = Decimal::of($row['quantity']);
             StockAdjustmentRules::assertQuantityMatchesReason($reason, $quantity);
 
             $itemUomId = isset($row['item_uom_id']) && $row['item_uom_id'] !== null && $row['item_uom_id'] !== ''
@@ -275,7 +276,7 @@ class StockAdjustmentService
                 : null;
 
             $baseQuantity = StockAdjustmentQuantity::resolveBaseDelta($item, $quantity, $itemUomId);
-            $lotId = $this->resolveLineLotId($item, $row, $quantity > 0);
+            $lotId = $this->resolveLineLotId($item, $row, Decimal::isPositive($quantity));
             $lineKey = $itemId.'|'.($lotId ?? '');
             if (isset($normalized[$lineKey])) {
                 abort(422, 'Duplicate item and lot combinations are not allowed.', [
@@ -285,7 +286,7 @@ class StockAdjustmentService
 
             $normalized[$lineKey] = [
                 'item_id' => $itemId,
-                'quantity' => number_format($quantity, 6, '.', ''),
+                'quantity' => Decimal::round($quantity, 6),
                 'base_quantity' => $baseQuantity,
                 'item_uom_id' => $itemUomId,
                 'unit_cost' => $this->normalizeUnitCost($row['unit_cost'] ?? null),
@@ -343,13 +344,6 @@ class StockAdjustmentService
         return $locked;
     }
 
-    private function formatAdjNumber(): string
-    {
-        $seq = StockAdjustment::query()->count();
-
-        return 'ADJ-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
-    }
-
     private function normalizeNotes(mixed $value): ?string
     {
         if ($value === null) {
@@ -367,8 +361,8 @@ class StockAdjustmentService
             return null;
         }
 
-        $cost = PriceMath::normalize($value);
-        if (bccomp($cost, '0', PriceMath::scale()) < 0) {
+        $cost = InventoryCostingMath::unitCost($value);
+        if (bccomp($cost, '0', InventoryCostingMath::UNIT_COST_SCALE) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 

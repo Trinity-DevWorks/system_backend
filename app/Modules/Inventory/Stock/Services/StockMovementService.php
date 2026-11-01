@@ -94,6 +94,15 @@ class StockMovementService
                 abort(422, 'Insufficient stock for this movement.', ['X-Error-Code' => 'STOCK_INSUFFICIENT']);
             }
 
+            if (! in_array($data->type, [StockMovementType::Adjustment, StockMovementType::Count], true)) {
+                app(StockReservationService::class)->assertOutboundRespectsReservations(
+                    $item,
+                    (int) $warehouse->id,
+                    $warehouseOnHand,
+                    $data->quantityDelta,
+                );
+            }
+
             $costing = $this->inventoryCostingService->apply(
                 $item,
                 $balance,
@@ -271,6 +280,10 @@ class StockMovementService
 
         if (! $item->track_inventory) {
             abort(422, 'This item does not track inventory.', ['X-Error-Code' => 'STOCK_ITEM_NOT_TRACKED']);
+        }
+
+        if ($item->is_variant_parent) {
+            abort(422, 'A variant template has no stock; use one of its variants.', ['X-Error-Code' => 'ITEM_VARIANT_PARENT_NOT_STOCKABLE']);
         }
     }
 

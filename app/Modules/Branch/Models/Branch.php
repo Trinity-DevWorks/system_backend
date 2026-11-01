@@ -17,6 +17,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * @property-read BranchUser|null $pivot
+ * @property int|null $price_list_id
  */
 #[Fillable([
     'name',
@@ -30,6 +31,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'manager_id',
     'is_active',
     'is_default',
+    'price_list_id',
 ])]
 class Branch extends Model implements AuditableContract
 {
@@ -79,5 +81,16 @@ class Branch extends Model implements AuditableContract
             ->using(BranchUser::class)
             ->withPivot('role_id')
             ->withTimestamps();
+    }
+
+    /**
+     * Head office: the default branch, or the first one. Company-level journal entries
+     * (opening balances, VAT settlement) are booked here so branch reports include them.
+     */
+    public static function defaultId(): ?int
+    {
+        $id = self::query()->orderByDesc('is_default')->orderBy('id')->value('id');
+
+        return $id !== null ? (int) $id : null;
     }
 }

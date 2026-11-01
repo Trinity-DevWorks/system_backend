@@ -121,24 +121,14 @@ final class DocumentTaxMath
 
     private static function decimal(mixed $value, int $scale): string
     {
-        if ($value === null || $value === '') {
-            return number_format(0, $scale, '.', '');
-        }
-
-        return number_format((float) $value, $scale, '.', '');
+        return Decimal::round($value, $scale);
     }
 
     private static function clampPercent(mixed $value): string
     {
-        $n = (float) ($value ?? 0);
-        if ($n < 0) {
-            $n = 0;
-        }
-        if ($n > 100) {
-            $n = 100;
-        }
+        $n = Decimal::max('0', Decimal::min($value ?? 0, '100'));
 
-        return number_format($n, 4, '.', '');
+        return Decimal::round($n, 4);
     }
 
     private static function roundMoney(mixed $value, int $scale, ?CompanySetting $settings): string
@@ -147,6 +137,6 @@ final class DocumentTaxMath
             return PriceMath::normalize($value, $settings);
         }
 
-        return number_format((float) $value, $scale, '.', '');
+        return Decimal::round($value, $scale);
     }
 }

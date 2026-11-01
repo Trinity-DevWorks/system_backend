@@ -12,7 +12,7 @@ return new class extends Migration
     {
         Schema::create('journal_entries', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('entry_number', 32)->unique();
+            $table->string('entry_number', 32)->nullable()->unique(); // assigned at posting
             $table->date('entry_date');
             /** `manual` or the source document REFERENCE_TYPE */
             $table->string('source_type', 48);

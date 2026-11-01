@@ -30,6 +30,7 @@ class StoreBranchRequest extends FormRequest
             'closing_time' => ['nullable', 'date_format:H:i'],
             'manager_id' => ['nullable', 'uuid', 'exists:users,id'],
             'is_active' => ['required', 'boolean'],
+            'price_list_id' => ['sometimes', 'nullable', 'integer', 'exists:price_lists,id'],
             'is_default' => ['required', 'boolean'],
         ];
     }

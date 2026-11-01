@@ -19,7 +19,7 @@ class SalesInvoicePdfService
         private readonly DocumentPdfRenderer $renderer,
     ) {}
 
-    public function render(SalesInvoice $invoice, ?string $locale = null): PDF
+    public function render(SalesInvoice $invoice, ?string $locale = null, ?string $template = null): PDF
     {
         DocumentPdfSupport::assertPrintableStatus(
             $invoice->status,
@@ -28,7 +28,7 @@ class SalesInvoicePdfService
             'SALES_INVOICE_PDF_NOT_ALLOWED',
         );
 
-        $options = DocumentPdfOptions::fromRequest($locale);
+        $options = DocumentPdfOptions::fromRequest($locale, $template, allowReceipt: true);
         $money = DocumentMoney::forOptions($options);
         $labels = $this->renderer->labelsFor($options);
 

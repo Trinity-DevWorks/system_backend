@@ -14,6 +14,8 @@ use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
+use App\Modules\Sales\DeliveryNote\Models\DeliveryNote;
+use App\Modules\Sales\DeliveryNote\Models\DeliveryNoteLine;
 use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteStatus;
 use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteType;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
@@ -24,10 +26,11 @@ use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
 use App\Support\ProportionalCredit;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -215,7 +218,6 @@ class SalesCreditNoteService
 
         return DB::transaction(function () use ($data, $userId, $invoice): SalesCreditNote {
             $note = SalesCreditNote::query()->create([
-                'credit_note_number' => SequentialCodeGenerator::next(SalesCreditNote::class, 'credit_note_number', 'SCN-'),
                 'sales_invoice_id' => $invoice->id,
                 'customer_id' => $invoice->customer_id,
                 'currency_id' => $invoice->currency_id,
@@ -298,6 +300,7 @@ class SalesCreditNoteService
     {
         return DB::transaction(function () use ($note, $userId): SalesCreditNote {
             $locked = SalesCreditNote::query()->whereKey($note->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'credit_note_number', DocumentType::SalesCreditNote, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->credit_date);
             if ($locked->status !== SalesCreditNoteStatus::Draft) {
                 $this->fail('Only a draft credit note can be posted.', 'SALES_CREDIT_NOTE_NOT_DRAFT');
             }
@@ -846,6 +849,16 @@ class SalesCreditNoteService
         string $returnQty,
     ): array {
         $sold = $this->movementTotals(SalesInvoice::REFERENCE_TYPE, [$invoiceId], $itemId, $warehouseId, $lotId, $type, null);
+        if (bccomp(InventoryCostingMath::absQty($sold['qty']), '0', 6) === 0) {
+            // Lines invoiced from a delivery note: the stock (and its cost) left on the delivery note.
+            $noteIds = DeliveryNoteLine::query()
+                ->whereIn('id', SalesInvoiceLine::query()->where('sales_invoice_id', $invoiceId)->whereNotNull('delivery_note_line_id')->select('delivery_note_line_id'))
+                ->distinct()
+                ->pluck('delivery_note_id')
+                ->map(fn ($id): string => (string) $id)
+                ->all();
+            $sold = $this->movementTotals(DeliveryNote::REFERENCE_TYPE, $noteIds, $itemId, $warehouseId, $lotId, $type, null);
+        }
         $soldQty = InventoryCostingMath::absQty($sold['qty']);
         $soldValue = InventoryCostingMath::moneyRound(
             bccomp($sold['value'], '0', 4) < 0 ? bcmul($sold['value'], '-1', 8) : $sold['value'],

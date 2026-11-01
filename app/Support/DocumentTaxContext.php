@@ -37,7 +37,7 @@ final class DocumentTaxContext
             return '0';
         }
 
-        return number_format((float) $group->percentage, 4, '.', '');
+        return Decimal::round($group->percentage, 4);
     }
 
     public static function pricesIncludeTax(?CompanySetting $settings = null): bool

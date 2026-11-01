@@ -15,6 +15,9 @@ use App\Modules\Inventory\Stock\Support\BundleExplosionRules;
 use App\Modules\Inventory\Stock\Support\BundleExplosionScale;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -94,8 +97,6 @@ class BundleExplosionService
                 'created_by' => $userId,
             ]);
 
-            $document->update(['bex_number' => $this->formatBexNumber()]);
-
             if (! empty($data['lines'])) {
                 $this->replaceLines($document, $components, $data['lines']);
             } else {
@@ -149,9 +150,9 @@ class BundleExplosionService
 
             $quantity = array_key_exists('quantity', $data) && $data['quantity'] !== null
                 ? $this->normalizeKitQty($data['quantity'])
-                : number_format((float) $document->quantity, 6, '.', '');
+                : Decimal::round($document->quantity, 6);
 
-            if ($quantity !== number_format((float) $document->quantity, 6, '.', '')) {
+            if ($quantity !== Decimal::round($document->quantity, 6)) {
                 $rebuild = true;
             }
 
@@ -198,6 +199,7 @@ class BundleExplosionService
     {
         return DB::transaction(function () use ($document, $userId): BundleExplosion {
             $locked = BundleExplosion::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'bex_number', DocumentType::BundleExplosion, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->explosion_date);
             BundleExplosionRules::assertPostable($locked);
             BundleExplosionRules::assertWarehouse((int) $locked->warehouse_id);
 
@@ -324,8 +326,8 @@ class BundleExplosionService
                 $item,
             );
 
-            $quantity = (float) ($row['quantity'] ?? 0);
-            if ($quantity <= 0) {
+            $quantity = Decimal::of($row['quantity'] ?? 0);
+            if (! Decimal::isPositive($quantity)) {
                 abort(422, 'Component quantity must be greater than zero.', [
                     'X-Error-Code' => 'BUNDLE_EXPLOSION_LINE_INVALID_QUANTITY',
                 ]);
@@ -341,14 +343,14 @@ class BundleExplosionService
             }
 
             $theoretical = isset($row['theoretical_quantity']) && $row['theoretical_quantity'] !== null && $row['theoretical_quantity'] !== ''
-                ? number_format((float) $row['theoretical_quantity'], 6, '.', '')
+                ? Decimal::round($row['theoretical_quantity'], 6)
                 : BundleExplosionScale::apply((string) $component->quantity, $factor);
 
             $seen[$itemId] = true;
             $normalized[$lineKey] = [
                 'item_id' => $itemId,
                 'bundle_item_id' => $component->id,
-                'quantity' => number_format($quantity, 6, '.', ''),
+                'quantity' => Decimal::round($quantity, 6),
                 'base_quantity' => $baseQuantity,
                 'theoretical_quantity' => $theoretical,
                 'lot_id' => $lotId,
@@ -448,16 +450,9 @@ class BundleExplosionService
         return $locked;
     }
 
-    private function formatBexNumber(): string
-    {
-        $seq = BundleExplosion::query()->count();
-
-        return 'BEX-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
-    }
-
     private function normalizeKitQty(mixed $value): string
     {
-        $qty = number_format((float) $value, 6, '.', '');
+        $qty = Decimal::round($value, 6);
         if (bccomp($qty, '0', 6) <= 0) {
             abort(422, 'Bundle quantity must be greater than zero.', [
                 'X-Error-Code' => 'BUNDLE_EXPLOSION_QTY_INVALID',

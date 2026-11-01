@@ -6,6 +6,7 @@ namespace App\Modules\CompanySetting\Support;
 
 use App\Modules\CompanySetting\Enums\PriceRoundingMode;
 use App\Modules\CompanySetting\Models\CompanySetting;
+use App\Support\Decimal;
 
 final class PriceMath
 {
@@ -19,10 +20,8 @@ final class PriceMath
     public static function normalize(mixed $value, ?CompanySetting $settings = null): string
     {
         $settings ??= CompanySetting::current();
-        $scale = self::scale($settings);
-        $rounded = self::round((float) $value, $scale, $settings->price_rounding_mode);
 
-        return number_format($rounded, $scale, '.', '');
+        return Decimal::round($value, self::scale($settings), $settings->price_rounding_mode);
     }
 
     public static function normalizeNullable(mixed $value, ?CompanySetting $settings = null): ?string
@@ -34,35 +33,11 @@ final class PriceMath
         return self::normalize($value, $settings);
     }
 
-    public static function round(float $value, int $scale, PriceRoundingMode $mode): float
+    /**
+     * Exact rounding (bcmath) to $scale decimals; returns a fixed-scale numeric string.
+     */
+    public static function round(mixed $value, int $scale, PriceRoundingMode $mode): string
     {
-        $scale = max(0, $scale);
-
-        return match ($mode) {
-            PriceRoundingMode::HalfUp => round($value, $scale, PHP_ROUND_HALF_UP),
-            PriceRoundingMode::HalfEven => round($value, $scale, PHP_ROUND_HALF_EVEN),
-            PriceRoundingMode::Up => self::roundAwayFromZero($value, $scale),
-            PriceRoundingMode::Down => self::roundTowardZero($value, $scale),
-        };
-    }
-
-    private static function roundAwayFromZero(float $value, int $scale): float
-    {
-        $factor = 10 ** $scale;
-        if ($value >= 0) {
-            return ceil($value * $factor - 1e-12) / $factor;
-        }
-
-        return floor($value * $factor + 1e-12) / $factor;
-    }
-
-    private static function roundTowardZero(float $value, int $scale): float
-    {
-        $factor = 10 ** $scale;
-        if ($value >= 0) {
-            return floor($value * $factor + 1e-12) / $factor;
-        }
-
-        return ceil($value * $factor - 1e-12) / $factor;
+        return Decimal::round($value, $scale, $mode);
     }
 }

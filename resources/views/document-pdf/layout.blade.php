@@ -209,12 +209,15 @@
     @yield('body')
 
     @include('document-pdf.partials.notes')
+    @if (!empty($termsText))
+        <div class="notes" style="margin-top: 10px;">{{ $termsText }}</div>
+    @endif
     @include('document-pdf.partials.signatures')
 
     <div class="footer">
         <table class="footer-table">
             <tr>
-                <td>{{ $letterhead['company_name'] }} · {{ $labels['generated'] }} {{ $generatedAt }}</td>
+                <td>{{ $letterhead['company_name'] }} · {{ $labels['generated'] }} {{ $generatedAt }}@if (!empty($footerText))<br>{{ $footerText }}@endif</td>
                 <td class="footer-right"></td>
             </tr>
         </table>

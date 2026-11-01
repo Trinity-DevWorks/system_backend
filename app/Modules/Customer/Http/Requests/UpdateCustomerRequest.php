@@ -68,6 +68,7 @@ class UpdateCustomerRequest extends FormRequest
             'email' => ['sometimes', 'nullable', 'email', 'max:255', Rule::unique('customers', 'email')->ignore($customerId)],
             'phone' => ['sometimes', 'nullable', 'string', 'max:32'],
             'customer_group_id' => ['sometimes', 'nullable', 'integer', 'exists:customer_groups,id'],
+            'price_list_id' => ['sometimes', 'nullable', 'integer', 'exists:price_lists,id'],
             'salesman_id' => ['sometimes', 'nullable', 'uuid', 'exists:salesmen,id'],
             'payment_method_id' => ['sometimes', 'nullable', 'integer', 'exists:payment_methods,id'],
             'payment_terms_id' => ['sometimes', 'nullable', 'integer', 'exists:payment_terms,id'],

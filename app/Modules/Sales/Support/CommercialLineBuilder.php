@@ -32,7 +32,7 @@ final class CommercialLineBuilder
 
             $qty = CommercialLineQuantity::resolve(
                 $item,
-                (float) $row['quantity'],
+                $row['quantity'],
                 isset($row['item_uom_id']) && $row['item_uom_id'] !== null && $row['item_uom_id'] !== ''
                     ? (int) $row['item_uom_id']
                     : null,

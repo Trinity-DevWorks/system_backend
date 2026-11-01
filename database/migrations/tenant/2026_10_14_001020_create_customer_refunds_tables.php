@@ -14,7 +14,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             // Issuing branch, frozen once the document leaves draft (see docs/printing-plan.md D3).
             $table->foreignId('branch_id')->index()->constrained('branches')->restrictOnDelete();
-            $table->string('refund_number', 32)->unique();
+            $table->string('refund_number', 32)->nullable()->unique(); // assigned at posting
             $table->foreignUuid('customer_id')->constrained('customers')->restrictOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             $table->decimal('exchange_rate', 24, 12)->default(1);

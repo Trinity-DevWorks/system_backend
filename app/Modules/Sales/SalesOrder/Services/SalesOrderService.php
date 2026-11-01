@@ -7,6 +7,8 @@ namespace App\Modules\Sales\SalesOrder\Services;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Customer\Models\Customer;
+use App\Modules\Customer\Services\CreditLimitGuard;
+use App\Modules\Inventory\Stock\Services\StockReservationService;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Services\SalesInvoiceService;
 use App\Modules\Sales\SalesOrder\Enums\SalesOrderStatus;
@@ -16,8 +18,10 @@ use App\Modules\Sales\SalesOrder\Support\SalesOrderRules;
 use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
 use App\Modules\Sales\Support\CommercialLineBuilder;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -81,8 +85,8 @@ class SalesOrderService
                     : null,
                 'status' => SalesOrderStatus::Draft,
                 'created_by' => $userId,
-                'order_number' => SequentialCodeGenerator::next(SalesOrder::class, 'order_number', 'SO-'),
             ]);
+            app(DocumentNumberService::class)->assign($order, 'order_number', DocumentType::SalesOrder, $order->branch_id !== null ? (int) $order->branch_id : null, $order->order_date);
 
             $this->replaceLines($order, $data['lines'] ?? []);
 
@@ -192,7 +196,7 @@ class SalesOrderService
     {
         return DB::transaction(function () use ($order, $userId): SalesOrder {
             $locked = $this->lockDraft($order);
-            SalesOrderRules::assertCustomer((string) $locked->customer_id);
+            $customer = SalesOrderRules::assertCustomer((string) $locked->customer_id);
             $lines = SalesOrderLine::query()->where('sales_order_id', $locked->id)->orderBy('id')->get();
             if ($lines->isEmpty()) {
                 abort(422, 'Cannot confirm a sales order without lines.', ['X-Error-Code' => 'SALES_ORDER_NO_LINES']);
@@ -204,11 +208,32 @@ class SalesOrderService
                     ]);
                 }
             }
+            app(CreditLimitGuard::class)->assert($customer, (int) $locked->currency_id, (string) $locked->grand_total);
             $locked->update([
                 'status' => SalesOrderStatus::Confirmed,
                 'confirmed_by' => $userId,
                 'confirmed_at' => now(),
             ]);
+
+            app(StockReservationService::class)->assertOrderCanReserve($locked->refresh());
+
+            return $this->find($locked->id);
+        });
+    }
+
+    /**
+     * Stop a confirmed / partially invoiced order: what is not invoiced yet is released from reservation.
+     */
+    public function close(SalesOrder $order, ?string $userId = null): SalesOrder
+    {
+        return DB::transaction(function () use ($order): SalesOrder {
+            $locked = SalesOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($locked->status, [SalesOrderStatus::Confirmed, SalesOrderStatus::PartiallyInvoiced], true)) {
+                abort(422, 'Only a confirmed or partially invoiced sales order can be closed.', [
+                    'X-Error-Code' => 'SALES_ORDER_NOT_CLOSABLE',
+                ]);
+            }
+            $locked->update(['status' => SalesOrderStatus::Closed]);
 
             return $this->find($locked->id);
         });
@@ -231,6 +256,11 @@ class SalesOrderService
                 if (bccomp((string) $line->invoiced_base_quantity, '0', 6) > 0) {
                     abort(422, 'A sales order with posted invoices cannot be cancelled.', [
                         'X-Error-Code' => 'SALES_ORDER_HAS_INVOICES',
+                    ]);
+                }
+                if (bccomp((string) $line->delivered_base_quantity, '0', 6) > 0) {
+                    abort(422, 'A sales order with posted deliveries cannot be cancelled. Close it instead.', [
+                        'X-Error-Code' => 'SALES_ORDER_HAS_DELIVERIES',
                     ]);
                 }
             }
@@ -304,10 +334,12 @@ class SalesOrderService
             /** @var list<array{0: SalesOrderLine, 1: string}> $selected */
             $selected = [];
             if ($requested === null || $requested === []) {
+                // A direct invoice ships its lines, so it offers what has not left the warehouse yet.
+                // Goods already delivered by a delivery note are invoiced from that note.
                 foreach ($lines as $line) {
-                    $remaining = $line->remainingQuantity();
+                    $remaining = Decimal::min($line->remainingQuantity(), $line->undeliveredQuantity());
                     if (bccomp($remaining, '0', 6) > 0) {
-                        $selected[] = [$line, $remaining];
+                        $selected[] = [$line, Decimal::round($remaining, 6)];
                     }
                 }
             } else {
@@ -319,8 +351,8 @@ class SalesOrderService
                         ]);
                     }
                     $quantity = isset($row['quantity']) && $row['quantity'] !== null && $row['quantity'] !== ''
-                        ? number_format((float) $row['quantity'], 6, '.', '')
-                        : $line->remainingQuantity();
+                        ? Decimal::round($row['quantity'], 6)
+                        : Decimal::round(Decimal::min($line->remainingQuantity(), $line->undeliveredQuantity()), 6);
                     if (bccomp($quantity, '0', 6) <= 0) {
                         continue;
                     }

@@ -5,21 +5,26 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Support;
 
 use App\Modules\Inventory\Stock\Enums\ReplenishmentAlertStatus;
+use App\Support\Decimal;
 
+/**
+ * Replenishment status and suggested order quantity, computed with exact decimals.
+ * Inputs may be numeric strings, ints or floats (from JSON/DB).
+ */
 final class ReplenishmentAlertRules
 {
     /** $available is on hand + open PO + inbound in-transit. */
-    public static function status(float $available, float $reorderPoint, float $safetyStock): ReplenishmentAlertStatus
+    public static function status(mixed $available, mixed $reorderPoint, mixed $safetyStock): ReplenishmentAlertStatus
     {
-        if ($available <= 0) {
+        if (! Decimal::isPositive($available)) {
             return ReplenishmentAlertStatus::OutOfStock;
         }
 
-        if ($safetyStock > 0 && $available <= $safetyStock) {
+        if (Decimal::isPositive($safetyStock) && Decimal::cmp($available, $safetyStock) <= 0) {
             return ReplenishmentAlertStatus::BelowSafety;
         }
 
-        if ($available <= $reorderPoint) {
+        if (Decimal::cmp($available, $reorderPoint) <= 0) {
             return ReplenishmentAlertStatus::BelowReorder;
         }
 
@@ -27,24 +32,24 @@ final class ReplenishmentAlertRules
     }
 
     public static function suggestedOrderQty(
-        float $available,
-        float $reorderPoint,
-        ?float $reorderQty,
-        ?float $maxQty,
+        mixed $available,
+        mixed $reorderPoint,
+        mixed $reorderQty,
+        mixed $maxQty,
     ): string {
-        if ($maxQty !== null && $maxQty > 0) {
-            return self::formatQty(max(0, $maxQty - $available));
+        if ($maxQty !== null && Decimal::isPositive($maxQty)) {
+            return self::formatQty(Decimal::max('0', Decimal::sub($maxQty, $available)));
         }
 
-        if ($reorderQty !== null && $reorderQty > 0) {
+        if ($reorderQty !== null && Decimal::isPositive($reorderQty)) {
             return self::formatQty($reorderQty);
         }
 
-        return self::formatQty(max(0, $reorderPoint - $available));
+        return self::formatQty(Decimal::max('0', Decimal::sub($reorderPoint, $available)));
     }
 
-    public static function formatQty(float $qty): string
+    public static function formatQty(mixed $qty): string
     {
-        return number_format($qty, 6, '.', '');
+        return Decimal::round($qty, 6);
     }
 }

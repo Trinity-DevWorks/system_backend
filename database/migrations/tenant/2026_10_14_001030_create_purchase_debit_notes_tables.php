@@ -14,7 +14,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             // Issuing branch, frozen once the document leaves draft (see docs/printing-plan.md D3).
             $table->foreignId('branch_id')->index()->constrained('branches')->restrictOnDelete();
-            $table->string('debit_note_number', 32)->unique();
+            $table->string('debit_note_number', 32)->nullable()->unique(); // assigned at posting
             $table->foreignUuid('purchase_invoice_id')->constrained('purchase_invoices')->restrictOnDelete();
             $table->foreignUuid('supplier_id')->constrained('suppliers')->restrictOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
@@ -54,7 +54,7 @@ return new class extends Migration
             $table->decimal('quantity', 14, 6)->default(0);
             $table->decimal('base_quantity', 14, 6)->default(0);
             $table->decimal('conversion_factor', 14, 6)->default(1);
-            $table->decimal('unit_price', 20, 4)->default(0);
+            $table->decimal('unit_price', 20, 6)->default(0);
             $table->decimal('discount_percent', 20, 4)->default(0);
             $table->decimal('tax_rate', 20, 4)->default(0);
             $table->decimal('line_subtotal', 20, 4)->default(0);

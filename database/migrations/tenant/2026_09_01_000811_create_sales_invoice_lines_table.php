@@ -21,7 +21,7 @@ return new class extends Migration
             $table->decimal('quantity', 14, 6);
             $table->decimal('base_quantity', 14, 6);
             $table->decimal('conversion_factor', 14, 6)->default(1);
-            $table->decimal('unit_price', 14, 4)->default(0);
+            $table->decimal('unit_price', 20, 6)->default(0);
             $table->decimal('discount_percent', 8, 4)->default(0);
             $table->decimal('discount_amount', 20, 4)->default(0);
             $table->decimal('tax_rate', 8, 4)->default(0);

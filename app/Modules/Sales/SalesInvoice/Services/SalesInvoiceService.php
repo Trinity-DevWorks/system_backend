@@ -11,6 +11,7 @@ use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Customer\Enums\LedgerReferenceType;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerAddress;
+use App\Modules\Customer\Services\CreditLimitGuard;
 use App\Modules\Customer\Services\CustomerLedgerService;
 use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
@@ -18,7 +19,9 @@ use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Models\InventoryLot;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
+use App\Modules\Inventory\Stock\Services\StockReservationService;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
+use App\Modules\Sales\DeliveryNote\Services\DeliveryNoteInvoicing;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
@@ -26,11 +29,12 @@ use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceLineQuantity;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Modules\Sales\SalesOrder\Services\SalesOrderFulfillment;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\DocumentNumberService;
 use App\Support\DocumentTaxContext;
 use App\Support\DocumentTaxMath;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -113,7 +117,6 @@ class SalesInvoiceService
             ]);
 
             $invoice->update([
-                'invoice_number' => SequentialCodeGenerator::next(SalesInvoice::class, 'invoice_number', 'SI-'),
             ]);
 
             if (! empty($data['lines'])) {
@@ -196,6 +199,7 @@ class SalesInvoiceService
     {
         return DB::transaction(function () use ($invoice, $userId): SalesInvoice {
             $locked = SalesInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'invoice_number', DocumentType::SalesInvoice, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->invoice_date);
             SalesInvoiceRules::assertPostable($locked);
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
 
@@ -203,7 +207,9 @@ class SalesInvoiceService
             $locked->refresh();
 
             $customer = SalesInvoiceRules::assertCustomer((string) $locked->customer_id);
+            app(CreditLimitGuard::class)->assert($customer, (int) $locked->currency_id, (string) $locked->grand_total);
             $this->salesOrderFulfillment->applyInvoice($locked, false);
+            app(DeliveryNoteInvoicing::class)->applyInvoice($locked, false);
 
             if (bccomp((string) $locked->grand_total, '0', 4) > 0) {
                 $this->customerLedgerService->postEntry(
@@ -226,6 +232,10 @@ class SalesInvoiceService
                 ->get();
 
             foreach ($lines as $line) {
+                // Lines from a delivery note bill goods that already left the warehouse.
+                if ($line->delivery_note_line_id !== null) {
+                    continue;
+                }
                 $this->postLineStock($locked, $line, $userId);
             }
 
@@ -279,6 +289,7 @@ class SalesInvoiceService
 
             $this->journalPostingService->reverse(SalesInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
             $this->salesOrderFulfillment->applyInvoice($locked, true);
+            app(DeliveryNoteInvoicing::class)->applyInvoice($locked, true);
 
             $locked->update(['status' => SalesInvoiceStatus::Reversed]);
 
@@ -331,6 +342,13 @@ class SalesInvoiceService
                     'on_hand' => (string) $row->quantity,
                 ];
             }
+        }
+
+        $reservations = app(StockReservationService::class);
+        foreach ($byWarehouse as $wid => $row) {
+            $reserved = $reservations->reservedFor($itemId, (int) $wid);
+            $byWarehouse[$wid]['reserved'] = $reserved;
+            $byWarehouse[$wid]['available'] = bcsub($row['on_hand'], $reserved, 6);
         }
 
         return array_values($byWarehouse);
@@ -536,7 +554,7 @@ class SalesInvoiceService
 
             $qty = SalesInvoiceLineQuantity::resolve(
                 $item,
-                (float) $row['quantity'],
+                $row['quantity'],
                 isset($row['item_uom_id']) && $row['item_uom_id'] !== null && $row['item_uom_id'] !== ''
                     ? (int) $row['item_uom_id']
                     : null,
@@ -582,11 +600,19 @@ class SalesInvoiceService
                 $includeTax,
             );
 
+            $deliveryLineId = isset($row['delivery_note_line_id']) && $row['delivery_note_line_id'] !== null && $row['delivery_note_line_id'] !== ''
+                ? (int) $row['delivery_note_line_id']
+                : null;
+            if ($deliveryLineId !== null) {
+                app(DeliveryNoteInvoicing::class)->assertLinkable($deliveryLineId, (string) $invoice->customer_id, (string) $item->id, $qty['item_uom_id']);
+            }
+
             SalesInvoiceLine::query()->create([
                 'sales_invoice_id' => $invoice->id,
                 'sales_order_line_id' => isset($row['sales_order_line_id']) && $row['sales_order_line_id'] !== null && $row['sales_order_line_id'] !== ''
                     ? (int) $row['sales_order_line_id']
                     : null,
+                'delivery_note_line_id' => $deliveryLineId,
                 'item_id' => $item->id,
                 'item_uom_id' => $qty['item_uom_id'],
                 'warehouse_id' => $warehouseId,
