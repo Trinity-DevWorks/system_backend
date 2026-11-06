@@ -23,6 +23,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * @property int $branch_id
+ * @property bool $is_opening
  * @property PurchaseInvoiceStatus $status
  * @property Carbon|null $invoice_date
  * @property Carbon|null $due_on
@@ -39,6 +40,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'payment_method_id',
     'payment_terms_id',
     'status',
+    'is_opening',
+    'original_number',
     'invoice_date',
     'due_on',
     'exchange_rate',
@@ -80,6 +83,7 @@ class PurchaseInvoice extends Model implements AuditableContract
     {
         return [
             'status' => PurchaseInvoiceStatus::class,
+            'is_opening' => 'boolean',
             'invoice_date' => 'date',
             'due_on' => 'date',
             'exchange_rate' => 'decimal:12',

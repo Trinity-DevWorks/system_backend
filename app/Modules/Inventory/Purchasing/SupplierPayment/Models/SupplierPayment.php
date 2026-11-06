@@ -10,6 +10,7 @@ use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Enums\SupplierPaymentStatus;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Supplier\Models\Supplier;
+use App\Modules\Treasury\Models\CashBankAccount;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -21,6 +22,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * @property int $branch_id
+ * @property int|null $cash_bank_account_id
  * @property SupplierPaymentStatus $status
  * @property Carbon|null $payment_date
  * @property Carbon|null $posted_at
@@ -32,6 +34,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'currency_id',
     'exchange_rate',
     'payment_method_id',
+    'cash_bank_account_id',
     'payment_date',
     'amount',
     'reference',
@@ -95,6 +98,16 @@ class SupplierPayment extends Model implements AuditableContract
     public function paymentMethod(): BelongsTo
     {
         return $this->belongsTo(PaymentMethod::class);
+    }
+
+    /**
+     * Cash box / bank account the money is paid from.
+     *
+     * @return BelongsTo<CashBankAccount, $this>
+     */
+    public function cashBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(CashBankAccount::class);
     }
 
     /**

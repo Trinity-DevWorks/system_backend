@@ -14,6 +14,8 @@ enum AccountRole: string
     case Payable = 'payable';
     case Inventory = 'inventory';
     case GoodsReceivedNotInvoiced = 'goods_received_not_invoiced';
+    /** Freight / customs bills wait here until a landed cost spreads them over the goods. */
+    case LandedCostClearing = 'landed_cost_clearing';
     case SalesRevenue = 'sales_revenue';
     case SalesReturns = 'sales_returns';
     case SalesDiscount = 'sales_discount';

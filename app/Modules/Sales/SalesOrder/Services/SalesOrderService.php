@@ -17,6 +17,7 @@ use App\Modules\Sales\SalesOrder\Models\SalesOrderLine;
 use App\Modules\Sales\SalesOrder\Support\SalesOrderRules;
 use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
 use App\Modules\Sales\Support\CommercialLineBuilder;
+use App\Modules\Sales\Support\DiscountGuard;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\Decimal;
 use App\Support\DocumentNumberService;
@@ -115,6 +116,8 @@ class SalesOrderService
             'order_date' => now()->toDateString(),
             'requested_date' => $quotation->valid_until?->toDateString(),
             'notes' => $quotation->notes,
+            'header_discount_type' => $quotation->header_discount_type,
+            'header_discount_value' => $quotation->header_discount_value,
             'sales_quotation_id' => $quotation->id,
             'lines' => $quotation->lines->map(fn ($line): array => [
                 'item_id' => $line->item_id,
@@ -151,6 +154,8 @@ class SalesOrderService
                 'order_date',
                 'requested_date',
                 'exchange_rate',
+                'header_discount_type',
+                'header_discount_value',
                 'notes',
             ]), $data);
             $order->update($this->normalizeHeader($merged, $customer, $order));
@@ -192,9 +197,12 @@ class SalesOrderService
         });
     }
 
-    public function confirm(SalesOrder $order, ?string $userId): SalesOrder
+    /**
+     * @param  array{email?: mixed, password?: mixed}|null  $discountApproval  manager login when the discount is above the user's limit
+     */
+    public function confirm(SalesOrder $order, ?string $userId, ?array $discountApproval = null): SalesOrder
     {
-        return DB::transaction(function () use ($order, $userId): SalesOrder {
+        return DB::transaction(function () use ($order, $userId, $discountApproval): SalesOrder {
             $locked = $this->lockDraft($order);
             $customer = SalesOrderRules::assertCustomer((string) $locked->customer_id);
             $lines = SalesOrderLine::query()->where('sales_order_id', $locked->id)->orderBy('id')->get();
@@ -208,8 +216,11 @@ class SalesOrderService
                     ]);
                 }
             }
+            $approvedBy = app(DiscountGuard::class)->assert($locked, $lines, $discountApproval);
             app(CreditLimitGuard::class)->assert($customer, (int) $locked->currency_id, (string) $locked->grand_total);
             $locked->update([
+                'discount_approved_by' => $approvedBy,
+                'discount_approved_at' => $approvedBy !== null ? now() : null,
                 'status' => SalesOrderStatus::Confirmed,
                 'confirmed_by' => $userId,
                 'confirmed_at' => now(),
@@ -375,6 +386,7 @@ class SalesOrderService
                 'payment_terms_id' => $locked->payment_terms_id,
                 'invoice_date' => now()->toDateString(),
                 'notes' => $locked->notes,
+                ...CommercialLineBuilder::carriedHeaderDiscount($locked->loadMissing('lines')),
                 'sales_order_id' => $locked->id,
                 'lines' => array_map(fn (array $pair): array => [
                     'sales_order_line_id' => $pair[0]->id,
@@ -442,6 +454,7 @@ class SalesOrderService
             'order_date' => $orderDate,
             'requested_date' => $requestedDate,
             'exchange_rate' => $exchangeRate,
+            ...CommercialLineBuilder::headerDiscount($data, $existing),
             'notes' => CommercialLineBuilder::nullableString($data['notes'] ?? $existing?->notes),
         ];
     }
@@ -469,7 +482,8 @@ class SalesOrderService
 
     private function recalculateTotals(SalesOrder $order): void
     {
-        $rows = SalesOrderLine::query()->where('sales_order_id', $order->id)->get();
+        $rows = SalesOrderLine::query()->where('sales_order_id', $order->id)->orderBy('sort_order')->orderBy('id')->get();
+        CommercialLineBuilder::applyHeaderDiscount($rows, $order->header_discount_type, $order->header_discount_value);
         $order->update(CommercialLineBuilder::totals($rows));
     }
 }

@@ -22,6 +22,7 @@ use App\Modules\Sales\SalesOrder\Enums\SalesOrderStatus;
 use App\Modules\Sales\SalesOrder\Models\SalesOrder;
 use App\Modules\Sales\SalesOrder\Models\SalesOrderLine;
 use App\Modules\Sales\SalesOrder\Services\SalesOrderFulfillment;
+use App\Modules\Sales\Support\CommercialLineBuilder;
 use App\Modules\Sales\Support\CommercialLineQuantity;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\Decimal;
@@ -378,6 +379,7 @@ class DeliveryNoteService
                 'invoice_date' => now()->toDateString(),
                 'sales_order_id' => $order?->id,
                 'shipping_address' => $locked->shipping_address,
+                ...CommercialLineBuilder::carriedHeaderDiscount($order?->loadMissing('lines')),
                 'lines' => $rows,
             ], $userId);
         });

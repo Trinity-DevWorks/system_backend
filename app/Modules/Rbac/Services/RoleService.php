@@ -53,6 +53,8 @@ class RoleService
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
                 'is_active' => $data['is_active'],
+                // Highest discount % this role may give without a manager (null = no limit).
+                'max_discount_percent' => $data['max_discount_percent'] ?? null,
                 'created_by' => Auth::id(),
             ]);
 
@@ -85,6 +87,8 @@ class RoleService
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
                 'is_active' => $data['is_active'],
+                // Highest discount % this role may give without a manager (null = no limit).
+                'max_discount_percent' => $data['max_discount_percent'] ?? null,
             ]);
 
             if (array_key_exists('permissions', $data) && is_array($data['permissions'])) {

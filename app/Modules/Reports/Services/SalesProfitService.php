@@ -428,7 +428,8 @@ class SalesProfitService
      */
     private function base(string $table, array $filters): Builder
     {
-        $query = DB::table($table.' as d');
+        // Opening invoices / credits are old balances, not sales of the period.
+        $query = DB::table($table.' as d')->where('d.is_opening', false);
         if (isset($filters['branch_id'])) {
             $query->where('d.branch_id', $filters['branch_id']);
         } elseif (array_key_exists('branch_ids', $filters)) {

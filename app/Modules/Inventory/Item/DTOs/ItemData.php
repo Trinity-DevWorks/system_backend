@@ -35,7 +35,14 @@ readonly class ItemData
         public bool $allowPurchase,
         public bool $allowReturn,
         public bool $isActive,
-    ) {}
+        public bool $isLandedCost = false,
+        public ?string $weight = null,
+        public ?string $volume = null,
+    ) {
+        if ($this->isLandedCost && $this->trackInventory) {
+            abort(422, 'Only items that do not track stock can be landed-cost items.', ['X-Error-Code' => 'ITEM_LANDED_COST_MUST_BE_SERVICE']);
+        }
+    }
 
     public static function fromStoreRequest(StoreItemRequest $request): self
     {
@@ -84,6 +91,9 @@ readonly class ItemData
                 ? (bool) $data['allow_return']
                 : $defaults['allow_return'],
             isActive: (bool) ($data['is_active'] ?? true),
+            isLandedCost: (bool) ($data['is_landed_cost'] ?? false),
+            weight: self::normalizeMeasure($data['weight'] ?? null),
+            volume: self::normalizeMeasure($data['volume'] ?? null),
         );
     }
 
@@ -158,6 +168,11 @@ readonly class ItemData
             isActive: array_key_exists('is_active', $data)
                 ? (bool) $data['is_active']
                 : (bool) $item->is_active,
+            isLandedCost: array_key_exists('is_landed_cost', $data)
+                ? (bool) $data['is_landed_cost']
+                : (bool) $item->is_landed_cost,
+            weight: array_key_exists('weight', $data) ? self::normalizeMeasure($data['weight']) : $item->weight,
+            volume: array_key_exists('volume', $data) ? self::normalizeMeasure($data['volume']) : $item->volume,
         );
     }
 
@@ -191,6 +206,9 @@ readonly class ItemData
             'allow_purchase' => $this->allowPurchase,
             'allow_return' => $this->allowReturn,
             'is_active' => $this->isActive,
+            'is_landed_cost' => $this->isLandedCost,
+            'weight' => $this->weight,
+            'volume' => $this->volume,
         ];
     }
 
@@ -257,6 +275,15 @@ readonly class ItemData
             'pos_name' => array_key_exists('pos_name', $data) ? $data['pos_name'] : $item->pos_name,
             'color' => array_key_exists('color', $data) ? $data['color'] : $item->color,
         ];
+    }
+
+    private static function normalizeMeasure(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return bcadd((string) $value, '0', 6);
     }
 
     private static function normalizeSku(mixed $value): ?string

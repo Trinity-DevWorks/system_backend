@@ -8,18 +8,12 @@ use App\Modules\Currency\Models\Currency;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Carbon;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-/**
- * @property Carbon|null $opening_date
- */
 #[Fillable([
     'customer_id',
     'currency_id',
-    'opening_balance',
-    'opening_date',
     'credit_limit',
 ])]
 class CustomerBalance extends Model implements AuditableContract
@@ -32,8 +26,6 @@ class CustomerBalance extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
-            'opening_balance' => 'decimal:4',
-            'opening_date' => 'date',
             'credit_limit' => 'decimal:4',
         ];
     }

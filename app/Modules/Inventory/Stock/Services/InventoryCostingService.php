@@ -261,6 +261,82 @@ class InventoryCostingService
         $this->writeBalanceValue($balance, $newQty, $newValue, $this->normalizeCost($originalUnitCost));
     }
 
+    /**
+     * How much of a receipt is still in stock, used to split a landed cost between stock and cost of sales.
+     * Layered methods: what is left of the receipt's own layer (falls back to on-hand when the layer was
+     * rebuilt by a revaluation). Moving average: on-hand quantity, capped at the received quantity.
+     * Standard: null, the whole amount is a price variance.
+     */
+    public function landedCostBasis(Item $item, StockBalance $balance, ?int $sourceMovementId, string $receivedQty): ?string
+    {
+        $method = $this->methodFor($item);
+        if ($method === InventoryCostingMethod::Standard) {
+            return null;
+        }
+
+        $received = Math::qty($receivedQty);
+        $onHand = Math::qty($balance->quantity);
+        if (bccomp($onHand, '0', Math::QTY_SCALE) < 0) {
+            $onHand = Math::qty(0);
+        }
+
+        $layer = $method->usesLayers() && $sourceMovementId !== null
+            ? InventoryCostLayer::query()->where('source_movement_id', $sourceMovementId)->first()
+            : null;
+        $available = $layer !== null ? Math::qty($layer->quantity_remaining) : $onHand;
+        if ($layer !== null && bccomp($available, $onHand, Math::QTY_SCALE) > 0) {
+            $available = $onHand;
+        }
+
+        return bccomp($available, $received, Math::QTY_SCALE) < 0 ? $available : $received;
+    }
+
+    /**
+     * Add (or, when negative, remove) value from stock already on hand without moving quantity.
+     * Layered methods put it on the receipt's own layer when it still exists, else spread it over the
+     * balance's layers by quantity. Caller must hold the balance row lock.
+     */
+    public function addLandedValue(Item $item, StockBalance $balance, string $amount, ?int $sourceMovementId): void
+    {
+        $amount = Math::money($amount);
+        $qty = Math::qty($balance->quantity);
+        if (bccomp($amount, '0', Math::MONEY_SCALE) === 0 || bccomp($qty, '0', Math::QTY_SCALE) <= 0) {
+            return;
+        }
+
+        if ($this->methodFor($item)->usesLayers()) {
+            $scope = InventoryCostLayer::query()
+                ->where('item_id', $item->id)
+                ->where('warehouse_id', $balance->warehouse_id)
+                ->when(
+                    $balance->lot_id === null,
+                    fn ($query) => $query->whereNull('lot_id'),
+                    fn ($query) => $query->where('lot_id', $balance->lot_id),
+                )
+                ->where('quantity_remaining', '>', 0);
+
+            $own = $sourceMovementId !== null
+                ? (clone $scope)->where('source_movement_id', $sourceMovementId)->lockForUpdate()->first()
+                : null;
+            $layers = $own !== null ? collect([$own]) : (clone $scope)->lockForUpdate()->get();
+            $layerQty = $layers->reduce(fn (string $sum, InventoryCostLayer $l): string => bcadd($sum, Math::qty($l->quantity_remaining), Math::QTY_SCALE), '0');
+
+            if (bccomp($layerQty, '0', Math::QTY_SCALE) > 0) {
+                $perUnit = bcdiv($amount, $layerQty, Math::UNIT_COST_SCALE + 4);
+                foreach ($layers as $layer) {
+                    $newCost = bcadd(Math::unitCost($layer->unit_cost), $perUnit, Math::UNIT_COST_SCALE + 4);
+                    $layer->update(['unit_cost' => Math::unitCost(bccomp($newCost, '0', Math::UNIT_COST_SCALE) < 0 ? '0' : $newCost)]);
+                }
+            }
+        }
+
+        $newValue = bcadd(Math::money($balance->inventory_value), $amount, Math::MONEY_SCALE);
+        if (bccomp($newValue, '0', Math::MONEY_SCALE) < 0) {
+            $newValue = Math::money(0);
+        }
+        $this->writeBalanceValue($balance, $qty, $newValue);
+    }
+
     private function releaseInboundLayer(int $sourceMovementId, string $qty): void
     {
         $layer = InventoryCostLayer::query()

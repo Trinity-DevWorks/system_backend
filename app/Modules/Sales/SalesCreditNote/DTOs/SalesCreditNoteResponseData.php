@@ -36,6 +36,8 @@ readonly class SalesCreditNoteResponseData
             'id' => $note->id,
             ...DocumentBranchPayload::of($note),
             'credit_note_number' => $note->credit_note_number,
+            'is_opening' => (bool) $note->is_opening,
+            'original_number' => $note->original_number,
             'sales_invoice_id' => $note->sales_invoice_id,
             'customer_id' => $note->customer_id,
             'currency_id' => $note->currency_id,

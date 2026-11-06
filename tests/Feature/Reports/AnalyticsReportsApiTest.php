@@ -491,6 +491,8 @@ class AnalyticsReportsApiTest extends TestCase
         $cash = PaymentMethod::query()->create(['code' => 'CASH', 'name' => 'Cash', 'type' => 'cash', 'requires_reference' => false, 'is_active' => true]);
         $customer = Customer::query()->create(['name' => 'Report Customer', 'type' => 'individual', 'status' => 'active']);
 
+        $this->linkCashBank((int) $cash->id, (int) $usd->id, '5310');
+
         return [
             'usd_id' => (int) $usd->id,
             'warehouse_id' => (int) $warehouse->id,

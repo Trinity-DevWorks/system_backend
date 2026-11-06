@@ -80,26 +80,15 @@ class CustomerLedgerService
         return $out;
     }
 
-    public function postOpeningBalance(Customer $customer, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
+    /**
+     * Remove a document's ledger rows. Only for opening documents edited or deleted before anything used them.
+     */
+    public function deleteDocumentEntries(LedgerReferenceType $referenceType, string $referenceId): void
     {
-        $amount = $this->formatMoney($openingBalance);
-        if (Decimal::isZero($amount)) {
-            return;
-        }
-
-        $date = $transactionDate ?? now()->toDateString();
-
-        if (Decimal::isPositive($amount)) {
-            $this->insertEntry($customer, $currencyId, $amount, '0', LedgerReferenceType::OpeningBalance, null, $date);
-        } else {
-            $this->insertEntry($customer, $currencyId, '0', Decimal::abs($amount), LedgerReferenceType::OpeningBalance, null, $date);
-        }
-    }
-
-    public function replaceOpeningBalancePosting(Customer $customer, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
-    {
-        $this->deleteOpeningEntries($customer, $currencyId);
-        $this->postOpeningBalance($customer, $currencyId, $openingBalance, $transactionDate);
+        CustomerLedgerEntry::query()
+            ->where('reference_type', $referenceType)
+            ->where('reference_id', $referenceId)
+            ->delete();
     }
 
     /**
@@ -212,15 +201,6 @@ class CustomerLedgerService
             ->with('currency:id,code,symbol')
             ->orderBy('transaction_date')
             ->orderBy('id');
-    }
-
-    private function deleteOpeningEntries(Customer $customer, int $currencyId): void
-    {
-        CustomerLedgerEntry::query()
-            ->where('customer_id', $customer->id)
-            ->where('currency_id', $currencyId)
-            ->where('reference_type', LedgerReferenceType::OpeningBalance)
-            ->delete();
     }
 
     private function insertEntry(

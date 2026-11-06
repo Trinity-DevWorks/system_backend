@@ -36,6 +36,8 @@ readonly class PurchaseDebitNoteResponseData
             'id' => $note->id,
             ...DocumentBranchPayload::of($note),
             'debit_note_number' => $note->debit_note_number,
+            'is_opening' => (bool) $note->is_opening,
+            'original_number' => $note->original_number,
             'purchase_invoice_id' => $note->purchase_invoice_id,
             'supplier_id' => $note->supplier_id,
             'currency_id' => $note->currency_id,

@@ -46,6 +46,9 @@ class StoreItemRequest extends FormRequest
             'allow_sale' => ['nullable', 'boolean'],
             'allow_purchase' => ['nullable', 'boolean'],
             'allow_return' => ['nullable', 'boolean'],
+            'is_landed_cost' => ['nullable', 'boolean'],
+            'weight' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
+            'volume' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             'is_active' => ['nullable', 'boolean'],
         ];
     }

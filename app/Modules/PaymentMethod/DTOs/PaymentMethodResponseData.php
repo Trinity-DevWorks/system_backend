@@ -6,6 +6,7 @@ namespace App\Modules\PaymentMethod\DTOs;
 
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\PaymentMethod\Services\PaymentMethodService;
 use Illuminate\Support\Collection;
 
 readonly class PaymentMethodResponseData
@@ -18,14 +19,13 @@ readonly class PaymentMethodResponseData
         public ?int $currencyId,
         public ?string $currencyCode,
         public ?string $currencyName,
-        public ?int $accountId,
-        public ?string $accountCode,
-        public ?string $accountName,
         public bool $requiresReference,
         public bool $supportsChange,
         public bool $isDefault,
         public bool $isActive,
         public ?string $notes,
+        /** @var list<array<string, mixed>> */
+        public array $cashBankAccounts,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -37,7 +37,6 @@ readonly class PaymentMethodResponseData
             : PaymentMethodType::from((string) $paymentMethod->type);
 
         $currency = $paymentMethod->relationLoaded('currency') ? $paymentMethod->currency : null;
-        $account = $paymentMethod->relationLoaded('account') ? $paymentMethod->account : null;
 
         return new self(
             id: $paymentMethod->id,
@@ -47,14 +46,22 @@ readonly class PaymentMethodResponseData
             currencyId: $paymentMethod->currency_id,
             currencyCode: $currency?->code,
             currencyName: $currency?->name,
-            accountId: $paymentMethod->account_id,
-            accountCode: $account?->code,
-            accountName: $account?->name,
             requiresReference: (bool) $paymentMethod->requires_reference,
             supportsChange: (bool) $paymentMethod->supports_change,
-            isDefault: (bool) $paymentMethod->is_default,
+            isDefault: self::branchDefaultId() === (int) $paymentMethod->id,
             isActive: (bool) $paymentMethod->is_active,
             notes: $paymentMethod->notes,
+            cashBankAccounts: $paymentMethod->relationLoaded('cashBankAccounts')
+                ? $paymentMethod->cashBankAccounts->map(fn ($row): array => [
+                    'cash_bank_account_id' => (int) $row->cash_bank_account_id,
+                    'cash_bank_account_code' => $row->cashBankAccount?->code,
+                    'cash_bank_account_name' => $row->cashBankAccount?->name,
+                    'currency_id' => $row->cashBankAccount?->currency_id !== null ? (int) $row->cashBankAccount->currency_id : null,
+                    'currency_code' => $row->cashBankAccount?->currency?->code,
+                    'branch_id' => $row->cashBankAccount?->branch_id !== null ? (int) $row->cashBankAccount->branch_id : null,
+                    'branch_name' => $row->cashBankAccount?->branch?->name,
+                ])->values()->all()
+                : [],
             createdAt: (string) $paymentMethod->created_at,
             updatedAt: (string) $paymentMethod->updated_at,
         );
@@ -85,16 +92,26 @@ readonly class PaymentMethodResponseData
             'currency_id' => $this->currencyId,
             'currency_code' => $this->currencyCode,
             'currency_name' => $this->currencyName,
-            'account_id' => $this->accountId,
-            'account_code' => $this->accountCode,
-            'account_name' => $this->accountName,
             'requires_reference' => $this->requiresReference,
             'supports_change' => $this->supportsChange,
             'is_default' => $this->isDefault,
             'is_active' => $this->isActive,
             'notes' => $this->notes,
+            'cash_bank_accounts' => $this->cashBankAccounts,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];
+    }
+
+    /** Default method of the active branch, read once per request. */
+    private static function branchDefaultId(): ?int
+    {
+        $attributes = request()->attributes;
+        if (! $attributes->has('payment_method_branch_default')) {
+            $attributes->set('payment_method_branch_default', PaymentMethodService::defaultIdForBranch(PaymentMethodService::activeBranchId()));
+        }
+        $id = $attributes->get('payment_method_branch_default');
+
+        return is_int($id) ? $id : null;
     }
 }

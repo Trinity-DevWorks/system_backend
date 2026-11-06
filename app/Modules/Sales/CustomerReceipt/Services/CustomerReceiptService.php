@@ -18,7 +18,9 @@ use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoicePayment;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
+use App\Modules\Treasury\Support\PaymentCashBankAccount;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\CurrencyCashRound;
 use App\Support\DocumentNumberService;
@@ -123,7 +125,7 @@ class CustomerReceiptService
             ->orderBy('invoice_date')
             ->orderBy('invoice_number');
 
-        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+        $this->warehouseService->applyVisibleDocumentConstraint($query);
 
         return $query->get()
             ->map(fn (SalesInvoice $invoice): array => CustomerReceiptResponseData::openInvoice($invoice))
@@ -141,6 +143,9 @@ class CustomerReceiptService
         return DB::transaction(function () use ($data, $userId, $customer): CustomerReceipt {
             $receipt = CustomerReceipt::query()->create([
                 ...$this->headerAttributes($data, null),
+                // Set only for receipts made by a sales invoice's payments (not accepted from the API).
+                ...(isset($data['branch_id']) ? ['branch_id' => (int) $data['branch_id']] : []),
+                ...(isset($data['sales_invoice_id']) ? ['sales_invoice_id' => (string) $data['sales_invoice_id']] : []),
                 'customer_id' => $customer->id,
                 'status' => CustomerReceiptStatus::Draft,
                 'created_by' => $userId,
@@ -216,8 +221,10 @@ class CustomerReceiptService
                 $this->fail('Receipt amount must be greater than zero.', 'CUSTOMER_RECEIPT_AMOUNT_INVALID');
             }
 
-            $this->applyCashRounding($locked);
-            $locked->refresh();
+            if ($locked->sales_invoice_id === null) {
+                $this->applyCashRounding($locked);
+                $locked->refresh();
+            }
             $this->refreshAppliedAmounts($locked);
 
             $allocations = CustomerReceiptAllocation::query()
@@ -230,6 +237,14 @@ class CustomerReceiptService
             }
 
             $this->assertPaymentMethod((int) $locked->payment_method_id, $locked->reference);
+            $locked->cash_bank_account_id = PaymentCashBankAccount::resolve(
+                $locked->cash_bank_account_id,
+                (int) $locked->payment_method_id,
+                $locked->branch_id !== null ? (int) $locked->branch_id : null,
+                (int) $locked->currency_id,
+                true,
+            );
+            $locked->save();
             $customer = SalesInvoiceRules::assertCustomer((string) $locked->customer_id);
 
             $invoiceIds = $allocations->pluck('sales_invoice_id')->map(fn ($id): string => (string) $id)->all();
@@ -250,7 +265,7 @@ class CustomerReceiptService
                     $this->fail('An allocated invoice does not match this receipt.', 'CUSTOMER_RECEIPT_INVOICE_MISMATCH');
                 }
 
-                $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+                $this->warehouseService->assertDocumentVisible($invoice);
                 $this->assertInvoiceOpenFor($locked, $invoice, (string) $allocation->applied_amount);
 
                 $paid = PaymentAllocation::add($invoice->paid_total, $allocation->applied_amount);
@@ -284,10 +299,16 @@ class CustomerReceiptService
         });
     }
 
-    public function reverse(CustomerReceipt $receipt, ?string $userId = null): CustomerReceipt
+    /**
+     * @param  bool  $fromInvoice  true when the sales invoice that made this receipt is being reversed
+     */
+    public function reverse(CustomerReceipt $receipt, ?string $userId = null, bool $fromInvoice = false): CustomerReceipt
     {
-        return DB::transaction(function () use ($receipt, $userId): CustomerReceipt {
+        return DB::transaction(function () use ($receipt, $userId, $fromInvoice): CustomerReceipt {
             $locked = CustomerReceipt::query()->whereKey($receipt->id)->lockForUpdate()->firstOrFail();
+            if ($locked->sales_invoice_id !== null && ! $fromInvoice) {
+                $this->fail('This receipt was taken with its sales invoice. Reverse the invoice instead.', 'CUSTOMER_RECEIPT_MANAGED_BY_INVOICE');
+            }
             if ($locked->status !== CustomerReceiptStatus::Posted) {
                 $this->fail('Only a posted customer receipt can be reversed.', 'CUSTOMER_RECEIPT_NOT_POSTED');
             }
@@ -311,7 +332,7 @@ class CustomerReceiptService
                     $this->fail('An allocated invoice is no longer open.', 'CUSTOMER_RECEIPT_INVOICE_NOT_OPEN');
                 }
 
-                $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+                $this->warehouseService->assertDocumentVisible($invoice);
                 $paid = PaymentAllocation::subtract($invoice->paid_total, $allocation->applied_amount);
                 if ($paid === null) {
                     $this->fail(
@@ -368,8 +389,37 @@ class CustomerReceiptService
             'payment_date' => Carbon::parse((string) $data['payment_date'])->toDateString(),
             'amount' => PaymentAllocation::normalize($data['amount']),
             'reference' => $this->nullableString($data['reference'] ?? null),
+            'cash_bank_account_id' => array_key_exists('cash_bank_account_id', $data)
+                ? ($data['cash_bank_account_id'] !== null && $data['cash_bank_account_id'] !== '' ? (int) $data['cash_bank_account_id'] : null)
+                : $existing?->cash_bank_account_id,
             'notes' => $this->nullableString($data['notes'] ?? null),
         ];
+    }
+
+    /**
+     * A payment taken when a sales invoice is posted becomes a posted receipt allocated to that invoice,
+     * in the invoice's branch, currency and rate.
+     */
+    public function postForInvoicePayment(SalesInvoice $invoice, SalesInvoicePayment $payment, ?string $userId, ?string $paymentDate = null): CustomerReceipt
+    {
+        $receipt = $this->create([
+            'customer_id' => (string) $invoice->customer_id,
+            // The receipt is in the currency the money came in; allocation converts it to the invoice currency.
+            'currency_id' => $payment->currency_id !== null ? (int) $payment->currency_id : (int) $invoice->currency_id,
+            'exchange_rate' => $payment->currency_id !== null && $payment->exchange_rate !== null
+                ? (string) $payment->exchange_rate
+                : (string) $invoice->exchange_rate,
+            'payment_method_id' => (int) $payment->payment_method_id,
+            'cash_bank_account_id' => $payment->cash_bank_account_id,
+            'payment_date' => $paymentDate ?? $invoice->invoice_date->toDateString(),
+            'amount' => (string) $payment->amount,
+            'reference' => $payment->reference,
+            'branch_id' => (int) $invoice->branch_id,
+            'sales_invoice_id' => (string) $invoice->id,
+            'allocations' => [['sales_invoice_id' => (string) $invoice->id, 'amount' => (string) $payment->amount]],
+        ], $userId);
+
+        return $this->post($receipt, $userId);
     }
 
     /**
@@ -403,7 +453,7 @@ class CustomerReceiptService
                 $this->fail('An allocated invoice does not match this receipt.', 'CUSTOMER_RECEIPT_INVOICE_MISMATCH');
             }
             $this->assertInvoiceBelongs($receipt, $invoice);
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
             $payload[$index] += $this->appliedSettlement($receipt, $invoice, $row['amount']);
         }
 

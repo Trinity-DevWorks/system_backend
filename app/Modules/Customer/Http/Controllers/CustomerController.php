@@ -23,6 +23,7 @@ use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Services\CustomerLedgerService;
 use App\Modules\Customer\Services\CustomerService;
 use App\Support\ListPagination;
+use App\Support\OpeningDocumentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -131,6 +132,7 @@ class CustomerController extends Controller
                 'contacts' => $contacts,
                 'ledger_preview' => $ledgerPreview,
                 'attachments_preview' => $attachmentsPreview,
+                'opening_documents' => app(OpeningDocumentService::class)->listForCustomer($customer),
             ]),
             'Customer fetched successfully.'
         );

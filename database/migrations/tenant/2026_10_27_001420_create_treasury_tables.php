@@ -96,10 +96,69 @@ return new class extends Migration
 
             $table->index('expense_voucher_id');
         });
+
+        // Cash boxes / bank accounts a payment method uses (e.g. Cash -> Cash USD, Cash LBP). On a sale, the
+        // invoice currency and branch pick one of them.
+        Schema::create('payment_method_cash_bank_accounts', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('payment_method_id')->constrained('payment_methods')->cascadeOnDelete();
+            $table->foreignId('cash_bank_account_id')->constrained('cash_bank_accounts')->cascadeOnDelete();
+            $table->timestamps();
+
+            $table->unique(['payment_method_id', 'cash_bank_account_id']);
+        });
+
+        // Receipts made by a sales invoice's payments at the moment of sale, and the cash/bank account they go to.
+        Schema::table('customer_receipts', function (Blueprint $table) {
+            $table->foreignId('cash_bank_account_id')->nullable()->constrained('cash_bank_accounts')->restrictOnDelete();
+            $table->foreignUuid('sales_invoice_id')->nullable()->constrained('sales_invoices')->restrictOnDelete();
+            $table->index('sales_invoice_id');
+        });
+
+        // Cash box / bank account the money leaves or enters (filled from the payment method when posted).
+        foreach (['supplier_payments', 'customer_refunds', 'supplier_refunds'] as $documents) {
+            Schema::table($documents, function (Blueprint $table) {
+                $table->foreignId('cash_bank_account_id')->nullable()->constrained('cash_bank_accounts')->restrictOnDelete();
+            });
+        }
+
+        // Payments taken when a sales invoice is posted (split payment: cash, card, ...).
+        Schema::create('sales_invoice_payments', function (Blueprint $table) {
+            $table->id();
+            $table->foreignUuid('sales_invoice_id')->constrained('sales_invoices')->cascadeOnDelete();
+            $table->foreignId('payment_method_id')->constrained('payment_methods')->restrictOnDelete();
+            // Chosen in the payment modal, else filled from the payment method when the invoice is posted.
+            $table->foreignId('cash_bank_account_id')->nullable()->constrained('cash_bank_accounts')->restrictOnDelete();
+            // A payment may be in another currency (e.g. a USD invoice paid partly in LBP).
+            // Null currency = the invoice currency. Rate: 1 primary = rate × that currency.
+            $table->foreignId('currency_id')->nullable()->constrained('currencies')->restrictOnDelete();
+            $table->decimal('exchange_rate', 24, 12)->nullable();
+            $table->decimal('amount', 20, 4);
+            $table->string('reference', 128)->nullable();
+            // Cash given by the customer and the change handed back (printed only, not posted).
+            $table->decimal('tendered', 20, 4)->nullable();
+            $table->decimal('change_due', 20, 4)->nullable();
+            $table->foreignUuid('customer_receipt_id')->nullable()->constrained('customer_receipts')->nullOnDelete();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+
+            $table->index('sales_invoice_id');
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('sales_invoice_payments');
+        foreach (['supplier_payments', 'customer_refunds', 'supplier_refunds'] as $documents) {
+            Schema::table($documents, function (Blueprint $table) {
+                $table->dropConstrainedForeignId('cash_bank_account_id');
+            });
+        }
+        Schema::table('customer_receipts', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('sales_invoice_id');
+            $table->dropConstrainedForeignId('cash_bank_account_id');
+        });
+        Schema::dropIfExists('payment_method_cash_bank_accounts');
         Schema::dropIfExists('expense_voucher_lines');
         Schema::dropIfExists('expense_vouchers');
         Schema::dropIfExists('treasury_transfers');

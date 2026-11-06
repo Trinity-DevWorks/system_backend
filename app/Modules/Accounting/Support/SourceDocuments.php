@@ -11,10 +11,6 @@ use Illuminate\Support\Facades\DB;
  */
 final class SourceDocuments
 {
-    public const CUSTOMER_OPENING_BALANCE = 'customer_opening_balance';
-
-    public const SUPPLIER_OPENING_BALANCE = 'supplier_opening_balance';
-
     public const CASH_BANK_OPENING_BALANCE = 'cash_bank_opening_balance';
 
     /** @var array<string, array{table: string, number: string}> */
@@ -23,6 +19,7 @@ final class SourceDocuments
         'sales_credit_note' => ['table' => 'sales_credit_notes', 'number' => 'credit_note_number'],
         'customer_receipt' => ['table' => 'customer_receipts', 'number' => 'receipt_number'],
         'delivery_note' => ['table' => 'delivery_notes', 'number' => 'delivery_number'],
+        'landed_cost' => ['table' => 'landed_costs', 'number' => 'landed_cost_number'],
         'treasury_transfer' => ['table' => 'treasury_transfers', 'number' => 'transfer_number'],
         'expense_voucher' => ['table' => 'expense_vouchers', 'number' => 'voucher_number'],
         'customer_refund' => ['table' => 'customer_refunds', 'number' => 'refund_number'],
@@ -50,7 +47,7 @@ final class SourceDocuments
      */
     public static function types(): array
     {
-        return [...array_keys(self::DOCUMENTS), self::CUSTOMER_OPENING_BALANCE, self::SUPPLIER_OPENING_BALANCE];
+        return array_keys(self::DOCUMENTS);
     }
 
     /**
@@ -99,26 +96,6 @@ final class SourceDocuments
                         $out[$type.':'.$id] = (string) $number;
                     }
                 }
-
-                continue;
-            }
-
-            $party = match ($type) {
-                self::CUSTOMER_OPENING_BALANCE => ['customer_balances', 'customers', 'customer_id', 'customer_code'],
-                self::SUPPLIER_OPENING_BALANCE => ['supplier_balances', 'suppliers', 'supplier_id', 'supplier_code'],
-                default => null,
-            };
-            if ($party === null) {
-                continue;
-            }
-            [$balances, $parties, $fk, $codeColumn] = $party;
-            $numericIds = array_values(array_filter($ids, fn ($id): bool => ctype_digit((string) $id)));
-            $rows = DB::table($balances.' as b')
-                ->join($parties.' as p', 'p.id', '=', 'b.'.$fk)
-                ->whereIn('b.id', $numericIds)
-                ->get(['b.id', 'p.'.$codeColumn.' as code', 'p.name']);
-            foreach ($rows as $row) {
-                $out[$type.':'.$row->id] = trim(($row->code ? $row->code.' ' : '').$row->name);
             }
         }
 

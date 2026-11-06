@@ -143,6 +143,47 @@ class StockMovementService
      * Post the opposite of every movement for a document, newest first.
      * Caller must already be inside a database transaction.
      */
+    /**
+     * Value-only movement for a landed cost: adds (or removes, when negative) value on stock already on hand.
+     * The caller splits the charge first (InventoryCostingService::landedCostBasis) and passes only the stock share.
+     */
+    public function postLandedCost(
+        string $itemId,
+        int $warehouseId,
+        ?int $lotId,
+        string $value,
+        ?int $sourceMovementId,
+        string $landedCostId,
+        ?string $notes,
+        ?string $userId,
+    ): ?StockMovement {
+        if (bccomp($value, '0', 4) === 0) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($itemId, $warehouseId, $lotId, $value, $sourceMovementId, $landedCostId, $notes, $userId): StockMovement {
+            $item = Item::query()->findOrFail($itemId);
+            $balance = StockBalance::lockRow($itemId, $warehouseId, $lotId);
+
+            $this->inventoryCostingService->addLandedValue($item, $balance, $value, $sourceMovementId);
+            $balance->refresh();
+
+            return StockMovement::query()->create([
+                'item_id' => $itemId,
+                'warehouse_id' => $warehouseId,
+                'lot_id' => $lotId,
+                'quantity_delta' => '0',
+                'unit_cost' => $balance->unit_cost,
+                'value_delta' => $value,
+                'type' => StockMovementType::LandedCost->value,
+                'reference_type' => 'landed_cost',
+                'reference_id' => $landedCostId,
+                'notes' => $notes,
+                'user_id' => $userId,
+            ]);
+        });
+    }
+
     public function reverseReference(string $referenceType, string $referenceId, ?string $userId): void
     {
         $movements = StockMovement::query()

@@ -56,6 +56,8 @@ class StoreSalesInvoiceRequest extends FormRequest
             'shipping_address.phone' => ['nullable', 'string', 'max:32'],
             'adjustment' => ['nullable', 'numeric'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'header_discount_type' => ['nullable', 'string', 'in:percent,amount'],
+            'header_discount_value' => ['nullable', 'numeric', 'min:0', 'max:9999999999999999'],
             'lines' => ['sometimes', 'array'],
             'lines.*.sales_order_line_id' => ['nullable', 'integer', 'exists:sales_order_lines,id'],
             'lines.*.delivery_note_line_id' => ['nullable', 'integer', 'exists:delivery_note_lines,id'],

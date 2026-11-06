@@ -20,9 +20,9 @@ use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Customer\Models\Customer;
-use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerLedgerEntry;
 use App\Modules\Customer\Services\CustomerLedgerService;
+use App\Modules\Customer\Services\WalkInCustomerService;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\ItemType\Models\ItemType;
@@ -372,7 +372,8 @@ class AccountingApiTest extends TestCase
             ->assertOk();
 
         $this->assertBalance(0, self::RECEIVABLE);
-        $this->assertBalance(138.75, self::CASH);
+        // EUR cash goes to the EUR cash box (ledger 2812).
+        $this->assertBalance(138.75, '2812');
         $this->assertBalance(-27.75, self::EXCHANGE_GAIN);
     }
 
@@ -1243,10 +1244,10 @@ class AccountingApiTest extends TestCase
         $this->openingStock('10', '60');
         $this->asTenantRequest($this->token)
             ->putJson($this->tenantUrl('/customers/'.$this->catalog['customer_id']), [
-                'currency_balances' => [[
+                'opening_documents' => [[
                     'currency_id' => $this->catalog['usd_id'],
-                    'opening_balance' => 50,
-                    'opening_date' => '2026-09-01',
+                    'document_date' => '2026-09-01',
+                    'amount' => 50,
                 ]],
             ])
             ->assertOk();
@@ -1326,21 +1327,25 @@ class AccountingApiTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('code', 'PERIOD_LOCKED');
 
+        $openingId = $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/customers/'.$this->catalog['customer_id'].'/opening-documents'))
+            ->assertOk()
+            ->json('data.0.id');
         $this->asTenantRequest($this->token)
             ->putJson($this->tenantUrl('/customers/'.$this->catalog['customer_id']), [
-                'currency_balances' => [[
+                'opening_documents' => [[
+                    'id' => $openingId,
                     'currency_id' => $this->catalog['usd_id'],
-                    'opening_balance' => 80,
-                    'opening_date' => '2026-09-01',
+                    'document_date' => '2026-09-01',
+                    'amount' => 80,
                 ]],
             ])
             ->assertStatus(422)
             ->assertJsonPath('code', 'PERIOD_LOCKED');
-        $opening = $this->tenant->run(fn (): float => (float) CustomerBalance::query()
-            ->where('customer_id', $this->catalog['customer_id'])
-            ->where('currency_id', $this->catalog['usd_id'])
-            ->value('opening_balance'));
-        $this->assertEqualsWithDelta(50, $opening, 0.001);
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/customers/'.$this->catalog['customer_id'].'/opening-documents'))
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.amount', '50.0000');
     }
 
     public function test_reopening_the_lock_needs_permission_and_cannot_uncover_a_closed_year(): void
@@ -1554,6 +1559,663 @@ class AccountingApiTest extends TestCase
 
     }
 
+    public function test_customer_opening_documents_post_to_the_books_and_can_be_paid_and_credited(): void
+    {
+        Carbon::setTestNow('2026-10-16');
+        $customerUrl = '/customers/'.$this->catalog['customer_id'];
+        $this->saveCustomerOpenings([
+            ['original_number' => 'OLD-1', 'document_date' => '2026-08-01', 'due_on' => '2026-08-15', 'amount' => 2000],
+            ['original_number' => 'OLD-2', 'document_date' => '2026-09-01', 'due_on' => '2026-10-31', 'amount' => 1000],
+            ['original_number' => 'ADV-1', 'document_date' => '2026-09-01', 'amount' => -300],
+        ]);
+
+        $rows = $this->customerOpenings();
+        $this->assertCount(3, $rows);
+        $byOriginal = collect($rows)->keyBy('original_number');
+        $this->assertSame('invoice', $byOriginal['OLD-1']['kind']);
+        $this->assertStringStartsWith('OSI', (string) $byOriginal['OLD-1']['number']);
+        $this->assertSame('credit', $byOriginal['ADV-1']['kind']);
+        $this->assertStringStartsWith('OCN', (string) $byOriginal['ADV-1']['number']);
+        $this->assertSame('-300.0000', $byOriginal['ADV-1']['amount']);
+
+        // Books: receivable against opening balance equity; no revenue.
+        $this->assertBalance(2700, self::RECEIVABLE);
+        $this->assertBalance(-2700, '1201');
+        $this->assertBalance(0, self::REVENUE);
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl($customerUrl.'/balance'))
+            ->assertOk()
+            ->assertJsonPath('data.currencies.0.opening_balance', '2700.0000')
+            ->assertJsonPath('data.currencies.0.balance', fn ($v): bool => (float) $v === 2700.0);
+
+        // Aging sees the opening invoices by due date; period sales do not count them.
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/reports/customer-aging?as_of=2026-10-16&customer_id='.$this->catalog['customer_id']))
+            ->assertOk()
+            ->assertJsonPath('data.rows.0.current', '1000.0000')
+            ->assertJsonPath('data.rows.0.61_90', '2000.0000');
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/reports/sales-by-period?from=2026-08-01&to=2026-10-31'))
+            ->assertOk()
+            ->assertJsonPath('data.totals.document_count', 0);
+
+        // A receipt pays the old invoice; it is then locked except for its old number and due date.
+        $old1 = (string) $byOriginal['OLD-1']['id'];
+        $open = $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/customer-receipts/open-invoices?customer_id='.$this->catalog['customer_id'].'&currency_id='.$this->catalog['usd_id']))
+            ->assertOk()
+            ->json('data');
+        $this->assertTrue(collect($open)->firstWhere('id', $old1)['is_opening']);
+        $receiptId = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/customer-receipts'), [
+                'customer_id' => $this->catalog['customer_id'],
+                'currency_id' => $this->catalog['usd_id'],
+                'payment_method_id' => $this->catalog['cash_method_id'],
+                'payment_date' => '2026-10-16',
+                'amount' => 2000,
+                'allocations' => [['sales_invoice_id' => $old1, 'amount' => 2000]],
+            ])
+            ->assertCreated()
+            ->json('data.id');
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/customer-receipts/{$receiptId}/post"))->assertOk();
+        $this->assertBalance(700, self::RECEIVABLE);
+
+        $rows = collect($this->customerOpenings())->keyBy('original_number');
+        $this->assertTrue($rows['OLD-1']['locked']);
+        $this->assertSame('0.0000', $rows['OLD-1']['open_amount']);
+        $payload = $this->openingPayload($rows->all());
+        $payload[0]['amount'] = 2500;
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl($customerUrl), ['opening_documents' => $payload])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'OPENING_DOCUMENT_IN_USE');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl($customerUrl), ['opening_documents' => array_slice($this->openingPayload($rows->all()), 1)])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'OPENING_DOCUMENT_IN_USE');
+        $payload = $this->openingPayload($rows->all());
+        $payload[0]['original_number'] = 'OLD-1A';
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl($customerUrl), ['opening_documents' => $payload])
+            ->assertOk();
+        $this->assertSame('OLD-1A', collect($this->customerOpenings())->firstWhere('id', $old1)['original_number']);
+
+        // The opening credit is applied to the other opening invoice.
+        $credit = (string) $rows['ADV-1']['id'];
+        $old2 = (string) $rows['OLD-2']['id'];
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-credit-notes/{$credit}/apply"), [
+                'allocations' => [['sales_invoice_id' => $old2, 'amount' => 300]],
+            ])
+            ->assertOk();
+        $rows = collect($this->customerOpenings())->keyBy('id');
+        $this->assertSame('700.0000', $rows[$old2]['open_amount']);
+        $this->assertTrue($rows[$credit]['locked']);
+        $this->assertBalance(700, self::RECEIVABLE);
+
+        // Opening documents are not reversed, printed or returned like normal documents.
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$old2}/reverse"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'OPENING_DOCUMENT_MANAGED_BY_PARTY');
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/sales-credit-notes/invoice-lines?sales_invoice_id='.$old2))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'OPENING_INVOICE_NO_RETURN');
+    }
+
+    public function test_unused_opening_documents_can_be_edited_and_removed(): void
+    {
+        Carbon::setTestNow('2026-10-16');
+        $customerUrl = '/customers/'.$this->catalog['customer_id'];
+        $this->saveCustomerOpenings([
+            ['document_date' => '2026-09-01', 'amount' => 1000],
+        ]);
+        $rows = $this->customerOpenings();
+        $id = (string) $rows[0]['id'];
+        $number = $rows[0]['number'];
+
+        $payload = $this->openingPayload($rows);
+        $payload[0]['amount'] = 1200;
+        $this->asTenantRequest($this->token)->putJson($this->tenantUrl($customerUrl), ['opening_documents' => $payload])->assertOk();
+        $rows = $this->customerOpenings();
+        $this->assertCount(1, $rows);
+        $this->assertSame('1200.0000', $rows[0]['amount']);
+        $this->assertNotSame($id, $rows[0]['id']);
+        $this->assertNotSame($number, $rows[0]['number']);
+        $this->assertBalance(1200, self::RECEIVABLE);
+
+        // The sign flips: the invoice becomes an opening credit.
+        $payload = $this->openingPayload($rows);
+        $payload[0]['amount'] = -50;
+        $this->asTenantRequest($this->token)->putJson($this->tenantUrl($customerUrl), ['opening_documents' => $payload])->assertOk();
+        $this->assertSame('credit', $this->customerOpenings()[0]['kind']);
+        $this->assertBalance(-50, self::RECEIVABLE);
+
+        $this->asTenantRequest($this->token)->putJson($this->tenantUrl($customerUrl), ['opening_documents' => []])->assertOk();
+        $this->assertSame([], $this->customerOpenings());
+        $this->assertBalance(0, self::RECEIVABLE);
+        $this->assertBalance(0, '1201');
+        $this->tenant->run(function (): void {
+            $this->assertSame(0, CustomerLedgerEntry::query()->where('customer_id', $this->catalog['customer_id'])->count());
+            $this->assertSame(0, JournalEntry::query()->whereIn('source_type', ['sales_invoice', 'sales_credit_note'])->count());
+        });
+
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl($customerUrl), ['opening_documents' => [
+                ['currency_id' => $this->catalog['usd_id'], 'document_date' => '2026-09-01', 'due_on' => '2026-08-01', 'amount' => 10],
+            ]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'OPENING_DOCUMENT_DUE_DATE_INVALID');
+    }
+
+    public function test_supplier_opening_documents_post_to_payable_and_can_be_paid(): void
+    {
+        Carbon::setTestNow('2026-10-16');
+        $supplierUrl = '/suppliers/'.$this->catalog['supplier_id'];
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl($supplierUrl), ['opening_documents' => [
+                ['currency_id' => $this->catalog['usd_id'], 'original_number' => 'BILL-9', 'document_date' => '2026-09-01', 'amount' => 500],
+                ['currency_id' => $this->catalog['usd_id'], 'document_date' => '2026-09-01', 'amount' => -100],
+            ]])
+            ->assertOk();
+
+        $rows = $this->asTenantRequest($this->token)->getJson($this->tenantUrl($supplierUrl.'/opening-documents'))->assertOk()->json('data');
+        $this->assertCount(2, $rows);
+        $this->assertBalance(-400, self::PAYABLE);
+        $this->assertBalance(400, '1201');
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl($supplierUrl.'/balance'))
+            ->assertOk()
+            ->assertJsonPath('data.currencies.0.opening_balance', '400.0000')
+            ->assertJsonPath('data.currencies.0.balance', fn ($v): bool => (float) $v === 400.0);
+
+        $bill = (string) collect($rows)->firstWhere('original_number', 'BILL-9')['id'];
+        $open = $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/supplier-payments/open-invoices?supplier_id='.$this->catalog['supplier_id'].'&currency_id='.$this->catalog['usd_id']))
+            ->assertOk()
+            ->json('data');
+        $this->assertSame([$bill], collect($open)->pluck('id')->all());
+        $paymentId = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/supplier-payments'), [
+                'supplier_id' => $this->catalog['supplier_id'],
+                'currency_id' => $this->catalog['usd_id'],
+                'payment_method_id' => $this->catalog['cash_method_id'],
+                'payment_date' => '2026-10-16',
+                'amount' => 500,
+                'allocations' => [['purchase_invoice_id' => $bill, 'amount' => 500]],
+            ])
+            ->assertCreated()
+            ->json('data.id');
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/supplier-payments/{$paymentId}/post"))->assertOk();
+        $this->assertBalance(100, self::PAYABLE);
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/purchase-invoices/{$bill}/reverse"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'OPENING_DOCUMENT_MANAGED_BY_PARTY');
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function saveCustomerOpenings(array $rows): void
+    {
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl('/customers/'.$this->catalog['customer_id']), [
+                'opening_documents' => array_map(fn (array $row): array => $row + ['currency_id' => $this->catalog['usd_id']], $rows),
+            ])
+            ->assertOk();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function customerOpenings(): array
+    {
+        return $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/customers/'.$this->catalog['customer_id'].'/opening-documents'))
+            ->assertOk()
+            ->json('data');
+    }
+
+    /**
+     * Rows from the opening-documents endpoint, back as a save payload.
+     *
+     * @param  array<int|string, array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function openingPayload(array $rows): array
+    {
+        return array_values(array_map(fn (array $row): array => [
+            'id' => $row['id'],
+            'currency_id' => $row['currency_id'],
+            'original_number' => $row['original_number'],
+            'document_date' => $row['document_date'],
+            'due_on' => $row['due_on'],
+            'amount' => $row['amount'],
+        ], $rows));
+    }
+
+    public function test_bill_discount_lowers_each_line_and_the_revenue(): void
+    {
+        $id = $this->postSalesInvoice(200, $this->catalog['service_item_id'], [
+            'header_discount_type' => 'percent',
+            'header_discount_value' => 10,
+        ]);
+
+        $invoice = $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/sales-invoices/{$id}"))
+            ->assertOk()
+            ->assertJsonPath('data.header_discount_type', 'percent')
+            ->assertJsonPath('data.discount_total', '20.0000')
+            ->assertJsonPath('data.lines.0.header_discount_amount', '20.0000')
+            ->json('data');
+
+        $net = (float) $invoice['grand_total'] - (float) $invoice['tax_total'];
+        $this->assertEqualsWithDelta(180, $net, 0.001);
+        $this->assertBalance(-180, self::REVENUE);
+        $this->assertBalance(0, '7191');
+    }
+
+    public function test_discount_above_the_role_limit_needs_a_manager_login(): void
+    {
+        $token = $this->cashierToken(10);
+
+        $small = $this->draftInvoice(100, ['header_discount_type' => 'percent', 'header_discount_value' => 8], $token);
+        $this->asTenantRequest($token)->postJson($this->tenantUrl("/sales-invoices/{$small}/post"))->assertOk();
+
+        $big = $this->draftInvoice(100, ['header_discount_type' => 'percent', 'header_discount_value' => 15], $token);
+        $this->asTenantRequest($token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$big}/post"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'DISCOUNT_APPROVAL_REQUIRED');
+        $this->asTenantRequest($token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$big}/post"), ['discount_approval' => ['email' => 'owner@attach-test.local', 'password' => 'wrong']])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'DISCOUNT_APPROVAL_INVALID');
+        $this->asTenantRequest($token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$big}/post"), ['discount_approval' => ['email' => 'owner@attach-test.local', 'password' => 'password']])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'posted')
+            ->assertJsonPath('data.discount_approved_by', (string) $this->tenantUser->id);
+    }
+
+    public function test_split_payment_at_sale_posts_receipts_to_each_cash_and_bank_account(): void
+    {
+        [$cash, $bank, $card] = $this->tillSetup();
+        $invoice = $this->draftInvoice(100);
+        $grand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$invoice}"))->json('data.grand_total');
+        $onCard = round($grand - 60, 2);
+
+        $payments = $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$invoice}/payments"), ['payments' => [
+                ['payment_method_id' => $this->catalog['cash_method_id'], 'amount' => 60, 'tendered' => 100],
+                ['payment_method_id' => $card, 'cash_bank_account_id' => $bank, 'amount' => $onCard, 'reference' => 'TX-1'],
+            ]])
+            ->assertOk()
+            ->json('data.payments');
+        $this->assertSame($cash, $payments[0]['cash_bank_account_id']);
+        $this->assertSame('40.0000', $payments[0]['change_due']);
+
+        $posted = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$invoice}/post"))
+            ->assertOk()
+            ->assertJsonPath('data.net_to_pay', '0.0000')
+            ->json('data');
+        $this->assertNotNull($posted['payments'][0]['receipt_number']);
+        $this->assertBalance(0, self::RECEIVABLE);
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$cash}"))->assertJsonPath('data.balance', '60.0000');
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$bank}"))->assertJsonPath('data.balance', fn ($v): bool => abs((float) $v - $onCard) < 0.001);
+
+        // The receipts belong to the invoice: reversed with it, never alone.
+        $receiptId = (string) $posted['payments'][0]['customer_receipt_id'];
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/customer-receipts/{$receiptId}/reverse"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CUSTOMER_RECEIPT_MANAGED_BY_INVOICE');
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoice}/reverse"))->assertOk();
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$cash}"))->assertJsonPath('data.balance', '0.0000');
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/customer-receipts/{$receiptId}"))->assertJsonPath('data.status', 'reversed');
+        $this->assertBalance(0, self::RECEIVABLE);
+    }
+
+    public function test_payments_at_sale_rules(): void
+    {
+        [, $bank] = $this->tillSetup();
+
+        // Only the unpaid rest counts against the credit limit.
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl('/customers/'.$this->catalog['customer_id']), [
+                'currency_balances' => [['currency_id' => $this->catalog['usd_id'], 'credit_limit' => 50]],
+            ])
+            ->assertOk();
+        $partly = $this->draftInvoice(100);
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$partly}/payments"), ['payments' => [
+                ['payment_method_id' => $this->catalog['cash_method_id'], 'amount' => 60],
+            ]])
+            ->assertOk();
+        $posted = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$partly}/post"))
+            ->assertOk()
+            ->json('data');
+        $this->assertEqualsWithDelta((float) $posted['grand_total'] - 60, (float) $posted['net_to_pay'], 0.001);
+
+        // Payments cannot be more than the invoice.
+        $over = $this->draftInvoice(10);
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$over}/payments"), ['payments' => [
+                ['payment_method_id' => $this->catalog['cash_method_id'], 'amount' => 20],
+            ]])
+            ->assertOk();
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$over}/post"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'SALES_INVOICE_PAYMENTS_EXCEED_TOTAL');
+
+        // A walk-in customer pays everything at the counter.
+        $walkIn = $this->tenant->run(fn (): string => (string) app(WalkInCustomerService::class)->ensure()->id);
+        $walkInInvoice = $this->draftInvoice(30, ['customer_id' => $walkIn]);
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$walkInInvoice}/post"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'SALES_INVOICE_WALK_IN_MUST_PAY');
+
+        // The cash/bank account must be in the invoice currency.
+        $eurBank = $this->createCashBank('EURB', '5110', 'eur_id', 'bank');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$over}/payments"), ['payments' => [
+                ['payment_method_id' => $this->catalog['cash_method_id'], 'cash_bank_account_id' => $eurBank, 'amount' => 5],
+            ]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PAYMENT_CASH_BANK_CURRENCY_MISMATCH');
+        $this->assertNotSame($bank, $eurBank);
+    }
+
+    public function test_payment_account_comes_from_the_method_links_by_currency_and_branch(): void
+    {
+        [$usdCash] = $this->tillSetup();
+        $branchId = (int) $this->tenant->run(fn () => Branch::query()->where('is_default', true)->value('id'));
+        $eurShared = $this->createCashBank('EURC', '5110', 'eur_id', 'cash');
+        $eurOwn = $this->createCashBank('EURC2', '5050', 'eur_id', 'cash', $branchId);
+        $method = $this->catalog['cash_method_id'];
+        $link = fn (array $ids) => $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/payment-methods/{$method}"), [...$this->paymentMethodPayload($method), 'cash_bank_account_ids' => $ids]);
+        $eurInvoice = $this->draftInvoice(50, ['currency_id' => $this->catalog['eur_id'], 'exchange_rate' => 2.8]);
+        $payCash = fn (string $invoice) => $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$invoice}/payments"), ['payments' => [
+                ['payment_method_id' => $method, 'amount' => 5],
+            ]]);
+
+        // Shared EUR account only: it is used.
+        $link([$usdCash, $eurShared])->assertOk()->assertJsonCount(2, 'data.cash_bank_accounts');
+        $payCash($eurInvoice)->assertOk()->assertJsonPath('data.payments.0.cash_bank_account_id', $eurShared);
+
+        // The branch's own EUR account wins over the shared one; USD invoices still use the USD account.
+        $link([$usdCash, $eurShared, $eurOwn])->assertOk();
+        $payCash($eurInvoice)->assertOk()->assertJsonPath('data.payments.0.cash_bank_account_id', $eurOwn);
+        $payCash($this->draftInvoice(20))->assertOk()->assertJsonPath('data.payments.0.cash_bank_account_id', $usdCash);
+
+        // Two shared EUR accounts would be ambiguous.
+        $eurShared2 = $this->createCashBank('EURC3', '2811', 'eur_id', 'bank');
+        $link([$eurShared, $eurShared2])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PAYMENT_METHOD_ACCOUNT_DUPLICATE_BRANCH');
+
+        // No EUR account linked: nothing to pick.
+        $link([$usdCash])->assertOk();
+        $payCash($eurInvoice)->assertOk()->assertJsonPath('data.payments.0.cash_bank_account_id', null);
+    }
+
+    public function test_default_payment_method_is_per_branch(): void
+    {
+        $cash = $this->catalog['cash_method_id'];
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/payment-methods/{$cash}"), [...$this->paymentMethodPayload($cash), 'is_default' => true])
+            ->assertOk()
+            ->assertJsonPath('data.is_default', true);
+
+        $card = (int) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/payment-methods'), [
+                'code' => 'CARD2', 'name' => 'Card', 'type' => 'card', 'requires_reference' => false,
+                'supports_change' => false, 'is_default' => true, 'is_active' => true,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.is_default', true)
+            ->json('data.id');
+
+        // One default per branch: Cash is no longer the default here.
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/payment-methods/{$cash}"))->assertJsonPath('data.is_default', false);
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/payment-methods/{$card}"), [...$this->paymentMethodPayload($card), 'is_default' => false])
+            ->assertOk()
+            ->assertJsonPath('data.is_default', false);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function paymentMethodPayload(int $id): array
+    {
+        return collect($this->asTenantRequest($this->token)->getJson($this->tenantUrl("/payment-methods/{$id}"))->json('data'))
+            ->only(['code', 'name', 'type', 'currency_id', 'account_id', 'requires_reference', 'supports_change', 'is_default', 'is_active', 'notes'])
+            ->all();
+    }
+
+    public function test_record_payment_after_post_creates_receipts_for_the_open_amount(): void
+    {
+        [$cash, $bank, $card] = $this->tillSetup();
+        $invoice = $this->draftInvoice(100);
+        $posted = $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoice}/post"))->assertOk()->json('data');
+        $open = (float) $posted['net_to_pay'];
+
+        // Only a posted invoice, and never more than what is open.
+        $draft = $this->draftInvoice(10);
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$draft}/payments/record"), ['payments' => [
+                ['payment_method_id' => $this->catalog['cash_method_id'], 'amount' => 5],
+            ]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'SALES_INVOICE_NOT_POSTED');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$invoice}/payments/record"), ['payments' => [
+                ['payment_method_id' => $this->catalog['cash_method_id'], 'amount' => $open + 1],
+            ]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'SALES_INVOICE_PAYMENTS_EXCEED_TOTAL');
+
+        $rest = round($open - 30, 2);
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$invoice}/payments/record"), ['payments' => [
+                ['payment_method_id' => $this->catalog['cash_method_id'], 'amount' => 30],
+            ]])
+            ->assertOk()
+            ->assertJsonPath('data.payments.0.amount', '30.0000');
+        $after = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$invoice}/payments/record"), ['payment_date' => now()->toDateString(), 'payments' => [
+                ['payment_method_id' => $card, 'cash_bank_account_id' => $bank, 'amount' => $rest, 'reference' => 'TX-2'],
+            ]])
+            ->assertOk()
+            ->assertJsonPath('data.net_to_pay', '0.0000')
+            ->json('data');
+        $this->assertCount(2, $after['payments']);
+        $this->assertNotNull($after['payments'][1]['receipt_number']);
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$cash}"))->assertJsonPath('data.balance', '30.0000');
+        $this->assertBalance(0, self::RECEIVABLE);
+
+        // Reversing the invoice reverses these receipts too.
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoice}/reverse"))->assertOk();
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$cash}"))->assertJsonPath('data.balance', '0.0000');
+    }
+
+    public function test_payment_at_sale_can_be_split_across_currencies(): void
+    {
+        // 1 USD (primary) = 3.5 EUR. EUR stands in for a second cash currency such as LBP.
+        [$cash] = $this->tillSetup();
+        $eurCash = $this->createCashBank('EURC', '5110', 'eur_id', 'cash');
+        $method = $this->catalog['cash_method_id'];
+        $eur = $this->catalog['eur_id'];
+
+        $invoice = $this->draftInvoice(100);
+        $grand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$invoice}"))->json('data.grand_total');
+        $inEur = round(($grand - 40) * 3.5, 4);
+
+        $payments = $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$invoice}/payments"), ['payments' => [
+                ['payment_method_id' => $method, 'amount' => 40],
+                ['payment_method_id' => $method, 'cash_bank_account_id' => $eurCash, 'currency_id' => $eur, 'amount' => $inEur],
+            ]])
+            ->assertOk()
+            ->json('data.payments');
+        $this->assertSame($this->catalog['usd_id'], $payments[0]['currency_id']);
+        $this->assertSame($eur, $payments[1]['currency_id']);
+        $this->assertEqualsWithDelta(3.5, (float) $payments[1]['exchange_rate'], 0.0000001);
+
+        $posted = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$invoice}/post"))
+            ->assertOk()
+            ->assertJsonPath('data.net_to_pay', '0.0000')
+            ->json('data');
+        $this->assertBalance(0, self::RECEIVABLE);
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$cash}"))->assertJsonPath('data.balance', '40.0000');
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/cash-bank-accounts/{$eurCash}"))
+            ->assertJsonPath('data.balance', fn ($v): bool => abs((float) $v - $inEur) < 0.001);
+        $eurReceipt = (string) $posted['payments'][1]['customer_receipt_id'];
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl("/customer-receipts/{$eurReceipt}"))
+            ->assertJsonPath('data.currency_id', $eur);
+
+        // A rate typed on the line is used instead of today's rate.
+        $typed = $this->draftInvoice(10);
+        $typedGrand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$typed}"))->json('data.grand_total');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$typed}/payments"), ['payments' => [
+                ['payment_method_id' => $method, 'cash_bank_account_id' => $eurCash, 'currency_id' => $eur, 'exchange_rate' => 4, 'amount' => round($typedGrand * 4, 4)],
+            ]])
+            ->assertOk();
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$typed}/post"))
+            ->assertOk()
+            ->assertJsonPath('data.net_to_pay', '0.0000');
+
+        // Paying more than the invoice in the other currency is refused.
+        $over = $this->draftInvoice(10);
+        $overGrand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$over}"))->json('data.grand_total');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$over}/payments"), ['payments' => [
+                ['payment_method_id' => $method, 'cash_bank_account_id' => $eurCash, 'currency_id' => $eur, 'amount' => round(($overGrand + 5) * 3.5, 4)],
+            ]])
+            ->assertOk();
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$over}/post"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'SALES_INVOICE_PAYMENTS_EXCEED_TOTAL');
+
+        // The cash/bank account must match the line's currency.
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$over}/payments"), ['payments' => [
+                ['payment_method_id' => $method, 'cash_bank_account_id' => $cash, 'currency_id' => $eur, 'amount' => 5],
+            ]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PAYMENT_CASH_BANK_CURRENCY_MISMATCH');
+
+        // Money received later can also come in the other currency.
+        $later = $this->draftInvoice(20);
+        $open = (float) $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$later}/post"))->assertOk()->json('data.net_to_pay');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$later}/payments/record"), ['payments' => [
+                ['payment_method_id' => $method, 'cash_bank_account_id' => $eurCash, 'currency_id' => $eur, 'amount' => round($open * 3.5, 4)],
+            ]])
+            ->assertOk()
+            ->assertJsonPath('data.net_to_pay', '0.0000')
+            ->assertJsonPath('data.payments.0.currency_id', $eur);
+
+        // Reversing the invoice takes the money back out of both cash boxes.
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoice}/reverse"))->assertOk();
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$cash}"))->assertJsonPath('data.balance', '0.0000');
+    }
+
+    /**
+     * A cashier (Admin permissions without discount_override) with a role discount limit.
+     */
+    private function cashierToken(float $maxDiscount): string
+    {
+        $token = $this->tenant->run(function () use ($maxDiscount): string {
+            $admin = Role::query()->where('name', 'Admin')->firstOrFail();
+            $cashier = Role::query()->create(['name' => 'Cashier', 'is_active' => true, 'max_discount_percent' => $maxDiscount]);
+            $overrideId = (int) Permission::query()->where('resource_key', 'discount_override')->value('id');
+            foreach (RolePermission::query()->where('role_id', $admin->id)->get() as $row) {
+                if ((int) $row->permission_id === $overrideId) {
+                    continue;
+                }
+                RolePermission::query()->create([...$row->only($row->getFillable()), 'role_id' => $cashier->id]);
+            }
+            $user = User::factory()->create(['name' => 'Cashier', 'email' => 'cashier@example.com', 'is_active' => true]);
+            $user->branches()->attach(Branch::query()->where('is_default', true)->value('id'), ['role_id' => $cashier->id]);
+            app(PermissionService::class)->invalidateCacheForAllUsers();
+
+            return $user->createToken('cashier')->plainTextToken;
+        });
+        $this->app['auth']->forgetGuards();
+
+        return $token;
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function draftInvoice(float $price, array $overrides = [], ?string $token = null): string
+    {
+        return (string) $this->asTenantRequest($token ?? $this->token)
+            ->postJson($this->tenantUrl('/sales-invoices'), array_merge([
+                'customer_id' => $this->catalog['customer_id'],
+                'warehouse_id' => $this->catalog['warehouse_id'],
+                'currency_id' => $this->catalog['usd_id'],
+                'invoice_date' => '2026-09-01',
+                'lines' => [['item_id' => $this->catalog['service_item_id'], 'quantity' => 1, 'unit_price' => $price]],
+            ], $overrides))
+            ->assertCreated()
+            ->json('data.id');
+    }
+
+    /**
+     * Cash box (default for the Cash method), bank account, and a Card method.
+     *
+     * @return array{0: int, 1: int, 2: int}
+     */
+    private function tillSetup(): array
+    {
+        $cash = $this->catalog['cash_box_id'];
+        $bank = $this->createCashBank('BANK', '5120', 'usd_id', 'bank');
+        $card = $this->tenant->run(function (): int {
+            PaymentMethod::query()->whereKey($this->catalog['cash_method_id'])->update(['supports_change' => true]);
+
+            return (int) PaymentMethod::query()->create([
+                'code' => 'CARD',
+                'name' => 'Card',
+                'type' => 'card',
+                'requires_reference' => true,
+                'is_active' => true,
+            ])->id;
+        });
+
+        return [$cash, $bank, $card];
+    }
+
+    private function createCashBank(string $code, string $ledgerCode, string $currencyKey, string $type, ?int $branchId = null): int
+    {
+        return (int) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/cash-bank-accounts'), [
+                'code' => $code,
+                'name' => 'Account '.$code,
+                'type' => $type,
+                'currency_id' => $this->catalog[$currencyKey],
+                'account_id' => $this->accountId($ledgerCode),
+                'branch_id' => $branchId,
+            ])
+            ->assertCreated()
+            ->json('data.id');
+    }
+
     private function branchBalance(string $code, int $branchId): float
     {
         return $this->tenant->run(function () use ($code, $branchId): float {
@@ -1744,6 +2406,10 @@ class AccountingApiTest extends TestCase
             'is_active' => true,
         ]);
 
+        // Money taken in cash goes through these cash boxes (USD on 5310 Cash).
+        $cashBox = $this->linkCashBank((int) $cash->id, (int) $usd->id, self::CASH);
+        $this->linkCashBank((int) $cash->id, (int) $eur->id, '2812');
+
         return [
             'usd_id' => (int) $usd->id,
             'eur_id' => (int) $eur->id,
@@ -1753,6 +2419,7 @@ class AccountingApiTest extends TestCase
             'service_item_id' => (string) $service->id,
             'stock_item_id' => (string) $stock->id,
             'cash_method_id' => (int) $cash->id,
+            'cash_box_id' => $cashBox,
         ];
     }
 

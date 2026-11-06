@@ -24,6 +24,7 @@ readonly class CustomerRefundResponseData
             'customer:id,customer_code,name,phone,status,is_system',
             'currency:id,code,name,symbol',
             'paymentMethod:id,name,code,type,requires_reference,is_active',
+            'cashBankAccount:id,code,name,currency_id,branch_id',
             'createdByUser:id,name,email',
             'postedByUser:id,name,email',
         ]);
@@ -36,6 +37,10 @@ readonly class CustomerRefundResponseData
             'currency_id' => $refund->currency_id,
             'exchange_rate' => (string) $refund->exchange_rate,
             'payment_method_id' => $refund->payment_method_id,
+            'cash_bank_account_id' => $refund->cash_bank_account_id,
+            'cash_bank_account' => $refund->cashBankAccount !== null
+                ? ['id' => (int) $refund->cashBankAccount->id, 'code' => $refund->cashBankAccount->code, 'name' => $refund->cashBankAccount->name]
+                : null,
             'refund_date' => $refund->refund_date?->toDateString(),
             'payment_date' => $refund->refund_date?->toDateString(),
             'amount' => (string) $refund->amount,

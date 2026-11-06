@@ -424,6 +424,8 @@ class DocumentPdfApiTest extends TestCase
             'is_active' => true,
         ]);
 
+        $this->linkCashBank((int) $cash->id, (int) $usd->id, '5310');
+
         return [
             'usd_id' => (int) $usd->id,
             'warehouse_id' => (int) $warehouse->id,

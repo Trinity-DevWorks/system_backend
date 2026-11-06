@@ -20,6 +20,8 @@ enum StockMovementType: string
     case BundleSale = 'bundle_sale';
     case Count = 'count';
     case Revaluation = 'revaluation';
+    /** Value-only: freight/customs added to stock already received. */
+    case LandedCost = 'landed_cost';
 
     /**
      * @return list<string>

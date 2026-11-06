@@ -174,7 +174,8 @@ class PeriodReportService
      */
     private function base(string $table, array $filters): Builder
     {
-        $query = DB::table($table.' as d');
+        // Opening invoices / credits are old balances, not sales or purchases of the period.
+        $query = DB::table($table.' as d')->where('d.is_opening', false);
         $this->applyBranch($query, $filters);
 
         return $query;

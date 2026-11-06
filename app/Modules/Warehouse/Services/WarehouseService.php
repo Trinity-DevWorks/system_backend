@@ -163,6 +163,48 @@ class WarehouseService
     }
 
     /**
+     * Like applyVisibleWarehouseConstraint, for documents that may have no warehouse (opening invoices):
+     * those are visible in their own branch.
+     *
+     * @param  Builder<Model>|\Illuminate\Database\Query\Builder  $query
+     */
+    public function applyVisibleDocumentConstraint($query, string $warehouseColumn = 'warehouse_id', string $branchColumn = 'branch_id'): void
+    {
+        $ids = $this->visibleWarehouseIds();
+        if ($ids === null) {
+            return;
+        }
+        $activeBranchId = $this->branchContext->resolveActiveBranchId();
+
+        $query->where(function ($q) use ($ids, $activeBranchId, $warehouseColumn, $branchColumn): void {
+            if ($ids !== []) {
+                $q->whereIn($warehouseColumn, $ids);
+            }
+            $q->orWhere(fn ($noWarehouse) => $noWarehouse->whereNull($warehouseColumn)->where($branchColumn, $activeBranchId));
+        });
+    }
+
+    /**
+     * Like assertVisibleById for a document's warehouse; a document without one must be in the active branch.
+     */
+    public function assertDocumentVisible(Model $document): void
+    {
+        $warehouseId = $document->getAttribute('warehouse_id');
+        if ($warehouseId !== null) {
+            $this->assertVisibleById((int) $warehouseId);
+
+            return;
+        }
+
+        $activeBranchId = $this->branchContext->resolveActiveBranchId();
+        if ($activeBranchId !== null && (int) $document->getAttribute('branch_id') !== $activeBranchId) {
+            abort(403, 'This document belongs to another branch.', [
+                'X-Error-Code' => 'WAREHOUSE_BRANCH_FORBIDDEN',
+            ]);
+        }
+    }
+
+    /**
      * Transfer ends must be visible in the active branch, and must not link two different branch-owned warehouses.
      */
     public function assertTransferPair(Warehouse $from, Warehouse $to): void

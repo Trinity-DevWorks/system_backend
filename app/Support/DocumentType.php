@@ -19,6 +19,7 @@ enum DocumentType: string
     case CustomerRefund = 'customer_refund';
     case PurchaseOrder = 'purchase_order';
     case GoodsReceipt = 'goods_receipt';
+    case LandedCost = 'landed_cost';
     case PurchaseInvoice = 'purchase_invoice';
     case PurchaseDebitNote = 'purchase_debit_note';
     case SupplierPayment = 'supplier_payment';
@@ -35,6 +36,10 @@ enum DocumentType: string
     case JournalEntry = 'journal_entry';
     case ExpenseVoucher = 'expense_voucher';
     case TreasuryTransfer = 'treasury_transfer';
+    case OpeningSalesInvoice = 'opening_sales_invoice';
+    case OpeningCreditNote = 'opening_credit_note';
+    case OpeningPurchaseInvoice = 'opening_purchase_invoice';
+    case OpeningDebitNote = 'opening_debit_note';
 
     public function defaultPrefix(): string
     {
@@ -48,6 +53,7 @@ enum DocumentType: string
             self::CustomerRefund => 'CRF',
             self::PurchaseOrder => 'PO',
             self::GoodsReceipt => 'GRN',
+            self::LandedCost => 'LC',
             self::PurchaseInvoice => 'PI',
             self::PurchaseDebitNote => 'PDN',
             self::SupplierPayment => 'SP',
@@ -64,6 +70,10 @@ enum DocumentType: string
             self::JournalEntry => 'JE',
             self::ExpenseVoucher => 'EXP',
             self::TreasuryTransfer => 'TRF',
+            self::OpeningSalesInvoice => 'OSI',
+            self::OpeningCreditNote => 'OCN',
+            self::OpeningPurchaseInvoice => 'OPI',
+            self::OpeningDebitNote => 'ODN',
         };
     }
 
@@ -72,9 +82,11 @@ enum DocumentType: string
     {
         return match ($this) {
             self::SalesQuotation, self::SalesOrder, self::DeliveryNote, self::SalesInvoice,
-            self::SalesCreditNote, self::CustomerReceipt, self::CustomerRefund => 'sales',
-            self::PurchaseOrder, self::GoodsReceipt, self::PurchaseInvoice, self::PurchaseDebitNote,
-            self::SupplierPayment, self::SupplierRefund => 'purchasing',
+            self::SalesCreditNote, self::CustomerReceipt, self::CustomerRefund,
+            self::OpeningSalesInvoice, self::OpeningCreditNote => 'sales',
+            self::PurchaseOrder, self::GoodsReceipt, self::LandedCost, self::PurchaseInvoice, self::PurchaseDebitNote,
+            self::SupplierPayment, self::SupplierRefund,
+            self::OpeningPurchaseInvoice, self::OpeningDebitNote => 'purchasing',
             self::JournalEntry, self::ExpenseVoucher, self::TreasuryTransfer => 'accounting',
             default => 'inventory',
         };

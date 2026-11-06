@@ -22,6 +22,7 @@ use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Supplier\Services\SupplierService;
 use App\Support\ListPagination;
+use App\Support\OpeningDocumentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -124,6 +125,7 @@ class SupplierController extends Controller
                 'contacts' => $contacts,
                 'ledger_preview' => $ledgerPreview,
                 'attachments_preview' => $attachmentsPreview,
+                'opening_documents' => app(OpeningDocumentService::class)->listForSupplier($supplier),
             ]),
             'Supplier fetched successfully.'
         );

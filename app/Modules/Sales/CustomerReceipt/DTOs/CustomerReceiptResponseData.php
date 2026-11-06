@@ -24,6 +24,7 @@ readonly class CustomerReceiptResponseData
             'customer:id,customer_code,name,phone,status,is_system',
             'currency:id,code,name,symbol',
             'paymentMethod:id,name,code,type,requires_reference,is_active',
+            'cashBankAccount:id,code,name,currency_id,branch_id',
             'createdByUser:id,name,email',
             'postedByUser:id,name,email',
         ]);
@@ -36,6 +37,10 @@ readonly class CustomerReceiptResponseData
             'currency_id' => $receipt->currency_id,
             'exchange_rate' => (string) $receipt->exchange_rate,
             'payment_method_id' => $receipt->payment_method_id,
+            'cash_bank_account_id' => $receipt->cash_bank_account_id,
+            'cash_bank_account' => $receipt->cashBankAccount !== null
+                ? ['id' => (int) $receipt->cashBankAccount->id, 'code' => $receipt->cashBankAccount->code, 'name' => $receipt->cashBankAccount->name]
+                : null,
             'payment_date' => $receipt->payment_date?->toDateString(),
             'amount' => (string) $receipt->amount,
             'reference' => $receipt->reference,
@@ -106,6 +111,8 @@ readonly class CustomerReceiptResponseData
         return [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
+            'is_opening' => (bool) $invoice->is_opening,
+            'original_number' => $invoice->original_number,
             'invoice_date' => $invoice->invoice_date?->toDateString(),
             'grand_total' => (string) $invoice->grand_total,
             'paid_total' => (string) $invoice->paid_total,

@@ -41,6 +41,7 @@ readonly class SalesInvoiceLineResponseData
             'unit_price' => (string) $line->unit_price,
             'discount_percent' => (string) $line->discount_percent,
             'discount_amount' => (string) $line->discount_amount,
+            'header_discount_amount' => (string) $line->header_discount_amount,
             'tax_rate' => (string) $line->tax_rate,
             'line_subtotal' => (string) $line->line_subtotal,
             'tax_amount' => (string) $line->tax_amount,

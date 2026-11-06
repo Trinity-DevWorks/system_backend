@@ -106,6 +106,7 @@ class SalesOrderController extends Controller
             SalesOrderResponseData::fromModel($this->salesOrderService->confirm(
                 $salesOrder,
                 $userId !== null ? (string) $userId : null,
+                is_array($request->input('discount_approval')) ? $request->input('discount_approval') : null,
             )),
             'Sales order confirmed successfully.'
         );

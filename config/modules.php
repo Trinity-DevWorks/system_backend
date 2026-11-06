@@ -50,14 +50,14 @@ return [
             'description' => 'Customers, customer groups, salesmen, quotations, sales orders, sales invoices, credit notes, customer receipts, and customer refunds.',
             'is_core' => false,
             'sort_order' => 40,
-            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_quotations', 'sales_orders', 'delivery_notes', 'sales_invoices', 'credit_limit_override', 'price_lists', 'sales_credit_notes', 'customer_receipts', 'customer_refunds'],
+            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_quotations', 'sales_orders', 'delivery_notes', 'sales_invoices', 'credit_limit_override', 'discount_override', 'price_lists', 'sales_credit_notes', 'customer_receipts', 'customer_refunds'],
         ],
         'purchasing' => [
             'name' => 'Purchasing',
             'description' => 'Suppliers, supplier groups, purchase invoices, debit notes, supplier payments, and supplier refunds.',
             'is_core' => false,
             'sort_order' => 50,
-            'resources' => ['supplier_groups', 'suppliers', 'purchase_invoices', 'purchase_debit_notes', 'supplier_payments', 'supplier_refunds'],
+            'resources' => ['supplier_groups', 'suppliers', 'purchase_invoices', 'landed_costs', 'purchase_debit_notes', 'supplier_payments', 'supplier_refunds'],
         ],
         'accounting' => [
             'name' => 'Accounting',

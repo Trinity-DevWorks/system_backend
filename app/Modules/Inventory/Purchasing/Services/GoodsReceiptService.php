@@ -9,6 +9,7 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
+use App\Modules\Inventory\Purchasing\LandedCost\Services\LandedCostService;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
@@ -298,6 +299,7 @@ class GoodsReceiptService
                 ]);
             }
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            LandedCostService::assertNotUsed('goods_receipt', (string) $locked->id);
 
             $hasInvoice = PurchaseInvoice::query()
                 ->where('goods_receipt_id', $locked->id)

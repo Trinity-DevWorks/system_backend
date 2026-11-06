@@ -24,6 +24,7 @@ final class TreasuryResponseData
             'type' => $a->type->value,
             'currency_id' => (int) $a->currency_id,
             'currency_code' => $a->relationLoaded('currency') ? $a->currency?->code : null,
+            'currency_symbol' => $a->relationLoaded('currency') ? $a->currency?->symbol : null,
             'account_id' => (int) $a->account_id,
             'account' => $a->relationLoaded('account') && $a->account !== null
                 ? ['id' => (int) $a->account->id, 'code' => $a->account->code, 'name' => $a->account->name]
@@ -58,6 +59,7 @@ final class TreasuryResponseData
             'name' => $a->name,
             'currency_id' => (int) $a->currency_id,
             'currency_code' => $a->relationLoaded('currency') ? $a->currency?->code : null,
+            'currency_symbol' => $a->relationLoaded('currency') ? $a->currency?->symbol : null,
         ];
     }
 

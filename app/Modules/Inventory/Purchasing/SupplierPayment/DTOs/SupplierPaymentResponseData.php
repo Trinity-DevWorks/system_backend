@@ -24,6 +24,7 @@ readonly class SupplierPaymentResponseData
             'supplier:id,supplier_code,name,phone,is_active',
             'currency:id,code,name,symbol',
             'paymentMethod:id,name,code,type,requires_reference,is_active',
+            'cashBankAccount:id,code,name,currency_id,branch_id',
             'createdByUser:id,name,email',
             'postedByUser:id,name,email',
         ]);
@@ -36,6 +37,10 @@ readonly class SupplierPaymentResponseData
             'currency_id' => $payment->currency_id,
             'exchange_rate' => (string) $payment->exchange_rate,
             'payment_method_id' => $payment->payment_method_id,
+            'cash_bank_account_id' => $payment->cash_bank_account_id,
+            'cash_bank_account' => $payment->cashBankAccount !== null
+                ? ['id' => (int) $payment->cashBankAccount->id, 'code' => $payment->cashBankAccount->code, 'name' => $payment->cashBankAccount->name]
+                : null,
             'payment_date' => $payment->payment_date?->toDateString(),
             'amount' => (string) $payment->amount,
             'reference' => $payment->reference,
@@ -106,6 +111,8 @@ readonly class SupplierPaymentResponseData
         return [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
+            'is_opening' => (bool) $invoice->is_opening,
+            'original_number' => $invoice->original_number,
             'invoice_date' => $invoice->invoice_date?->toDateString(),
             'grand_total' => (string) $invoice->grand_total,
             'paid_total' => (string) $invoice->paid_total,

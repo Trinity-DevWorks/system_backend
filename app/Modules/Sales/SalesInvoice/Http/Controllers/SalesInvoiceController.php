@@ -8,8 +8,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Sales\SalesInvoice\DTOs\SalesInvoiceLineResponseData;
 use App\Modules\Sales\SalesInvoice\DTOs\SalesInvoiceResponseData;
+use App\Modules\Sales\SalesInvoice\Http\Requests\RecordSalesInvoicePaymentsRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\StoreSalesInvoiceRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\SyncSalesInvoiceLinesRequest;
+use App\Modules\Sales\SalesInvoice\Http\Requests\SyncSalesInvoicePaymentsRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\UpdateSalesInvoiceRequest;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Services\SalesInvoicePdfService;
@@ -85,6 +87,30 @@ class SalesInvoiceController extends Controller
         return ApiResponse::success(null, 'Sales invoice deleted successfully.');
     }
 
+    public function syncPayments(SyncSalesInvoicePaymentsRequest $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        return ApiResponse::success(
+            SalesInvoiceResponseData::fromModel($this->salesInvoiceService->syncPayments($salesInvoice, $request->validated('payments') ?? [])),
+            'Sales invoice payments saved successfully.'
+        );
+    }
+
+    public function recordPayments(RecordSalesInvoicePaymentsRequest $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        $date = $request->validated('payment_date');
+        $userId = $request->user()?->id;
+
+        return ApiResponse::success(
+            SalesInvoiceResponseData::fromModel($this->salesInvoiceService->recordPayments(
+                $salesInvoice,
+                $request->validated('payments'),
+                $date !== null ? (string) $date : null,
+                $userId !== null ? (string) $userId : null,
+            )),
+            'Payment recorded successfully.'
+        );
+    }
+
     public function syncLines(SyncSalesInvoiceLinesRequest $request, SalesInvoice $salesInvoice): JsonResponse
     {
         $lines = $this->salesInvoiceService->syncLines(
@@ -108,7 +134,8 @@ class SalesInvoiceController extends Controller
         $userId = $request->user()?->id;
         $invoice = $this->salesInvoiceService->post(
             $salesInvoice,
-            $userId !== null ? (string) $userId : null
+            $userId !== null ? (string) $userId : null,
+            is_array($request->input('discount_approval')) ? $request->input('discount_approval') : null,
         );
 
         return ApiResponse::success(

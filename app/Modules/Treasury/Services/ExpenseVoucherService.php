@@ -9,6 +9,8 @@ use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Services\ExchangeRateService;
+use App\Modules\Inventory\Purchasing\LandedCost\Services\LandedCostService;
+use App\Modules\Inventory\Purchasing\LandedCost\Services\LandedCostSources;
 use App\Modules\Treasury\Enums\TreasuryDocumentStatus;
 use App\Modules\Treasury\Models\CashBankAccount;
 use App\Modules\Treasury\Models\ExpenseVoucher;
@@ -38,7 +40,7 @@ class ExpenseVoucherService
     public function paginate(array $filters, int $perPage): LengthAwarePaginator
     {
         $query = ExpenseVoucher::query()
-            ->with(['cashBankAccount:id,code,name,currency_id', 'cashBankAccount.currency:id,code', 'supplier:id,name'])
+            ->with(['cashBankAccount:id,code,name,currency_id', 'cashBankAccount.currency:id,code,symbol', 'supplier:id,name'])
             ->orderByDesc('voucher_date')
             ->orderByDesc('created_at');
         if (! empty($filters['status'])) {
@@ -52,7 +54,7 @@ class ExpenseVoucherService
     public function find(string $id): ExpenseVoucher
     {
         return ExpenseVoucher::query()
-            ->with(['cashBankAccount.currency:id,code', 'supplier:id,name', 'lines.account:id,code,name'])
+            ->with(['cashBankAccount.currency:id,code,symbol', 'supplier:id,name', 'lines.account:id,code,name'])
             ->findOrFail($id);
     }
 
@@ -127,6 +129,7 @@ class ExpenseVoucherService
             if ($locked->status !== TreasuryDocumentStatus::Posted) {
                 abort(422, 'Only a posted expense voucher can be reversed.', ['X-Error-Code' => 'TREASURY_DOCUMENT_NOT_POSTED']);
             }
+            LandedCostService::assertNotUsed('expense_voucher', (string) $locked->id);
             $this->journalPostingService->reverse(ExpenseVoucher::REFERENCE_TYPE, (string) $locked->id, $userId);
             $locked->update(['status' => TreasuryDocumentStatus::Reversed]);
 
@@ -189,7 +192,8 @@ class ExpenseVoucherService
         $taxTotal = '0';
         foreach (array_values($rows) as $index => $row) {
             $account = Account::query()->find((int) ($row['account_id'] ?? 0));
-            if ($account === null || $account->type !== AccountType::Expense || ! $account->isPostable()) {
+            $isClearing = $account !== null && (int) $account->id === app(LandedCostSources::class)->clearingAccountId();
+            if ($account === null || ($account->type !== AccountType::Expense && ! $isClearing) || ! $account->isPostable()) {
                 abort(422, 'Line '.($index + 1).': choose an active, non-group expense account.', [
                     'X-Error-Code' => 'EXPENSE_VOUCHER_ACCOUNT_INVALID',
                 ]);

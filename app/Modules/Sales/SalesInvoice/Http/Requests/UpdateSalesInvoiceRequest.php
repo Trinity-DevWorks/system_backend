@@ -47,6 +47,8 @@ class UpdateSalesInvoiceRequest extends FormRequest
             'shipping_address.phone' => ['nullable', 'string', 'max:32'],
             'adjustment' => ['nullable', 'numeric'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'header_discount_type' => ['nullable', 'string', 'in:percent,amount'],
+            'header_discount_value' => ['nullable', 'numeric', 'min:0', 'max:9999999999999999'],
         ];
     }
 }

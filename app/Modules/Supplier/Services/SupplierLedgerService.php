@@ -120,26 +120,15 @@ class SupplierLedgerService
         return reset($byCur);
     }
 
-    public function postOpeningBalance(Supplier $supplier, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
+    /**
+     * Remove a document's ledger rows. Only for opening documents edited or deleted before anything used them.
+     */
+    public function deleteDocumentEntries(LedgerReferenceType $referenceType, string $referenceId): void
     {
-        $amount = $this->formatMoney($openingBalance);
-        if (Decimal::isZero($amount)) {
-            return;
-        }
-
-        $date = $transactionDate ?? now()->toDateString();
-
-        if (Decimal::isPositive($amount)) {
-            $this->insertEntry($supplier, $currencyId, '0', $amount, LedgerReferenceType::OpeningBalance, null, $date);
-        } else {
-            $this->insertEntry($supplier, $currencyId, Decimal::abs($amount), '0', LedgerReferenceType::OpeningBalance, null, $date);
-        }
-    }
-
-    public function replaceOpeningBalancePosting(Supplier $supplier, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
-    {
-        $this->deleteOpeningEntries($supplier, $currencyId);
-        $this->postOpeningBalance($supplier, $currencyId, $openingBalance, $transactionDate);
+        SupplierLedgerEntry::query()
+            ->where('reference_type', $referenceType)
+            ->where('reference_id', $referenceId)
+            ->delete();
     }
 
     /**
@@ -252,15 +241,6 @@ class SupplierLedgerService
             ->with('currency:id,code,symbol')
             ->orderBy('transaction_date')
             ->orderBy('id');
-    }
-
-    private function deleteOpeningEntries(Supplier $supplier, int $currencyId): void
-    {
-        SupplierLedgerEntry::query()
-            ->where('supplier_id', $supplier->id)
-            ->where('currency_id', $currencyId)
-            ->where('reference_type', LedgerReferenceType::OpeningBalance)
-            ->delete();
     }
 
     private function insertEntry(

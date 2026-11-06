@@ -10,6 +10,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\OpeningDocumentService;
 use Barryvdh\DomPDF\PDF;
 
 class SalesInvoicePdfService
@@ -21,6 +22,7 @@ class SalesInvoicePdfService
 
     public function render(SalesInvoice $invoice, ?string $locale = null, ?string $template = null): PDF
     {
+        OpeningDocumentService::assertNotOpening($invoice);
         DocumentPdfSupport::assertPrintableStatus(
             $invoice->status,
             [SalesInvoiceStatus::Posted, SalesInvoiceStatus::Reversed],

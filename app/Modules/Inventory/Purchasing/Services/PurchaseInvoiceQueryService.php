@@ -42,7 +42,7 @@ class PurchaseInvoiceQueryService
                 'goodsReceipt:id,grn_number',
             ]);
 
-        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+        $this->warehouseService->applyVisibleDocumentConstraint($query);
 
         if (! empty($filters['status'])) {
             $status = PurchaseInvoiceStatus::tryFrom((string) $filters['status']);

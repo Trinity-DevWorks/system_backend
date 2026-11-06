@@ -20,20 +20,31 @@ use App\Modules\Inventory\Stock\Models\InventoryLot;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\Stock\Services\StockReservationService;
+use App\Modules\PaymentMethod\Enums\PaymentMethodType;
+use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
+use App\Modules\Sales\CustomerReceipt\Enums\CustomerReceiptStatus;
+use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
+use App\Modules\Sales\CustomerReceipt\Services\CustomerReceiptService;
 use App\Modules\Sales\DeliveryNote\Services\DeliveryNoteInvoicing;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoicePayment;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceLineQuantity;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Modules\Sales\SalesOrder\Services\SalesOrderFulfillment;
+use App\Modules\Sales\Support\CommercialLineBuilder;
+use App\Modules\Sales\Support\DiscountGuard;
+use App\Modules\Treasury\Support\PaymentCashBankAccount;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
 use App\Support\DocumentNumberService;
 use App\Support\DocumentTaxContext;
 use App\Support\DocumentTaxMath;
 use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
+use App\Support\OpeningDocumentService;
 use App\Support\PaymentAllocation;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -87,10 +98,13 @@ class SalesInvoiceService
                 'lines.warehouse',
                 'lines.lot',
                 'lines.salesOrderLine',
+                'payments.paymentMethod:id,code,name,type,supports_change',
+                'payments.cashBankAccount:id,code,name',
+                'payments.customerReceipt:id,receipt_number,status',
             ])
             ->findOrFail($id);
 
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
 
         return $invoice;
     }
@@ -159,6 +173,8 @@ class SalesInvoiceService
                 'billing_address',
                 'shipping_address',
                 'adjustment',
+                'header_discount_type',
+                'header_discount_value',
                 'notes',
             ]), $data);
 
@@ -191,23 +207,42 @@ class SalesInvoiceService
     public function delete(SalesInvoice $invoice): void
     {
         SalesInvoiceRules::assertDraft($invoice);
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
         $invoice->delete();
     }
 
-    public function post(SalesInvoice $invoice, ?string $userId): SalesInvoice
+    /**
+     * @param  array{email?: mixed, password?: mixed}|null  $discountApproval  manager login when the discount is above the poster's limit
+     */
+    public function post(SalesInvoice $invoice, ?string $userId, ?array $discountApproval = null): SalesInvoice
     {
-        return DB::transaction(function () use ($invoice, $userId): SalesInvoice {
+        return DB::transaction(function () use ($invoice, $userId, $discountApproval): SalesInvoice {
             $locked = SalesInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             app(DocumentNumberService::class)->assign($locked, 'invoice_number', DocumentType::SalesInvoice, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->invoice_date);
             SalesInvoiceRules::assertPostable($locked);
-            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($locked);
 
             $this->recalculateTotals($locked);
             $locked->refresh();
 
+            $approvedBy = app(DiscountGuard::class)->assert(
+                $locked,
+                SalesInvoiceLine::query()->where('sales_invoice_id', $locked->id)->get(),
+                $discountApproval,
+            );
+            if ($approvedBy !== null) {
+                $locked->update(['discount_approved_by' => $approvedBy, 'discount_approved_at' => now()]);
+            }
+
             $customer = SalesInvoiceRules::assertCustomer((string) $locked->customer_id);
-            app(CreditLimitGuard::class)->assert($customer, (int) $locked->currency_id, (string) $locked->grand_total);
+            $payments = SalesInvoicePayment::query()->where('sales_invoice_id', $locked->id)->orderBy('sort_order')->orderBy('id')->get();
+            $paidNow = $this->assertPayments($locked, $payments->map(fn (SalesInvoicePayment $p): array => $p->only(['payment_method_id', 'cash_bank_account_id', 'currency_id', 'exchange_rate', 'amount', 'reference', 'tendered']))->all());
+            if ($customer->is_system && ! $this->withinReceiptTolerance($locked, $paidNow, (string) $locked->grand_total)) {
+                abort(422, 'A walk-in customer must pay the whole invoice at the counter.', ['X-Error-Code' => 'SALES_INVOICE_WALK_IN_MUST_PAY']);
+            }
+            // Only what stays on the customer's account counts against the credit limit.
+            $openAfterPayments = Decimal::sub((string) $locked->grand_total, $paidNow);
+            app(CreditLimitGuard::class)->assert($customer, (int) $locked->currency_id, Decimal::isPositive($openAfterPayments) ? Decimal::round($openAfterPayments, 4) : '0');
             $this->salesOrderFulfillment->applyInvoice($locked, false);
             app(DeliveryNoteInvoicing::class)->applyInvoice($locked, false);
 
@@ -247,6 +282,13 @@ class SalesInvoiceService
                 'posted_at' => now(),
             ]);
 
+            // Each payment taken at the counter becomes a posted receipt allocated to this invoice.
+            $receipts = app(CustomerReceiptService::class);
+            foreach ($payments as $payment) {
+                $receipt = $receipts->postForInvoicePayment($locked->fresh() ?? $locked, $payment, $userId);
+                $payment->update(['customer_receipt_id' => $receipt->id]);
+            }
+
             return $this->find($locked->id);
         });
     }
@@ -255,10 +297,24 @@ class SalesInvoiceService
     {
         return DB::transaction(function () use ($invoice, $userId): SalesInvoice {
             $locked = SalesInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            OpeningDocumentService::assertNotOpening($locked);
             if ($locked->status !== SalesInvoiceStatus::Posted) {
                 abort(422, 'Only a posted sales invoice can be reversed.', [
                     'X-Error-Code' => 'SALES_INVOICE_NOT_POSTED',
                 ]);
+            }
+            // Payments taken with the invoice are reversed with it; other receipts still block.
+            $ownReceipts = CustomerReceipt::query()
+                ->where('sales_invoice_id', $locked->id)
+                ->where('status', CustomerReceiptStatus::Posted->value)
+                ->orderBy('id')
+                ->get();
+            if ($ownReceipts->isNotEmpty()) {
+                $receipts = app(CustomerReceiptService::class);
+                foreach ($ownReceipts as $receipt) {
+                    $receipts->reverse($receipt, $userId, true);
+                }
+                $locked->refresh();
             }
             if (bccomp((string) $locked->paid_total, '0', 4) > 0) {
                 abort(422, 'This invoice has payments and cannot be reversed.', [
@@ -270,7 +326,7 @@ class SalesInvoiceService
                     'X-Error-Code' => 'SALES_INVOICE_HAS_CREDIT_NOTES',
                 ]);
             }
-            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($locked);
 
             $this->stockMovementService->reverseReference(SalesInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
 
@@ -438,6 +494,7 @@ class SalesInvoiceService
             'billing_address' => $billing,
             'shipping_address' => $shipping,
             'adjustment' => $adjustment,
+            ...CommercialLineBuilder::headerDiscount($data, $existing),
             'notes' => $this->nullableString($data['notes'] ?? $existing?->notes),
         ];
     }
@@ -644,6 +701,7 @@ class SalesInvoiceService
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
+        CommercialLineBuilder::applyHeaderDiscount($rows, $invoice->header_discount_type, $invoice->header_discount_value);
 
         $linePayload = [];
         foreach ($rows as $line) {
@@ -744,11 +802,208 @@ class SalesInvoiceService
         }
     }
 
+    /**
+     * Payments taken at the moment of sale (draft only). Each row: payment_method_id, cash_bank_account_id
+     * (default: the method's account for the invoice branch), amount, reference, tendered (cash).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    public function syncPayments(SalesInvoice $invoice, array $rows): SalesInvoice
+    {
+        return DB::transaction(function () use ($invoice, $rows): SalesInvoice {
+            $locked = $this->lockDraft($invoice);
+            $this->assertPayments($locked, $rows, false);
+
+            SalesInvoicePayment::query()->where('sales_invoice_id', $locked->id)->delete();
+            foreach (array_values($rows) as $index => $row) {
+                $this->createPaymentRow($locked, $row, $index + 1);
+            }
+
+            return $this->find($locked->id);
+        });
+    }
+
+    /**
+     * Money received later against a posted invoice. Each row becomes a posted receipt allocated to this
+     * invoice (same rows as at sale), dated `$paymentDate` (default today).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    public function recordPayments(SalesInvoice $invoice, array $rows, ?string $paymentDate, ?string $userId): SalesInvoice
+    {
+        return DB::transaction(function () use ($invoice, $rows, $paymentDate, $userId): SalesInvoice {
+            $locked = SalesInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== SalesInvoiceStatus::Posted) {
+                abort(422, 'Only a posted sales invoice can take a payment.', ['X-Error-Code' => 'SALES_INVOICE_NOT_POSTED']);
+            }
+            $this->warehouseService->assertDocumentVisible($locked);
+            if ($rows === []) {
+                abort(422, 'Add at least one payment.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENT_AMOUNT_INVALID']);
+            }
+
+            $total = $this->assertPayments($locked, $rows, false);
+            if ($this->exceedsWithTolerance($locked, $total, (string) $locked->net_to_pay)) {
+                abort(422, 'Payments are more than what is still open on the invoice.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENTS_EXCEED_TOTAL']);
+            }
+
+            $receipts = app(CustomerReceiptService::class);
+            $sort = (int) SalesInvoicePayment::query()->where('sales_invoice_id', $locked->id)->max('sort_order');
+            foreach (array_values($rows) as $row) {
+                $payment = $this->createPaymentRow($locked, $row, ++$sort);
+                $receipt = $receipts->postForInvoicePayment($locked->fresh() ?? $locked, $payment, $userId, $paymentDate ?? now()->toDateString());
+                $payment->update(['customer_receipt_id' => $receipt->id]);
+            }
+
+            return $this->find($locked->id);
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function createPaymentRow(SalesInvoice $invoice, array $row, int $sortOrder): SalesInvoicePayment
+    {
+        $method = PaymentMethod::query()->findOrFail((int) $row['payment_method_id']);
+        $currency = $this->paymentCurrency($invoice, $row);
+        $amount = Decimal::round($row['amount'], 4);
+        $tendered = $method->supports_change && isset($row['tendered']) && $row['tendered'] !== null && $row['tendered'] !== ''
+            ? Decimal::round($row['tendered'], 4)
+            : null;
+
+        return SalesInvoicePayment::query()->create([
+            'sales_invoice_id' => $invoice->id,
+            'payment_method_id' => $method->id,
+            'cash_bank_account_id' => $this->paymentAccountId($invoice, $method, $row['cash_bank_account_id'] ?? null, $currency['currency_id']),
+            'currency_id' => $currency['currency_id'],
+            'exchange_rate' => $currency['rate'],
+            'amount' => $amount,
+            'reference' => $this->nullableString($row['reference'] ?? null),
+            'tendered' => $tendered,
+            'change_due' => $tendered !== null ? Decimal::round(Decimal::sub($tendered, $amount), 4) : null,
+            'sort_order' => $sortOrder,
+        ]);
+    }
+
+    /**
+     * Checks payment rows against the invoice and returns their total in the invoice currency
+     * (rows in another currency are converted).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function assertPayments(SalesInvoice $invoice, array $rows, bool $atPost = true): string
+    {
+        $total = '0';
+        foreach ($rows as $row) {
+            $method = PaymentMethod::query()->find((int) ($row['payment_method_id'] ?? 0));
+            if ($method === null || ! $method->is_active || $method->type === PaymentMethodType::Credit) {
+                abort(422, 'Choose an active payment method that takes money now.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENT_METHOD_INVALID']);
+            }
+            if ($method->requires_reference && trim((string) ($row['reference'] ?? '')) === '') {
+                abort(422, 'This payment method needs a reference.', ['X-Error-Code' => 'PAYMENT_REFERENCE_REQUIRED']);
+            }
+            $amount = Decimal::round($row['amount'] ?? '0', 4);
+            if (! Decimal::isPositive($amount)) {
+                abort(422, 'Each payment must be greater than zero.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENT_AMOUNT_INVALID']);
+            }
+            if (isset($row['tendered']) && $row['tendered'] !== null && $row['tendered'] !== '' && Decimal::cmp($row['tendered'], $amount) < 0) {
+                abort(422, 'Cash given cannot be less than the amount paid.', ['X-Error-Code' => 'SALES_INVOICE_TENDERED_TOO_LOW']);
+            }
+            $currency = $this->paymentCurrency($invoice, $row);
+            $this->paymentAccountId($invoice, $method, $row['cash_bank_account_id'] ?? null, $currency['currency_id'], $atPost);
+            $total = Decimal::add($total, $this->paymentInInvoiceCurrency($invoice, $amount, $currency));
+        }
+
+        // While editing, totals may still change; at post the payments must fit the final total.
+        if ($atPost && $this->exceedsWithTolerance($invoice, $total, (string) $invoice->grand_total)) {
+            abort(422, 'Payments are more than the invoice total.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENTS_EXCEED_TOTAL']);
+        }
+
+        return Decimal::round($total, 4);
+    }
+
+    /**
+     * The cash/bank account a payment goes to: the one chosen, else the method's linked account for the
+     * invoice branch and the payment currency. Required at post (the journal needs it).
+     */
+    private function paymentAccountId(SalesInvoice $invoice, PaymentMethod $method, mixed $chosen, int $currencyId, bool $required = false): ?int
+    {
+        return PaymentCashBankAccount::resolve(
+            $chosen,
+            (int) $method->id,
+            $invoice->branch_id !== null ? (int) $invoice->branch_id : null,
+            $currencyId,
+            $required,
+        );
+    }
+
+    /**
+     * Currency and rate of a payment row: the invoice's own when empty or the same, else the chosen
+     * active currency at the typed rate (or today's rate).
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{currency_id: int, rate: string, same: bool}
+     */
+    private function paymentCurrency(SalesInvoice $invoice, array $row): array
+    {
+        $invoiceCurrencyId = (int) $invoice->currency_id;
+        $chosen = $row['currency_id'] ?? null;
+        if ($chosen === null || $chosen === '' || (int) $chosen === $invoiceCurrencyId) {
+            return ['currency_id' => $invoiceCurrencyId, 'rate' => (string) $invoice->exchange_rate, 'same' => true];
+        }
+
+        $currency = Currency::query()->find((int) $chosen);
+        if ($currency === null || ! $currency->is_active) {
+            abort(422, 'Choose an active currency for this payment.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENT_CURRENCY_INVALID']);
+        }
+
+        return [
+            'currency_id' => (int) $currency->id,
+            'rate' => ExchangeRateSnapshot::resolve($this->exchangeRateService, (int) $currency->id, $row['exchange_rate'] ?? null, 'SALES_INVOICE_PAYMENT'),
+            'same' => false,
+        ];
+    }
+
+    /**
+     * Payment amount in the invoice currency. Across currencies the invoice side uses today's rate,
+     * the same rule the receipt applies when it is allocated to the invoice.
+     *
+     * @param  array{currency_id: int, rate: string, same: bool}  $currency
+     */
+    private function paymentInInvoiceCurrency(SalesInvoice $invoice, string $amount, array $currency): string
+    {
+        if ($currency['same']) {
+            return $amount;
+        }
+        $invoiceRate = ExchangeRateSnapshot::resolve($this->exchangeRateService, (int) $invoice->currency_id, null, 'SALES_INVOICE_PAYMENT');
+
+        return PaymentAllocation::toInvoiceCurrency($amount, $currency['rate'], $invoiceRate, false);
+    }
+
+    /**
+     * Allowed gap between what is paid and what is due (the invoice currency's receipt difference).
+     */
+    private function receiptTolerance(SalesInvoice $invoice): string
+    {
+        $allowed = Currency::query()->whereKey((int) $invoice->currency_id)->value('allowed_difference_in_receipt');
+
+        return $allowed === null || $allowed === '' ? '0' : Decimal::round($allowed, 4);
+    }
+
+    private function exceedsWithTolerance(SalesInvoice $invoice, string $paid, string $due): bool
+    {
+        return Decimal::cmp(Decimal::sub($paid, $due), $this->receiptTolerance($invoice)) > 0;
+    }
+
+    private function withinReceiptTolerance(SalesInvoice $invoice, string $paid, string $due): bool
+    {
+        return Decimal::cmp(Decimal::abs(Decimal::sub($paid, $due)), $this->receiptTolerance($invoice)) <= 0;
+    }
+
     private function lockDraft(SalesInvoice $invoice): SalesInvoice
     {
         $locked = SalesInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
         SalesInvoiceRules::assertDraft($locked);
-        $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($locked);
 
         return $locked;
     }

@@ -10,6 +10,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\OpeningDocumentService;
 use Barryvdh\DomPDF\PDF;
 
 class PurchaseDebitNotePdfService
@@ -21,6 +22,7 @@ class PurchaseDebitNotePdfService
 
     public function render(PurchaseDebitNote $note, ?string $locale = null): PDF
     {
+        OpeningDocumentService::assertNotOpening($note);
         DocumentPdfSupport::assertPrintableStatus(
             $note->status,
             [PurchaseDebitNoteStatus::Posted, PurchaseDebitNoteStatus::Reversed],

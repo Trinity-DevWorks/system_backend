@@ -29,6 +29,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * @property Carbon|null $order_date
  * @property Carbon|null $requested_date
  * @property Carbon|null $confirmed_at
+ * @property Carbon|null $discount_approved_at
  * @property Carbon|null $cancelled_at
  */
 #[Fillable([
@@ -46,6 +47,10 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'exchange_rate',
     'subtotal',
     'discount_total',
+    'header_discount_type',
+    'header_discount_value',
+    'discount_approved_by',
+    'discount_approved_at',
     'tax_total',
     'grand_total',
     'notes',
@@ -81,6 +86,8 @@ class SalesOrder extends Model implements AuditableContract
             'exchange_rate' => 'decimal:12',
             'subtotal' => 'decimal:4',
             'discount_total' => 'decimal:4',
+            'header_discount_value' => 'decimal:4',
+            'discount_approved_at' => 'datetime',
             'tax_total' => 'decimal:4',
             'grand_total' => 'decimal:4',
             'confirmed_at' => 'datetime',

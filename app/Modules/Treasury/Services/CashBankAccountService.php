@@ -32,7 +32,7 @@ class CashBankAccountService
      */
     public function list(): Collection
     {
-        return CashBankAccount::query()->with(['currency:id,code', 'account:id,code,name'])->orderBy('name')->get();
+        return CashBankAccount::query()->with(['currency:id,code,symbol', 'account:id,code,name', 'branch:id,name'])->orderBy('name')->get();
     }
 
     /**
@@ -41,7 +41,7 @@ class CashBankAccountService
     public function paginate(?string $search, int $perPage): LengthAwarePaginator
     {
         $query = CashBankAccount::query()
-            ->with(['currency:id,code', 'account:id,code,name', 'branch:id,name'])
+            ->with(['currency:id,code,symbol', 'account:id,code,name', 'branch:id,name'])
             ->orderBy('type')
             ->orderBy('name');
         ListPagination::applySearch($query, $search, ['code', 'name', 'bank_name', 'iban', 'account_number']);
@@ -167,7 +167,9 @@ class CashBankAccountService
     private function isUsed(CashBankAccount $account): bool
     {
         return TreasuryTransfer::query()->where('from_account_id', $account->id)->orWhere('to_account_id', $account->id)->exists()
-            || ExpenseVoucher::query()->where('cash_bank_account_id', $account->id)->exists();
+            || ExpenseVoucher::query()->where('cash_bank_account_id', $account->id)->exists()
+            || DB::table('customer_receipts')->where('cash_bank_account_id', $account->id)->exists()
+            || DB::table('sales_invoice_payments')->where('cash_bank_account_id', $account->id)->exists();
     }
 
     private function assertLedgerAccount(int $accountId, ?int $ignoreId): void

@@ -525,6 +525,10 @@ class SupplierPaymentApiTest extends TestCase
             'is_active' => true,
         ]);
 
+        $this->linkCashBank((int) $cash->id, (int) $usd->id, '5310');
+        $this->linkCashBank((int) $cash->id, (int) $eur->id, '2812');
+        $this->linkCashBank((int) $cheque->id, (int) $usd->id, '5110', 'bank');
+
         return [
             'usd_id' => (int) $usd->id,
             'eur_id' => (int) $eur->id,

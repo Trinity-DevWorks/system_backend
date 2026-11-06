@@ -136,7 +136,7 @@ class LedgerStatementApiTest extends TestCase
             ->assertOk()
             ->json('data.data.0');
 
-        $this->assertSame('opening_balance', $openingRow['reference_type']);
+        $this->assertSame('invoice', $openingRow['reference_type']);
         $this->assertNull($openingRow['document_number']);
         $this->assertFalse($openingRow['reversed']);
         $this->assertEqualsWithDelta(100.0, (float) $openingRow['running_balance'], 0.001);
@@ -238,8 +238,8 @@ class LedgerStatementApiTest extends TestCase
                 'status' => 'active',
             ]);
             $ledger = app(CustomerLedgerService::class);
-            $ledger->postOpeningBalance($customer, (int) $usd->id, '100', '2026-01-01');
-            $ledger->postOpeningBalance($customer, (int) $eur->id, '20', '2026-01-02');
+            $ledger->postEntry($customer, (int) $usd->id, '100', '0', CustomerLedgerReferenceType::Invoice, (string) Str::uuid(), '2026-01-01');
+            $ledger->postEntry($customer, (int) $eur->id, '20', '0', CustomerLedgerReferenceType::Invoice, (string) Str::uuid(), '2026-01-02');
             $ledger->postEntry(
                 $customer,
                 (int) $usd->id,
@@ -369,7 +369,7 @@ class LedgerStatementApiTest extends TestCase
         ]);
 
         $ledger = app(CustomerLedgerService::class);
-        $ledger->postOpeningBalance($customer, (int) $currency->id, '100', '2026-01-01');
+        $ledger->postEntry($customer, (int) $currency->id, '100', '0', CustomerLedgerReferenceType::Invoice, (string) Str::uuid(), '2026-01-01');
         $ledger->postEntry($customer, (int) $currency->id, '40', '0', CustomerLedgerReferenceType::Invoice, (string) $invoice->id, '2026-02-01');
         $ledger->postEntry($customer, (int) $currency->id, '0', '10', CustomerLedgerReferenceType::Payment, (string) $receipt->id, '2026-02-02');
         $ledger->postEntry($customer, (int) $currency->id, '0', '40', CustomerLedgerReferenceType::Invoice, (string) $invoice->id, '2026-02-03');
@@ -426,7 +426,7 @@ class LedgerStatementApiTest extends TestCase
         ]);
 
         $ledger = app(SupplierLedgerService::class);
-        $ledger->postOpeningBalance($supplier, (int) $currency->id, '80', '2026-01-01');
+        $ledger->postEntry($supplier, (int) $currency->id, '0', '80', SupplierLedgerReferenceType::PurchaseInvoice, (string) Str::uuid(), '2026-01-01');
         $ledger->postEntry($supplier, (int) $currency->id, '0', '20', SupplierLedgerReferenceType::PurchaseInvoice, (string) $invoice->id, '2026-02-01');
         $ledger->postEntry($supplier, (int) $currency->id, '5', '0', SupplierLedgerReferenceType::Payment, (string) $payment->id, '2026-02-02');
 

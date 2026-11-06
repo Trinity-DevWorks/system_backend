@@ -36,6 +36,8 @@ readonly class SalesInvoiceResponseData
             'id' => $invoice->id,
             ...DocumentBranchPayload::of($invoice),
             'invoice_number' => $invoice->invoice_number,
+            'is_opening' => (bool) $invoice->is_opening,
+            'original_number' => $invoice->original_number,
             'customer_id' => $invoice->customer_id,
             'sales_order_id' => $invoice->sales_order_id,
             'warehouse_id' => $invoice->warehouse_id,
@@ -54,6 +56,10 @@ readonly class SalesInvoiceResponseData
             'shipping_address' => $invoice->shipping_address,
             'subtotal' => (string) $invoice->subtotal,
             'discount_total' => (string) $invoice->discount_total,
+            'header_discount_type' => $invoice->header_discount_type,
+            'header_discount_value' => (string) $invoice->header_discount_value,
+            'discount_approved_by' => $invoice->discount_approved_by,
+            'discount_approved_at' => $invoice->discount_approved_at?->toIso8601String(),
             'tax_total' => (string) $invoice->tax_total,
             'adjustment' => (string) $invoice->adjustment,
             'grand_total' => (string) $invoice->grand_total,
@@ -86,6 +92,32 @@ readonly class SalesInvoiceResponseData
                 'lines.salesOrderLine',
             ]);
             $payload['lines'] = SalesInvoiceLineResponseData::collectionToArray($invoice->lines);
+
+            // Payments taken at the moment of sale (split payment).
+            $invoice->loadMissing([
+                'payments.paymentMethod:id,code,name,type,supports_change',
+                'payments.cashBankAccount:id,code,name',
+                'payments.currency:id,code,symbol',
+                'payments.customerReceipt:id,receipt_number,status',
+            ]);
+            $payload['payments'] = $invoice->payments->map(fn ($payment): array => [
+                'id' => $payment->id,
+                'payment_method_id' => (int) $payment->payment_method_id,
+                'payment_method_name' => $payment->paymentMethod?->name,
+                'payment_method_type' => $payment->paymentMethod?->type?->value,
+                'supports_change' => (bool) $payment->paymentMethod?->supports_change,
+                'cash_bank_account_id' => $payment->cash_bank_account_id !== null ? (int) $payment->cash_bank_account_id : null,
+                'cash_bank_account_name' => $payment->cashBankAccount?->name,
+                'currency_id' => $payment->currency_id !== null ? (int) $payment->currency_id : (int) $invoice->currency_id,
+                'currency_code' => $payment->currency?->code,
+                'exchange_rate' => $payment->exchange_rate !== null ? (string) $payment->exchange_rate : null,
+                'amount' => (string) $payment->amount,
+                'reference' => $payment->reference,
+                'tendered' => $payment->tendered !== null ? (string) $payment->tendered : null,
+                'change_due' => $payment->change_due !== null ? (string) $payment->change_due : null,
+                'customer_receipt_id' => $payment->customer_receipt_id,
+                'receipt_number' => $payment->customerReceipt?->receipt_number,
+            ])->values()->all();
         }
 
         return $payload;

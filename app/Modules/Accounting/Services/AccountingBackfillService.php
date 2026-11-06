@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Services;
 
 use App\Modules\Accounting\Models\JournalEntry;
-use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNote;
@@ -21,7 +20,6 @@ use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
-use App\Modules\Supplier\Models\SupplierBalance;
 use App\Modules\Treasury\Models\CashBankAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -64,14 +62,6 @@ class AccountingBackfillService
     public function run(): int
     {
         $before = JournalEntry::query()->count();
-
-        foreach ($this->openingBalances() as $balance) {
-            DB::transaction(function () use ($balance): void {
-                $balance instanceof CustomerBalance
-                    ? $this->journalPostingService->customerOpeningBalance($balance)
-                    : $this->journalPostingService->supplierOpeningBalance($balance);
-            });
-        }
 
         foreach (CashBankAccount::query()->where('opening_balance', '!=', 0)->orderBy('id')->get() as $cashBank) {
             DB::transaction(fn () => $this->journalPostingService->cashBankOpeningBalance($cashBank));
@@ -137,21 +127,6 @@ class AccountingBackfillService
         usort($rows, fn (array $a, array $b): int => [$a[1], $a[3]] <=> [$b[1], $b[3]]);
 
         return array_map(fn (array $row): array => [$row[0], $row[1], $row[2]], $rows);
-    }
-
-    /**
-     * @return list<CustomerBalance|SupplierBalance>
-     */
-    private function openingBalances(): array
-    {
-        $out = [];
-        foreach ([CustomerBalance::class, SupplierBalance::class] as $class) {
-            $class::query()->where('opening_balance', '!=', 0)->orderBy('id')->each(function (Model $balance) use (&$out): void {
-                $out[] = $balance;
-            });
-        }
-
-        return $out;
     }
 
     private function statusValue(Model $model): string

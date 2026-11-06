@@ -15,6 +15,7 @@ use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Support\Decimal;
 use App\Support\Export\LedgerStatementDocument;
 use App\Support\Export\TabularExportService;
+use App\Support\OpeningDocumentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -114,10 +115,19 @@ class SupplierLedgerController extends Controller
         return $this->tabularExportService->download($document, (string) $validated['format']);
     }
 
+    /**
+     * The supplier's opening invoices / credits (old open balances), for the drawer's opening balance tab.
+     */
+    public function openingDocuments(Supplier $supplier, OpeningDocumentService $openings): JsonResponse
+    {
+        return ApiResponse::success($openings->listForSupplier($supplier), 'Opening documents retrieved successfully.');
+    }
+
     public function balance(Supplier $supplier): JsonResponse
     {
         $supplier->load(['balances.currency']);
         $currencies = [];
+        $openings = app(OpeningDocumentService::class)->totals('supplier', [(string) $supplier->id])[(string) $supplier->id] ?? [];
 
         foreach ($supplier->balances as $sb) {
             $currencyId = (int) $sb->currency_id;
@@ -128,8 +138,7 @@ class SupplierLedgerController extends Controller
             $currencies[] = [
                 'currency_id' => $currencyId,
                 'currency_code' => $sb->currency?->code,
-                'opening_balance' => (string) $sb->opening_balance,
-                'opening_date' => $sb->opening_date?->toDateString(),
+                'opening_balance' => $openings[$currencyId] ?? '0.0000',
                 'credit_limit' => (string) $sb->credit_limit,
                 'balance' => $balStr,
                 'outstanding' => PriceMath::normalize($outstanding),

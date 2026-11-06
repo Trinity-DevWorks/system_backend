@@ -13,6 +13,8 @@ return new class extends Migration
             $table->string('name', 100)->unique();
             $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
+            // Highest discount % users with this role may give without a manager's approval (null = no limit).
+            $table->decimal('max_discount_percent', 8, 4)->nullable();
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
         });

@@ -10,6 +10,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\OpeningDocumentService;
 use Barryvdh\DomPDF\PDF;
 
 class SalesCreditNotePdfService
@@ -21,6 +22,7 @@ class SalesCreditNotePdfService
 
     public function render(SalesCreditNote $note, ?string $locale = null): PDF
     {
+        OpeningDocumentService::assertNotOpening($note);
         DocumentPdfSupport::assertPrintableStatus(
             $note->status,
             [SalesCreditNoteStatus::Posted, SalesCreditNoteStatus::Reversed],

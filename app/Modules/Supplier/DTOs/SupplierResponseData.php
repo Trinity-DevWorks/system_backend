@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Supplier\DTOs;
 
 use App\Modules\Supplier\Models\Supplier;
+use App\Support\OpeningDocumentService;
 use Illuminate\Support\Collection;
 
 readonly class SupplierResponseData
@@ -50,9 +51,11 @@ readonly class SupplierResponseData
 
     /**
      * @param  array<int, string>  $ledgerByCurrencyId  currency_id => balance
+     * @param  array<int, string>|null  $openingByCurrencyId  currency_id => opening balance (sum of opening documents); loaded when null
      */
-    public static function fromModel(Supplier $supplier, array $ledgerByCurrencyId, ?int $primaryCurrencyId): self
+    public static function fromModel(Supplier $supplier, array $ledgerByCurrencyId, ?int $primaryCurrencyId, ?array $openingByCurrencyId = null): self
     {
+        $openingByCurrencyId ??= app(OpeningDocumentService::class)->totals('supplier', [(string) $supplier->id])[(string) $supplier->id] ?? [];
         $supplier->loadMissing([
             'supplierGroup',
             'balances.currency',
@@ -73,8 +76,8 @@ readonly class SupplierResponseData
             $currencyBalances[] = [
                 'currency_id' => $cid,
                 'currency_code' => $cur?->code ?? '',
-                'opening_balance' => (string) $sb->opening_balance,
-                'opening_date' => $sb->opening_date?->toDateString(),
+                // Sum of the opening invoices / credits in this currency (read-only).
+                'opening_balance' => $openingByCurrencyId[$cid] ?? '0.0000',
                 'credit_limit' => (string) $sb->credit_limit,
                 'balance' => $ledgerByCurrencyId[$cid] ?? '0.0000',
             ];
@@ -151,11 +154,13 @@ readonly class SupplierResponseData
      */
     public static function collectionToArray(Collection $suppliers, array $ledgerGrouped, ?int $primaryCurrencyId): array
     {
+        $openings = app(OpeningDocumentService::class)->totals('supplier', $suppliers->map(fn (Supplier $s): string => (string) $s->id)->values()->all());
+
         return $suppliers
-            ->map(function (Supplier $s) use ($ledgerGrouped, $primaryCurrencyId): array {
+            ->map(function (Supplier $s) use ($ledgerGrouped, $primaryCurrencyId, $openings): array {
                 $byCur = $ledgerGrouped[$s->id] ?? [];
 
-                return self::fromModel($s, $byCur, $primaryCurrencyId)->toArray();
+                return self::fromModel($s, $byCur, $primaryCurrencyId, $openings[(string) $s->id] ?? [])->toArray();
             })
             ->values()
             ->all();

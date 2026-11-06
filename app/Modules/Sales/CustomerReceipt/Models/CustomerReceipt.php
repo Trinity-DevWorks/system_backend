@@ -10,6 +10,7 @@ use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Sales\CustomerReceipt\Enums\CustomerReceiptStatus;
+use App\Modules\Treasury\Models\CashBankAccount;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -35,6 +36,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'payment_date',
     'amount',
     'reference',
+    'cash_bank_account_id',
+    'sales_invoice_id',
     'notes',
     'status',
     'created_by',
@@ -95,6 +98,16 @@ class CustomerReceipt extends Model implements AuditableContract
     public function paymentMethod(): BelongsTo
     {
         return $this->belongsTo(PaymentMethod::class);
+    }
+
+    /**
+     * Cash box / bank account the money went into (when chosen).
+     *
+     * @return BelongsTo<CashBankAccount, $this>
+     */
+    public function cashBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(CashBankAccount::class);
     }
 
     /**

@@ -50,14 +50,14 @@ class CashBankAccountController extends Controller
 
     public function store(SaveCashBankAccountRequest $request): JsonResponse
     {
-        $account = $this->service->create($request->validated())->load(['currency:id,code', 'account:id,code,name', 'branch:id,name']);
+        $account = $this->service->create($request->validated())->load(['currency:id,code,symbol', 'account:id,code,name', 'branch:id,name']);
 
         return ApiResponse::created(TreasuryResponseData::account($account), 'Cash/bank account created successfully.');
     }
 
     public function show(CashBankAccount $cash_bank_account): JsonResponse
     {
-        $cash_bank_account->load(['currency:id,code', 'account:id,code,name', 'branch:id,name']);
+        $cash_bank_account->load(['currency:id,code,symbol', 'account:id,code,name', 'branch:id,name']);
         $balance = $this->service->balances([(int) $cash_bank_account->account_id])[(int) $cash_bank_account->account_id] ?? null;
 
         return ApiResponse::success(TreasuryResponseData::account($cash_bank_account, $balance), 'Cash/bank account fetched successfully.');
@@ -65,7 +65,7 @@ class CashBankAccountController extends Controller
 
     public function update(SaveCashBankAccountRequest $request, CashBankAccount $cash_bank_account): JsonResponse
     {
-        $account = $this->service->update($cash_bank_account, $request->validated())->load(['currency:id,code', 'account:id,code,name', 'branch:id,name']);
+        $account = $this->service->update($cash_bank_account, $request->validated())->load(['currency:id,code,symbol', 'account:id,code,name', 'branch:id,name']);
 
         return ApiResponse::success(TreasuryResponseData::account($account), 'Cash/bank account updated successfully.');
     }

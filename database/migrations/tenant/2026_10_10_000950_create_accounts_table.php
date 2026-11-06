@@ -30,16 +30,10 @@ return new class extends Migration
             $table->index(['type', 'is_active']);
         });
 
-        Schema::table('payment_methods', function (Blueprint $table) {
-            $table->foreignId('account_id')->nullable()->after('currency_id')->constrained('accounts')->restrictOnDelete();
-        });
     }
 
     public function down(): void
     {
-        Schema::table('payment_methods', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('account_id');
-        });
         Schema::dropIfExists('accounts');
     }
 };

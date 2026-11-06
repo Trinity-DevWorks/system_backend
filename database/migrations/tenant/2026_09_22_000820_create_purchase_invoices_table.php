@@ -18,11 +18,16 @@ return new class extends Migration
             $table->foreignUuid('supplier_id')->constrained('suppliers')->restrictOnDelete();
             $table->foreignUuid('goods_receipt_id')->nullable()->constrained('goods_receipts')->nullOnDelete();
             $table->foreignUuid('purchase_order_id')->nullable()->constrained('purchase_orders')->nullOnDelete();
-            $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
+            // Null only on opening invoices.
+            $table->foreignId('warehouse_id')->nullable()->constrained('warehouses')->restrictOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             $table->foreignId('payment_method_id')->nullable()->constrained('payment_methods')->nullOnDelete();
             $table->foreignId('payment_terms_id')->nullable()->constrained('payment_terms')->nullOnDelete();
             $table->string('status', 24)->default('draft');
+            // Opening documents bring a customer's/supplier's old open balance into the system:
+            // no lines, no stock, posted against Opening Balance Equity. original_number = number in the old system.
+            $table->boolean('is_opening')->default(false)->index();
+            $table->string('original_number', 64)->nullable();
             $table->date('invoice_date');
             $table->date('due_on');
             $table->decimal('exchange_rate', 24, 12)->default(1);

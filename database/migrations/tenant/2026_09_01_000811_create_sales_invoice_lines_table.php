@@ -24,6 +24,8 @@ return new class extends Migration
             $table->decimal('unit_price', 20, 6)->default(0);
             $table->decimal('discount_percent', 8, 4)->default(0);
             $table->decimal('discount_amount', 20, 4)->default(0);
+            // This line's share of the whole-bill discount (already inside discount_amount).
+            $table->decimal('header_discount_amount', 20, 4)->default(0);
             $table->decimal('tax_rate', 8, 4)->default(0);
             $table->decimal('line_subtotal', 20, 4)->default(0);
             $table->decimal('tax_amount', 20, 4)->default(0);

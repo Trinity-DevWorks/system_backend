@@ -361,3 +361,55 @@ Delivery notes (optional step: sales order -> delivery note -> invoice):
 | `ITEM_VARIANT_PARENT_NOT_STOCKABLE` | 422 | Stock cannot move for a variant template. |
 | `ITEM_DELETE_HAS_VARIANTS` | 409 | Delete the variants before the template item. |
 
+
+## Opening invoices and opening credits
+
+Old open balances of customers/suppliers are opening documents (`is_opening = true` on sales/purchase invoices and credit/debit notes), managed from the customer/supplier (`opening_documents` on save, `GET customers|suppliers/{id}/opening-documents`).
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `OPENING_DOCUMENT_AMOUNT_INVALID` | 422 | An opening amount cannot be zero. |
+| `OPENING_DOCUMENT_DUE_DATE_INVALID` | 422 | The due date is before the document date. |
+| `OPENING_DOCUMENT_NOT_FOUND` | 404 | The row's id is not an opening document of this customer/supplier. |
+| `OPENING_DOCUMENT_IN_USE` | 422 | A payment, credit or refund already uses it: amount, currency, date and branch can no longer change, and it cannot be removed. |
+| `OPENING_DOCUMENT_MANAGED_BY_PARTY` | 422 | Opening documents cannot be reversed or printed as normal documents. |
+| `OPENING_INVOICE_NO_RETURN` | 422 | A credit/debit note (return) cannot be made against an opening invoice; apply an existing credit instead. |
+
+## Bill discount, discount limits, payments at sale
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `SALES_HEADER_DISCOUNT_TOO_LARGE` | 422 | The bill discount is above 100% or larger than the document total. |
+| `DISCOUNT_APPROVAL_REQUIRED` | 422 | The discount is above the user's role limit; send `discount_approval: {email, password}` of a manager. |
+| `DISCOUNT_APPROVAL_INVALID` | 422 | The approval login is wrong, inactive, has no access to the branch, or cannot approve this discount. |
+| `DISCOUNT_APPROVAL_THROTTLED` | 429 | Too many approval attempts; try again in a minute. |
+| `SALES_INVOICE_PAYMENT_METHOD_INVALID` | 422 | Payment at sale needs an active method that takes money now (not "credit"). |
+| `SALES_INVOICE_PAYMENT_AMOUNT_INVALID` | 422 | A payment at sale must be greater than zero. |
+| `SALES_INVOICE_TENDERED_TOO_LOW` | 422 | Cash given is less than the amount paid. |
+| `SALES_INVOICE_PAYMENTS_EXCEED_TOTAL` | 422 | Payments at sale are more than the invoice total (checked at post). |
+| `SALES_INVOICE_PAYMENT_CURRENCY_MISMATCH` | 422 | The payment's cash/bank account is not in the invoice currency. |
+| `SALES_INVOICE_WALK_IN_MUST_PAY` | 422 | A walk-in customer must pay the whole invoice at posting. |
+| `CUSTOMER_RECEIPT_MANAGED_BY_INVOICE` | 422 | A receipt taken with its sales invoice is reversed only with that invoice. |
+| `PAYMENT_METHOD_ACCOUNT_DUPLICATE_BRANCH` | 422 | A payment method has one default cash/bank account per branch. |
+
+## Landed costs
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `LANDED_COST_NOT_DRAFT` | 422 | Only a draft landed cost can be changed, deleted or posted. |
+| `LANDED_COST_NOT_POSTED` | 422 | Only a posted landed cost can be reversed. |
+| `LANDED_COST_NO_RECEIPTS` | 422 | Choose at least one receipt. |
+| `LANDED_COST_NO_RECEIPT_LINES` | 422 | The chosen receipts have no stock lines. |
+| `LANDED_COST_NO_CHARGES` | 422 | Add at least one charge. |
+| `LANDED_COST_RECEIPT_NOT_POSTED` | 422 | Only posted goods receipts and direct purchase invoices can take landed costs. |
+| `LANDED_COST_CHARGE_NOT_ELIGIBLE` | 422 | The bill line is not a posted landed-cost line (landed-cost item or clearing account). |
+| `LANDED_COST_CHARGE_EXCEEDS_OPEN` | 422 | The charge is more than what is left of the bill line. |
+| `LANDED_COST_CHARGE_AMOUNT_INVALID` | 422 | A charge amount must be greater than zero. |
+| `LANDED_COST_DUPLICATE_CHARGE` | 422 | The same bill line is added twice. |
+| `LANDED_COST_WEIGHT_MISSING` | 422 | Spreading by weight needs a weight on every item (names listed). |
+| `LANDED_COST_VOLUME_MISSING` | 422 | Spreading by volume needs a volume on every item (names listed). |
+| `LANDED_COST_BASIS_ZERO` | 422 | The receipt lines have nothing to spread by (all zero). |
+| `LANDED_COST_MANUAL_MISMATCH` | 422 | Manual shares must add up to the charge. |
+| `LANDED_COST_PDF_NOT_ALLOWED` | 422 | Only posted or reversed landed costs print. |
+| `DOCUMENT_HAS_LANDED_COST` | 422 | A posted landed cost uses this receipt or bill; reverse the landed cost first. |
+| `ITEM_LANDED_COST_MUST_BE_SERVICE` | 422 | Only items that do not track stock can be landed-cost items. |

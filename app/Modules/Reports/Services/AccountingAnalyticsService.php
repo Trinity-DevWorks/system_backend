@@ -339,16 +339,14 @@ class AccountingAnalyticsService
     }
 
     /**
-     * Ledger accounts that hold cash: cash & bank accounts, the mapped Cash/Bank/Cheques accounts
-     * and accounts set on payment methods.
+     * Ledger accounts that hold cash: cash & bank accounts and the mapped Cash/Bank/Cheques accounts.
      *
      * @return list<int>
      */
     private function cashAccountIds(): array
     {
         $ids = DB::table('cash_bank_accounts')->pluck('account_id')
-            ->merge(DB::table('account_mappings')->whereIn('role', [AccountRole::Cash->value, AccountRole::Bank->value, AccountRole::ChequesToCollect->value])->pluck('account_id'))
-            ->merge(DB::table('payment_methods')->whereNotNull('account_id')->pluck('account_id'));
+            ->merge(DB::table('account_mappings')->whereIn('role', [AccountRole::Cash->value, AccountRole::Bank->value, AccountRole::ChequesToCollect->value])->pluck('account_id'));
 
         return $ids->filter()->map(fn ($id): int => (int) $id)->unique()->values()->all();
     }

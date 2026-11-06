@@ -47,6 +47,8 @@ readonly class SalesQuotationResponseData
             'exchange_rate' => (string) $quotation->exchange_rate,
             'subtotal' => (string) $quotation->subtotal,
             'discount_total' => (string) $quotation->discount_total,
+            'header_discount_type' => $quotation->header_discount_type,
+            'header_discount_value' => (string) $quotation->header_discount_value,
             'tax_total' => (string) $quotation->tax_total,
             'grand_total' => (string) $quotation->grand_total,
             'notes' => $quotation->notes,

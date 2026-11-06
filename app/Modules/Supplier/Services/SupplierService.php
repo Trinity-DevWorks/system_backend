@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Supplier\Services;
 
-use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierAddress;
 use App\Modules\Supplier\Models\SupplierBalance;
 use App\Modules\Supplier\Models\SupplierContact;
 use App\Support\ListPagination;
+use App\Support\OpeningDocumentService;
 use App\Support\SequentialCodeGenerator;
-use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -20,8 +19,7 @@ use Illuminate\Support\Facades\DB;
 class SupplierService
 {
     public function __construct(
-        private readonly SupplierLedgerService $ledgerService,
-        private readonly JournalPostingService $journalPostingService,
+        private readonly OpeningDocumentService $openingDocuments,
     ) {}
 
     private function userId(): ?string
@@ -156,22 +154,16 @@ class SupplierService
                 $this->lockSupplierForBalanceWrites($supplier);
 
                 foreach ($validated['currency_balances'] as $row) {
-                    $currencyId = (int) $row['currency_id'];
-                    $openingStr = isset($row['opening_balance']) ? (string) $row['opening_balance'] : '0';
-                    $creditStr = isset($row['credit_limit']) ? (string) $row['credit_limit'] : '0';
-                    $openingDate = $this->resolveOpeningBalanceDate($row, null);
-
-                    $balance = SupplierBalance::query()->create([
+                    SupplierBalance::query()->create([
                         'supplier_id' => $supplier->id,
-                        'currency_id' => $currencyId,
-                        'opening_balance' => $openingStr,
-                        'opening_date' => $openingDate,
-                        'credit_limit' => $creditStr,
+                        'currency_id' => (int) $row['currency_id'],
+                        'credit_limit' => isset($row['credit_limit']) ? (string) $row['credit_limit'] : '0',
                     ]);
-
-                    $this->ledgerService->postOpeningBalance($supplier, $currencyId, $openingStr, $openingDate);
-                    $this->journalPostingService->supplierOpeningBalance($balance->refresh(), $this->userId());
                 }
+            }
+
+            if (($validated['opening_documents'] ?? []) !== []) {
+                $this->syncOpeningDocuments($supplier, $validated['opening_documents']);
             }
 
             return $supplier->load([
@@ -193,7 +185,8 @@ class SupplierService
             $supplier = $this->lockSupplierForBalanceWrites($supplier);
 
             $currencyBalances = $patch['currency_balances'] ?? null;
-            $scalar = collect($patch)->except(['currency_balances'])->all();
+            $openingDocuments = $patch['opening_documents'] ?? null;
+            $scalar = collect($patch)->except(['currency_balances', 'opening_documents'])->all();
 
             $supplier->fill($scalar);
             if (! $supplier->is_vat_registered) {
@@ -208,6 +201,10 @@ class SupplierService
 
             if (is_array($currencyBalances)) {
                 $this->syncCurrencyBalances($supplier, $currencyBalances);
+            }
+
+            if (is_array($openingDocuments)) {
+                $this->syncOpeningDocuments($supplier, $openingDocuments);
             }
         });
 
@@ -228,33 +225,26 @@ class SupplierService
         $this->lockSupplierForBalanceWrites($supplier);
 
         foreach ($rows as $row) {
-            $currencyId = (int) $row['currency_id'];
-            $balanceRow = $this->lockSupplierBalanceRow($supplier, $currencyId);
-
-            $prevOpening = $this->normalizeMoneyString((string) $balanceRow->opening_balance);
-            $prevOpeningDate = $balanceRow->opening_date?->toDateString();
-
-            $newOpening = array_key_exists('opening_balance', $row)
-                ? $this->normalizeMoneyString((string) $row['opening_balance'])
-                : $prevOpening;
-
-            $newOpeningDate = $this->resolveOpeningBalanceDate($row, $balanceRow);
-
-            $newCredit = array_key_exists('credit_limit', $row)
-                ? $this->normalizeMoneyString((string) $row['credit_limit'])
-                : $this->normalizeMoneyString((string) $balanceRow->credit_limit);
-
-            $balanceRow->update([
-                'opening_balance' => $newOpening,
-                'opening_date' => $newOpeningDate,
-                'credit_limit' => $newCredit,
-            ]);
-
-            if ($newOpening !== $prevOpening || $newOpeningDate !== $prevOpeningDate) {
-                $this->ledgerService->replaceOpeningBalancePosting($supplier, $currencyId, $newOpening, $newOpeningDate);
-                $this->journalPostingService->replaceSupplierOpeningBalance($balanceRow->refresh(), $this->userId());
+            $balanceRow = $this->lockSupplierBalanceRow($supplier, (int) $row['currency_id']);
+            if (array_key_exists('credit_limit', $row)) {
+                $balanceRow->update(['credit_limit' => $this->normalizeMoneyString((string) $row['credit_limit'])]);
             }
         }
+    }
+
+    /**
+     * Old open balances as opening invoices / credits. Each currency used also gets a balance row,
+     * so the supplier's balances list shows it.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function syncOpeningDocuments(Supplier $supplier, array $rows): void
+    {
+        $this->lockSupplierForBalanceWrites($supplier);
+        foreach (array_unique(array_map(fn (array $row): int => (int) $row['currency_id'], $rows)) as $currencyId) {
+            $this->lockSupplierBalanceRow($supplier, $currencyId);
+        }
+        $this->openingDocuments->syncSupplier($supplier, $rows, $this->userId());
     }
 
     private function lockSupplierForBalanceWrites(Supplier $supplier): Supplier
@@ -277,8 +267,6 @@ class SupplierService
         SupplierBalance::query()->create([
             'supplier_id' => $supplier->id,
             'currency_id' => $currencyId,
-            'opening_balance' => '0.0000',
-            'opening_date' => now()->toDateString(),
             'credit_limit' => '0.0000',
         ]);
 
@@ -287,21 +275,6 @@ class SupplierService
             ->where('currency_id', $currencyId)
             ->lockForUpdate()
             ->firstOrFail();
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function resolveOpeningBalanceDate(array $row, ?SupplierBalance $existing): string
-    {
-        if (array_key_exists('opening_date', $row) && $row['opening_date'] !== null && $row['opening_date'] !== '') {
-            return Carbon::parse((string) $row['opening_date'])->toDateString();
-        }
-        if ($existing?->opening_date !== null) {
-            return $existing->opening_date->toDateString();
-        }
-
-        return now()->toDateString();
     }
 
     private function normalizeMoneyString(string $value): string

@@ -11,6 +11,7 @@ use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
+use App\Modules\Inventory\Purchasing\LandedCost\Services\LandedCostService;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
@@ -35,6 +36,7 @@ use App\Support\DocumentTaxContext;
 use App\Support\DocumentTaxMath;
 use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
+use App\Support\OpeningDocumentService;
 use App\Support\PaymentAllocation;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -86,7 +88,7 @@ class PurchaseInvoiceService
             ])
             ->findOrFail($id);
 
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
 
         return $invoice;
     }
@@ -215,7 +217,7 @@ class PurchaseInvoiceService
     public function delete(PurchaseInvoice $invoice): void
     {
         PurchaseInvoiceRules::assertDraft($invoice);
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
         $invoice->delete();
     }
 
@@ -225,7 +227,7 @@ class PurchaseInvoiceService
             $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             app(DocumentNumberService::class)->assign($locked, 'invoice_number', DocumentType::PurchaseInvoice, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->invoice_date);
             PurchaseInvoiceRules::assertPostable($locked);
-            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($locked);
 
             $this->recalculateTotals($locked);
             $locked->refresh();
@@ -310,11 +312,13 @@ class PurchaseInvoiceService
     {
         return DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
             $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            OpeningDocumentService::assertNotOpening($locked);
             if ($locked->status !== PurchaseInvoiceStatus::Posted) {
                 abort(422, 'Only a posted purchase invoice can be reversed.', [
                     'X-Error-Code' => 'PURCHASE_INVOICE_NOT_POSTED',
                 ]);
             }
+            LandedCostService::assertNotUsed('purchase_invoice', (string) $locked->id);
             if (bccomp((string) $locked->paid_total, '0', 4) > 0) {
                 abort(422, 'This invoice has payments and cannot be reversed.', [
                     'X-Error-Code' => 'PURCHASE_INVOICE_HAS_PAYMENTS',
@@ -325,7 +329,7 @@ class PurchaseInvoiceService
                     'X-Error-Code' => 'PURCHASE_INVOICE_HAS_DEBIT_NOTES',
                 ]);
             }
-            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($locked);
 
             if ($locked->goods_receipt_id === null) {
                 $this->stockMovementService->reverseReference(PurchaseInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
@@ -402,7 +406,7 @@ class PurchaseInvoiceService
     {
         $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
         PurchaseInvoiceRules::assertDraft($locked);
-        $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($locked);
 
         return $locked;
     }

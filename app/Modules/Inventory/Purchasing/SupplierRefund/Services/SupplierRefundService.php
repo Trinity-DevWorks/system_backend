@@ -18,6 +18,7 @@ use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierLedgerService;
+use App\Modules\Treasury\Support\PaymentCashBankAccount;
 use App\Support\CurrencyCashRound;
 use App\Support\DocumentNumberService;
 use App\Support\DocumentType;
@@ -109,6 +110,8 @@ class SupplierRefundService
                 'id' => $note->id,
                 'invoice_number' => $note->debit_note_number,
                 'debit_note_number' => $note->debit_note_number,
+                'is_opening' => (bool) $note->is_opening,
+                'original_number' => $note->original_number,
                 'invoice_date' => $note->debit_date?->toDateString(),
                 'debit_date' => $note->debit_date?->toDateString(),
                 'grand_total' => (string) $note->grand_total,
@@ -211,6 +214,14 @@ class SupplierRefundService
             }
 
             $this->assertPaymentMethod((int) $locked->payment_method_id, $locked->reference);
+            $locked->cash_bank_account_id = PaymentCashBankAccount::resolve(
+                $locked->cash_bank_account_id,
+                (int) $locked->payment_method_id,
+                $locked->branch_id !== null ? (int) $locked->branch_id : null,
+                (int) $locked->currency_id,
+                true,
+            );
+            $locked->save();
             $customer = PurchaseInvoiceRules::assertSupplier((string) $locked->supplier_id);
             $ids = $allocations->pluck('purchase_debit_note_id')->map(fn ($id): string => (string) $id)->all();
             sort($ids);
@@ -318,6 +329,9 @@ class SupplierRefundService
             'refund_date' => Carbon::parse((string) $data['refund_date'])->toDateString(),
             'amount' => PaymentAllocation::normalize($data['amount']),
             'reference' => $this->nullableString($data['reference'] ?? null),
+            'cash_bank_account_id' => array_key_exists('cash_bank_account_id', $data)
+                ? ($data['cash_bank_account_id'] !== null && $data['cash_bank_account_id'] !== '' ? (int) $data['cash_bank_account_id'] : null)
+                : $existing?->cash_bank_account_id,
             'notes' => $this->nullableString($data['notes'] ?? null),
         ];
     }

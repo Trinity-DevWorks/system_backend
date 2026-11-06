@@ -31,6 +31,8 @@ readonly class PurchaseInvoiceResponseData
             'id' => $invoice->id,
             ...DocumentBranchPayload::of($invoice),
             'invoice_number' => $invoice->invoice_number,
+            'is_opening' => (bool) $invoice->is_opening,
+            'original_number' => $invoice->original_number,
             'supplier_id' => $invoice->supplier_id,
             'goods_receipt_id' => $invoice->goods_receipt_id,
             'purchase_order_id' => $invoice->purchase_order_id,

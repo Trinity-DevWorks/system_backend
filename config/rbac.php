@@ -159,6 +159,10 @@ return [
             'label' => 'Delivery Note Management',
             'actions' => [...$crud, 'reverse', 'print'],
         ],
+        'landed_costs' => [
+            'label' => 'Landed Cost Management',
+            'actions' => [...$crud, 'reverse', 'print'],
+        ],
         'sales_invoices' => [
             'label' => 'Sales Invoice Management',
             'actions' => [...$crud, 'reverse', 'print'],
@@ -166,6 +170,11 @@ return [
         // Lets a role post invoices / confirm orders above the customer's credit limit.
         'credit_limit_override' => [
             'label' => 'Override Customer Credit Limit',
+            'actions' => ['edit'],
+        ],
+        // Lets a role give any discount, and approve a cashier's discount above their role's limit.
+        'discount_override' => [
+            'label' => 'Approve Discounts Above Limit',
             'actions' => ['edit'],
         ],
         'customer_receipts' => [

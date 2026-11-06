@@ -98,6 +98,8 @@ class SalesQuotationService
                 'quotation_date',
                 'valid_until',
                 'exchange_rate',
+                'header_discount_type',
+                'header_discount_value',
                 'notes',
             ]), $data);
             $quotation->update($this->normalizeHeader($merged, $customer, $quotation));
@@ -286,6 +288,7 @@ class SalesQuotationService
             'quotation_date' => $quotationDate,
             'valid_until' => $validUntil,
             'exchange_rate' => $exchangeRate,
+            ...CommercialLineBuilder::headerDiscount($data, $existing),
             'notes' => CommercialLineBuilder::nullableString($data['notes'] ?? $existing?->notes),
         ];
     }
@@ -312,7 +315,8 @@ class SalesQuotationService
 
     private function recalculateTotals(SalesQuotation $quotation): void
     {
-        $rows = SalesQuotationLine::query()->where('sales_quotation_id', $quotation->id)->get();
+        $rows = SalesQuotationLine::query()->where('sales_quotation_id', $quotation->id)->orderBy('sort_order')->orderBy('id')->get();
+        CommercialLineBuilder::applyHeaderDiscount($rows, $quotation->header_discount_type, $quotation->header_discount_value);
         $quotation->update(CommercialLineBuilder::totals($rows));
     }
 }

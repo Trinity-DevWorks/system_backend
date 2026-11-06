@@ -7,8 +7,11 @@ namespace Tests\Concerns;
 use App\Jobs\BootstrapTenantRbac;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Customer\Enums\CustomerType;
 use App\Modules\Customer\Models\Customer;
+use App\Modules\PaymentMethod\Models\PaymentMethodCashBankAccount;
+use App\Modules\Treasury\Models\CashBankAccount;
 use App\Services\ModuleEntitlementService;
 use Illuminate\Support\Facades\DB;
 
@@ -81,6 +84,33 @@ trait InteractsWithTenant
 
             unset($this->tenant);
         }
+    }
+
+    /**
+     * Inside the tenant: a shared cash box / bank account on the given ledger account, linked to the method
+     * (money of that method and currency then moves through it).
+     */
+    protected function linkCashBank(int $paymentMethodId, int $currencyId, string $ledgerCode, string $type = 'cash'): int
+    {
+        $ledgerId = (int) Account::query()->where('code', $ledgerCode)->value('id');
+        $account = CashBankAccount::query()->firstOrCreate(
+            ['account_id' => $ledgerId],
+            [
+                'code' => 'CB'.$ledgerCode,
+                'name' => 'Cash/bank '.$ledgerCode,
+                'type' => $type,
+                'currency_id' => $currencyId,
+                'branch_id' => null,
+                'opening_balance' => 0,
+                'is_active' => true,
+            ],
+        );
+        PaymentMethodCashBankAccount::query()->firstOrCreate([
+            'payment_method_id' => $paymentMethodId,
+            'cash_bank_account_id' => $account->id,
+        ]);
+
+        return (int) $account->id;
     }
 
     protected function createCustomer(string $name = 'Test Customer'): Customer

@@ -64,6 +64,9 @@ class UpdateItemRequest extends FormRequest
             'allow_sale' => ['sometimes', 'boolean'],
             'allow_purchase' => ['sometimes', 'boolean'],
             'allow_return' => ['sometimes', 'boolean'],
+            'is_landed_cost' => ['sometimes', 'boolean'],
+            'weight' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:99999999'],
+            'volume' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:99999999'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }

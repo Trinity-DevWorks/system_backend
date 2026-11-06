@@ -43,6 +43,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'exchange_rate',
     'subtotal',
     'discount_total',
+    'header_discount_type',
+    'header_discount_value',
     'tax_total',
     'grand_total',
     'notes',
@@ -76,6 +78,7 @@ class SalesQuotation extends Model implements AuditableContract
             'exchange_rate' => 'decimal:12',
             'subtotal' => 'decimal:4',
             'discount_total' => 'decimal:4',
+            'header_discount_value' => 'decimal:4',
             'tax_total' => 'decimal:4',
             'grand_total' => 'decimal:4',
         ];

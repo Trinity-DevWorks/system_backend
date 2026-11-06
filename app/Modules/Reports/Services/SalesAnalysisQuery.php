@@ -291,8 +291,9 @@ SQL;
     {
         [$branch, $branchBindings] = $this->branchSql($filters);
 
+        // Opening invoices / credits are old balances, not sales of the period.
         $positive = "SELECT d.id AS doc_id, 1 AS sign, d.{$dateColumn}::date AS event_date FROM {$table} d WHERE {$branch}"
-            ." AND d.status IN ('posted', 'reversed') AND d.{$dateColumn} BETWEEN ? AND ?";
+            ." AND NOT d.is_opening AND d.status IN ('posted', 'reversed') AND d.{$dateColumn} BETWEEN ? AND ?";
         $bindings = [...$branchBindings, $from, $to];
 
         if ($this->journalPosting->enabled()) {

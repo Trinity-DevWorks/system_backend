@@ -40,6 +40,7 @@ use App\Modules\Inventory\ItemVariant\Http\Controllers\ItemVariantController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseInvoiceController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseOrderController;
+use App\Modules\Inventory\Purchasing\LandedCost\Http\Controllers\LandedCostController;
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Http\Controllers\PurchaseDebitNoteController;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Http\Controllers\SupplierPaymentController;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Http\Controllers\SupplierRefundController;
@@ -821,6 +822,10 @@ Route::middleware([
                 ->middleware('check.permission:sales_invoices,delete');
             Route::put('sales-invoices/{sales_invoice}/lines/sync', [SalesInvoiceController::class, 'syncLines'])
                 ->middleware('check.permission:sales_invoices,edit');
+            Route::put('sales-invoices/{sales_invoice}/payments', [SalesInvoiceController::class, 'syncPayments'])
+                ->middleware('check.permission:sales_invoices,edit');
+            Route::post('sales-invoices/{sales_invoice}/payments/record', [SalesInvoiceController::class, 'recordPayments'])
+                ->middleware('check.permission:customer_receipts,add');
             Route::post('sales-invoices/{sales_invoice}/post', [SalesInvoiceController::class, 'post'])
                 ->middleware('check.permission:sales_invoices,edit');
             Route::post('sales-invoices/{sales_invoice}/reverse', [SalesInvoiceController::class, 'reverse'])
@@ -851,6 +856,8 @@ Route::middleware([
                 ->middlewareFor(['destroy'], ['check.permission:customer_groups,delete']);
 
             Route::get('customers/{customer}/balance', [CustomerLedgerController::class, 'balance'])
+                ->middleware('check.permission:customers,view');
+            Route::get('customers/{customer}/opening-documents', [CustomerLedgerController::class, 'openingDocuments'])
                 ->middleware('check.permission:customers,view');
             Route::get('customers/{customer}/ledger-entries', [CustomerLedgerController::class, 'index'])
                 ->middleware('check.permission:customers,view');
@@ -952,6 +959,23 @@ Route::middleware([
             Route::post('supplier-refunds/{supplier_refund}/reverse', [SupplierRefundController::class, 'reverse'])
                 ->middleware('check.permission:supplier_refunds,reverse');
 
+            // Landed costs: freight / customs bills spread over received goods.
+            Route::get('landed-costs/sources', [LandedCostController::class, 'sources'])
+                ->middleware('check.permission:landed_costs,view');
+            Route::post('landed-costs/preview', [LandedCostController::class, 'preview'])
+                ->middleware('check.permission:landed_costs,view');
+            Route::apiResource('landed-costs', LandedCostController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:landed_costs,view'])
+                ->middlewareFor(['store'], ['check.permission:landed_costs,add'])
+                ->middlewareFor(['update'], ['check.permission:landed_costs,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:landed_costs,delete']);
+            Route::post('landed-costs/{landed_cost}/post', [LandedCostController::class, 'post'])
+                ->middleware('check.permission:landed_costs,edit');
+            Route::post('landed-costs/{landed_cost}/reverse', [LandedCostController::class, 'reverse'])
+                ->middleware('check.permission:landed_costs,reverse');
+            Route::get('landed-costs/{landed_cost}/pdf', [LandedCostController::class, 'pdf'])
+                ->middleware(['check.permission:landed_costs,view', 'check.permission:landed_costs,print']);
+
             Route::get('purchase-invoices', [PurchaseInvoiceController::class, 'index'])
                 ->middleware('check.permission:purchase_invoices,view');
             Route::post('purchase-invoices', [PurchaseInvoiceController::class, 'store'])
@@ -978,6 +1002,8 @@ Route::middleware([
                 ->middlewareFor(['destroy'], ['check.permission:supplier_groups,delete']);
 
             Route::get('suppliers/{supplier}/balance', [SupplierLedgerController::class, 'balance'])
+                ->middleware('check.permission:suppliers,view');
+            Route::get('suppliers/{supplier}/opening-documents', [SupplierLedgerController::class, 'openingDocuments'])
                 ->middleware('check.permission:suppliers,view');
             Route::get('suppliers/{supplier}/ledger-entries', [SupplierLedgerController::class, 'index'])
                 ->middleware('check.permission:suppliers,view');

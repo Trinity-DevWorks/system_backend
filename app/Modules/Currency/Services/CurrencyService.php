@@ -57,6 +57,7 @@ class CurrencyService
         'stock_transfer_closures',
         'cash_bank_accounts',
         'delivery_notes',
+        'landed_costs',
         'treasury_transfers',
         'expense_vouchers',
     ];

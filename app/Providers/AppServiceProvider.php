@@ -32,6 +32,7 @@ use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
 use App\Modules\Inventory\ItemVariant\Models\ItemAttribute;
 use App\Modules\Inventory\ItemVariant\Models\ItemAttributeValue;
+use App\Modules\Inventory\Purchasing\LandedCost\Models\LandedCost;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
@@ -147,6 +148,7 @@ class AppServiceProvider extends ServiceProvider
             'sales_quotation_line' => SalesQuotationLine::class,
             'sales_order' => SalesOrder::class,
             'delivery_note' => DeliveryNote::class,
+            'landed_cost' => LandedCost::class,
             'sales_order_line' => SalesOrderLine::class,
             'sales_invoice' => SalesInvoice::class,
             'sales_credit_note' => SalesCreditNote::class,

@@ -27,6 +27,12 @@ return new class extends Migration
             $table->decimal('exchange_rate', 24, 12)->default(1);
             $table->decimal('subtotal', 20, 4)->default(0);
             $table->decimal('discount_total', 20, 4)->default(0);
+            // Whole-bill discount (percent or amount), spread over the lines before tax.
+            $table->string('header_discount_type', 8)->nullable();
+            $table->decimal('header_discount_value', 20, 4)->default(0);
+            // Who approved a discount above the poster's limit (manager login at the counter).
+            $table->foreignUuid('discount_approved_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('discount_approved_at')->nullable();
             $table->decimal('tax_total', 20, 4)->default(0);
             $table->decimal('grand_total', 20, 4)->default(0);
             $table->text('notes')->nullable();
@@ -57,6 +63,8 @@ return new class extends Migration
             $table->decimal('unit_price', 20, 6)->default(0);
             $table->decimal('discount_percent', 8, 4)->default(0);
             $table->decimal('discount_amount', 20, 4)->default(0);
+            // This line's share of the whole-bill discount (already inside discount_amount).
+            $table->decimal('header_discount_amount', 20, 4)->default(0);
             $table->decimal('tax_rate', 8, 4)->default(0);
             $table->decimal('line_subtotal', 20, 4)->default(0);
             $table->decimal('tax_amount', 20, 4)->default(0);

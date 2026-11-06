@@ -22,6 +22,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * @property int $branch_id
+ * @property bool $is_opening
  * @property SalesCreditNoteStatus $status
  * @property SalesCreditNoteType $type
  * @property Carbon|null $credit_date
@@ -47,6 +48,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'refunded_total',
     'open_credit',
     'status',
+    'is_opening',
+    'original_number',
     'created_by',
     'posted_by',
     'posted_at',
@@ -83,6 +86,7 @@ class SalesCreditNote extends Model implements AuditableContract
     {
         return [
             'status' => SalesCreditNoteStatus::class,
+            'is_opening' => 'boolean',
             'type' => SalesCreditNoteType::class,
             'credit_date' => 'date',
             'exchange_rate' => 'decimal:12',

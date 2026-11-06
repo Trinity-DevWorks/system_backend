@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\PaymentMethod\Models;
 
-use App\Modules\Accounting\Models\Account;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
 use Database\Factories\PaymentMethodFactory;
@@ -12,19 +11,24 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property PaymentMethodType $type
+ * @property bool $supports_change
+ * @property bool $requires_reference
+ * @property bool $is_active
+ */
 #[Fillable([
     'code',
     'name',
     'type',
     'currency_id',
-    'account_id',
     'requires_reference',
     'supports_change',
-    'is_default',
     'is_active',
     'notes',
 ])]
@@ -44,10 +48,8 @@ class PaymentMethod extends Model implements AuditableContract
     {
         return [
             'type' => PaymentMethodType::class,
-            'account_id' => 'integer',
             'requires_reference' => 'boolean',
             'supports_change' => 'boolean',
-            'is_default' => 'boolean',
             'is_active' => 'boolean',
         ];
     }
@@ -61,10 +63,10 @@ class PaymentMethod extends Model implements AuditableContract
     }
 
     /**
-     * @return BelongsTo<Account, $this>
+     * @return HasMany<PaymentMethodCashBankAccount, $this>
      */
-    public function account(): BelongsTo
+    public function cashBankAccounts(): HasMany
     {
-        return $this->belongsTo(Account::class);
+        return $this->hasMany(PaymentMethodCashBankAccount::class);
     }
 }

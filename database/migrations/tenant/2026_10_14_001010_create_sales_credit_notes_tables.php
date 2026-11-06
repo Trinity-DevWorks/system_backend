@@ -15,7 +15,8 @@ return new class extends Migration
             // Issuing branch, frozen once the document leaves draft (see docs/printing-plan.md D3).
             $table->foreignId('branch_id')->index()->constrained('branches')->restrictOnDelete();
             $table->string('credit_note_number', 32)->nullable()->unique(); // assigned at posting
-            $table->foreignUuid('sales_invoice_id')->constrained('sales_invoices')->restrictOnDelete();
+            // Null only on opening credits.
+            $table->foreignUuid('sales_invoice_id')->nullable()->constrained('sales_invoices')->restrictOnDelete();
             $table->foreignUuid('customer_id')->constrained('customers')->restrictOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             $table->decimal('exchange_rate', 24, 12);
@@ -32,6 +33,10 @@ return new class extends Migration
             $table->decimal('refunded_total', 20, 4)->default(0);
             $table->decimal('open_credit', 20, 4)->default(0);
             $table->string('status', 24)->default('draft');
+            // Opening documents bring a customer's/supplier's old open balance into the system:
+            // no lines, no stock, posted against Opening Balance Equity. original_number = number in the old system.
+            $table->boolean('is_opening')->default(false)->index();
+            $table->string('original_number', 64)->nullable();
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('posted_at')->nullable();

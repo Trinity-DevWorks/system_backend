@@ -34,7 +34,7 @@ class TreasuryTransferService
     public function paginate(array $filters, int $perPage): LengthAwarePaginator
     {
         $query = TreasuryTransfer::query()
-            ->with(['fromAccount:id,code,name,currency_id', 'fromAccount.currency:id,code', 'toAccount:id,code,name,currency_id', 'toAccount.currency:id,code'])
+            ->with(['fromAccount:id,code,name,currency_id', 'fromAccount.currency:id,code,symbol', 'toAccount:id,code,name,currency_id', 'toAccount.currency:id,code,symbol'])
             ->orderByDesc('transfer_date')
             ->orderByDesc('created_at');
         if (! empty($filters['status'])) {
@@ -48,7 +48,7 @@ class TreasuryTransferService
     public function find(string $id): TreasuryTransfer
     {
         return TreasuryTransfer::query()
-            ->with(['fromAccount.currency:id,code', 'toAccount.currency:id,code'])
+            ->with(['fromAccount.currency:id,code,symbol', 'toAccount.currency:id,code,symbol'])
             ->findOrFail($id);
     }
 

@@ -377,6 +377,8 @@ class PurchaseDebitNoteApiTest extends TestCase
             'is_active' => true,
         ]);
 
+        $this->linkCashBank((int) $method->id, (int) $usd->id, '5310');
+
         return [
             'usd_id' => (int) $usd->id,
             'warehouse_id' => (int) $warehouse->id,
