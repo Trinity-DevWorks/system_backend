@@ -14,11 +14,13 @@ use App\Modules\PaymentMethod\Models\PaymentMethodCashBankAccount;
 use App\Modules\Treasury\Models\CashBankAccount;
 use App\Services\ModuleEntitlementService;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\TenantSnapshot;
 
 /**
- * Shared helpers to create a real tenant (DB schema + owner user + permissions) in tests.
+ * Shared helpers for tests that need a real tenant (DB schema + owner user + permissions).
  *
- * Used by: AttachmentServiceTest, CustomerAttachmentApiTest (and any future tenant feature tests).
+ * Call setUpTenant() in setUp() and tearDownTenant() in tearDown(). The tenant is built once
+ * per run and reset before each test, so tests stay isolated without rebuilding it.
  * Why transactions are off: Stancl creates Postgres schemas; those are invisible inside
  * RefreshDatabase's default transaction.
  */
@@ -38,17 +40,42 @@ trait InteractsWithTenant
 
     protected User $tenantUser;
 
-    protected function setUpTenant(string $tenantId = 'attach_test'): void
+    /**
+     * Gives the test a ready company. It is built (migrated + seeded) only once per test run;
+     * later tests get the same company reset to its just-built state (see TenantSnapshot).
+     */
+    protected function setUpTenant(string $tenantId = 'test_tenant'): void
     {
         $this->tenantDomain = str_replace('_', '-', $tenantId).'.localhost';
 
+        $snapshot = TenantSnapshot::get($tenantId);
+        $existing = $snapshot !== null ? Tenant::query()->find($tenantId) : null;
+        if ($snapshot !== null && $existing !== null) {
+            TenantSnapshot::restore($tenantId);
+            $this->tenant = $existing;
+            $this->tenant->run(function () use ($snapshot): void {
+                $this->tenantUser = User::query()->findOrFail($snapshot['user_id']);
+            });
+
+            return;
+        }
+
+        $this->buildTenant($tenantId);
+        TenantSnapshot::capture($tenantId, (string) $this->tenantUser->id);
+    }
+
+    /** The slow path: a brand-new tenant schema, migrations, seeders, owner user and permissions. */
+    private function buildTenant(string $tenantId): void
+    {
+        TenantSnapshot::forget($tenantId);
+        TenantSnapshot::dropSnapshot($tenantId);
         $this->destroyTenantIfExists($tenantId);
 
         app(ModuleEntitlementService::class)->syncCatalog();
 
         $this->tenant = Tenant::query()->create([
             'id' => $tenantId,
-            'name' => 'Attachment Test Tenant',
+            'name' => 'Test Company',
         ]);
         $this->tenant->domains()->create(['domain' => $this->tenantDomain]);
 
@@ -56,8 +83,8 @@ trait InteractsWithTenant
 
         $this->tenant->run(function (): void {
             $this->tenantUser = User::factory()->create([
-                'name' => 'Attachment Owner',
-                'email' => 'owner@attach-test.local',
+                'name' => 'Test Owner',
+                'email' => 'owner@test.local',
                 'is_active' => true,
             ]);
 
@@ -66,24 +93,14 @@ trait InteractsWithTenant
         });
     }
 
+    /** Leaves the company in place for the next test; it is reset at the next setUpTenant(). */
     protected function tearDownTenant(): void
     {
         if (tenancy()->initialized) {
             tenancy()->end();
         }
 
-        if (isset($this->tenant)) {
-            $tenantId = (string) $this->tenant->getTenantKey();
-
-            try {
-                $this->tenant->delete();
-            } catch (\Throwable) {
-                $this->dropTenantSchemaIfExists($tenantId);
-                Tenant::query()->whereKey($tenantId)->delete();
-            }
-
-            unset($this->tenant);
-        }
+        unset($this->tenant);
     }
 
     /**
@@ -153,7 +170,7 @@ trait InteractsWithTenant
     protected function tenantBearerToken(): string
     {
         return $this->tenant->run(function (): string {
-            return $this->tenantUser->createToken('attachment-tests')->plainTextToken;
+            return $this->tenantUser->createToken('tests')->plainTextToken;
         });
     }
 
