@@ -43,6 +43,14 @@ class CustomerReceiptPdfService
         if (! empty($receipt->reference)) {
             $meta[] = DocumentPdfSupport::metaRow($labels['reference'], (string) $receipt->reference, $money);
         }
+        if (! empty($receipt->cheque_number)) {
+            $cheque = collect([
+                $receipt->cheque_number,
+                $receipt->cheque_bank,
+                $receipt->cheque_due_date !== null ? $money->date($receipt->cheque_due_date) : null,
+            ])->filter()->implode(' · ');
+            $meta[] = DocumentPdfSupport::metaRow($labels['cheque'], $cheque, $money);
+        }
         array_push($meta, ...DocumentPdfSupport::currencyMeta($receipt->currency, $receipt->exchange_rate, $money, $labels));
 
         $title = $options->isArabic() ? $money->text('سند قبض') : 'RECEIPT';

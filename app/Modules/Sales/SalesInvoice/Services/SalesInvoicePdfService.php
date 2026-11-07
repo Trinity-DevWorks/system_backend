@@ -35,6 +35,13 @@ class SalesInvoicePdfService
         $labels = $this->renderer->labelsFor($options);
 
         $invoice = $this->salesInvoiceService->find($invoice->id);
+        $invoice->loadMissing([
+            'payments.paymentMethod',
+            'payments.cashBankAccount',
+            'payments.currency',
+            'payments.changeCurrency',
+            'payments.customerReceipt.allocations',
+        ]);
 
         $meta = [
             DocumentPdfSupport::metaRow($labels['date'], $money->date($invoice->invoice_date), $money),
@@ -63,6 +70,7 @@ class SalesInvoicePdfService
             'lineColumns' => DocumentPdfSupport::commercialColumns(),
             'lines' => DocumentPdfSupport::commercialLines($invoice->lines, $money),
             'totals' => DocumentPdfSupport::commercialTotals($invoice, $money, $labels, true),
+            'payments' => DocumentPdfSupport::paymentRows($invoice->payments, $invoice, $money, $labels),
             'notes' => $money->text($invoice->notes),
         ], $options);
     }

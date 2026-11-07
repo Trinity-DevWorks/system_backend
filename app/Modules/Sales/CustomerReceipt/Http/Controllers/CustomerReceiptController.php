@@ -122,6 +122,47 @@ class CustomerReceiptController extends Controller
         );
     }
 
+    /**
+     * Credit left on a posted receipt, applied to open invoices: rows of sales_invoice_id + amount (receipt currency).
+     */
+    public function applyCredit(Request $request, CustomerReceipt $customerReceipt): JsonResponse
+    {
+        $data = $request->validate([
+            'allocations' => ['required', 'array', 'min:1'],
+            'allocations.*.sales_invoice_id' => ['required', 'uuid', 'exists:sales_invoices,id'],
+            'allocations.*.amount' => ['required', 'numeric', 'gt:0'],
+            'date' => ['nullable', 'date'],
+        ]);
+        $userId = $request->user()?->id;
+        $receipt = $this->customerReceiptService->applyCredit(
+            $customerReceipt,
+            $data['allocations'],
+            $userId !== null ? (string) $userId : null,
+            isset($data['date']) ? (string) $data['date'] : null,
+        );
+
+        return ApiResponse::success(CustomerReceiptResponseData::fromModel($receipt), 'Customer credit applied successfully.');
+    }
+
+    /**
+     * The customer's credit (posted receipts with money left), with its value in `currency_id` when given.
+     */
+    public function availableCredit(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'customer_id' => ['required', 'uuid', 'exists:customers,id'],
+            'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
+        ]);
+
+        return ApiResponse::success(
+            $this->customerReceiptService->availableCredit(
+                (string) $data['customer_id'],
+                isset($data['currency_id']) ? (int) $data['currency_id'] : null,
+            ),
+            'Customer credit fetched successfully.'
+        );
+    }
+
     public function reverse(Request $request, CustomerReceipt $customerReceipt): JsonResponse
     {
         $userId = $request->user()?->id;

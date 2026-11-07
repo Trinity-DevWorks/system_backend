@@ -370,7 +370,7 @@ class AccountingAnalyticsService
             $role === AccountRole::Receivable->value => 'customers',
             $role === AccountRole::Payable->value => 'suppliers',
             in_array($role, [AccountRole::VatInput->value, AccountRole::VatOutput->value], true) => 'vat',
-            in_array($role, [AccountRole::ExchangeGain->value, AccountRole::ExchangeLoss->value], true) => 'exchange',
+            in_array($role, [AccountRole::ExchangeGain->value, AccountRole::ExchangeLoss->value, AccountRole::UnrealizedExchangeGain->value, AccountRole::UnrealizedExchangeLoss->value], true) => 'exchange',
             $type === AccountType::Expense->value => 'expenses',
             $type === AccountType::Revenue->value => 'other_income',
             $type === AccountType::Equity->value => 'equity',

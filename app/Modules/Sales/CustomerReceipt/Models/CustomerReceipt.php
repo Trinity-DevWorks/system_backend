@@ -38,6 +38,9 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'reference',
     'cash_bank_account_id',
     'sales_invoice_id',
+    'cheque_number',
+    'cheque_bank',
+    'cheque_due_date',
     'notes',
     'status',
     'created_by',
@@ -73,7 +76,22 @@ class CustomerReceipt extends Model implements AuditableContract
             'exchange_rate' => 'decimal:12',
             'amount' => 'decimal:4',
             'posted_at' => 'datetime',
+            'cheque_due_date' => 'date',
         ];
+    }
+
+    /**
+     * Part of the amount not allocated to any invoice (customer credit), in the receipt currency.
+     */
+    public function unappliedAmount(): string
+    {
+        $allocated = '0';
+        foreach ($this->allocations()->get(['amount']) as $allocation) {
+            $allocated = bcadd($allocated, (string) $allocation->amount, 4);
+        }
+        $open = bcsub((string) $this->amount, $allocated, 4);
+
+        return bccomp($open, '0', 4) > 0 ? $open : '0.0000';
     }
 
     /**

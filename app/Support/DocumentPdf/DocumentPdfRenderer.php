@@ -32,6 +32,7 @@ final class DocumentPdfRenderer
             'lines' => [],
             'totals' => [],
             'allocations' => null,
+            'payments' => null,
             'notes' => null,
             'labels' => $this->labels($options),
         ], $data);
@@ -70,6 +71,7 @@ final class DocumentPdfRenderer
         $height = 200
             + 30 * $count($payload['lines'] ?? [])
             + 16 * $count($payload['allocations'] ?? [])
+            + 30 * $count($payload['payments'] ?? [])
             + 14 * $count($payload['totals'] ?? [])
             + 13 * $count($payload['meta'] ?? [])
             + 40 * $count($payload['parties'] ?? [])
@@ -165,6 +167,12 @@ final class DocumentPdfRenderer
             'exchange_rate' => 'Exchange rate',
             'payment_method' => 'Payment method',
             'reference' => 'Reference',
+            'payments' => 'Payments',
+            'cash_given' => 'Cash given',
+            'change' => 'Change',
+            'cheque' => 'Cheque',
+            'customer_credit' => 'Customer credit',
+            'kept_as_credit' => 'Kept as credit',
             'source' => 'Source',
             'warehouse' => 'Warehouse',
             'po_number' => 'Purchase order',
@@ -231,6 +239,12 @@ final class DocumentPdfRenderer
             'exchange_rate' => 'سعر الصرف',
             'payment_method' => 'طريقة الدفع',
             'reference' => 'المرجع',
+            'payments' => 'الدفعات',
+            'cash_given' => 'المبلغ المستلم',
+            'change' => 'الباقي',
+            'cheque' => 'شيك',
+            'customer_credit' => 'رصيد العميل',
+            'kept_as_credit' => 'أُبقي كرصيد',
             'source' => 'المصدر',
             'warehouse' => 'المستودع',
             'po_number' => 'أمر الشراء',

@@ -90,7 +90,11 @@ class SalesInvoiceController extends Controller
     public function syncPayments(SyncSalesInvoicePaymentsRequest $request, SalesInvoice $salesInvoice): JsonResponse
     {
         return ApiResponse::success(
-            SalesInvoiceResponseData::fromModel($this->salesInvoiceService->syncPayments($salesInvoice, $request->validated('payments') ?? [])),
+            SalesInvoiceResponseData::fromModel($this->salesInvoiceService->syncPayments(
+                $salesInvoice,
+                $request->validated('payments') ?? [],
+                (bool) $request->validated('keep_extra_as_credit', false),
+            )),
             'Sales invoice payments saved successfully.'
         );
     }
@@ -106,6 +110,7 @@ class SalesInvoiceController extends Controller
                 $request->validated('payments'),
                 $date !== null ? (string) $date : null,
                 $userId !== null ? (string) $userId : null,
+                (bool) $request->validated('keep_extra_as_credit', false),
             )),
             'Payment recorded successfully.'
         );

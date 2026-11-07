@@ -28,6 +28,9 @@ class UpdateCustomerReceiptRequest extends FormRequest
             'payment_date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'reference' => ['nullable', 'string', 'max:128'],
+            'cheque_number' => ['nullable', 'string', 'max:64'],
+            'cheque_bank' => ['nullable', 'string', 'max:128'],
+            'cheque_due_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
         ];
     }

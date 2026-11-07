@@ -98,6 +98,7 @@ readonly class SalesInvoiceResponseData
                 'payments.paymentMethod:id,code,name,type,supports_change',
                 'payments.cashBankAccount:id,code,name',
                 'payments.currency:id,code,symbol',
+                'payments.changeCurrency:id,code,symbol',
                 'payments.customerReceipt:id,receipt_number,status',
             ]);
             $payload['payments'] = $invoice->payments->map(fn ($payment): array => [
@@ -115,6 +116,15 @@ readonly class SalesInvoiceResponseData
                 'reference' => $payment->reference,
                 'tendered' => $payment->tendered !== null ? (string) $payment->tendered : null,
                 'change_due' => $payment->change_due !== null ? (string) $payment->change_due : null,
+                'kind' => $payment->kind ?? 'payment',
+                'change_currency_id' => $payment->change_currency_id !== null ? (int) $payment->change_currency_id : null,
+                'change_currency_code' => $payment->changeCurrency?->code,
+                'change_amount' => $payment->change_amount !== null ? (string) $payment->change_amount : null,
+                'change_cash_bank_account_id' => $payment->change_cash_bank_account_id !== null ? (int) $payment->change_cash_bank_account_id : null,
+                'treasury_transfer_id' => $payment->treasury_transfer_id,
+                'cheque_number' => $payment->cheque_number,
+                'cheque_bank' => $payment->cheque_bank,
+                'cheque_due_date' => $payment->cheque_due_date?->toDateString(),
                 'customer_receipt_id' => $payment->customer_receipt_id,
                 'receipt_number' => $payment->customerReceipt?->receipt_number,
             ])->values()->all();

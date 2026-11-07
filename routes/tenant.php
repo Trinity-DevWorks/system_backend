@@ -7,6 +7,7 @@ use App\Modules\Accounting\Http\Controllers\AccountController;
 use App\Modules\Accounting\Http\Controllers\AccountingPeriodController;
 use App\Modules\Accounting\Http\Controllers\AccountingReportController;
 use App\Modules\Accounting\Http\Controllers\AccountMappingController;
+use App\Modules\Accounting\Http\Controllers\CurrencyRevaluationController;
 use App\Modules\Accounting\Http\Controllers\FiscalYearController;
 use App\Modules\Accounting\Http\Controllers\JournalEntryController;
 use App\Modules\Accounting\Http\Controllers\VatSettlementController;
@@ -77,6 +78,7 @@ use App\Modules\Rbac\Http\Controllers\UserRoleController;
 use App\Modules\Reports\Http\Controllers\AnalyticsReportController;
 use App\Modules\Reports\Http\Controllers\OverviewController;
 use App\Modules\Reports\Http\Controllers\ReportController;
+use App\Modules\Sales\CustomerCheque\Http\Controllers\CustomerChequeController;
 use App\Modules\Sales\CustomerReceipt\Http\Controllers\CustomerReceiptController;
 use App\Modules\Sales\CustomerRefund\Http\Controllers\CustomerRefundController;
 use App\Modules\Sales\DeliveryNote\Http\Controllers\DeliveryNoteController;
@@ -674,6 +676,18 @@ Route::middleware([
 
             Route::get('customer-receipts/open-invoices', [CustomerReceiptController::class, 'openInvoices'])
                 ->middleware('check.permission:customer_receipts,view');
+            Route::get('customer-cheques', [CustomerChequeController::class, 'index'])
+                ->middleware('check.permission:customer_cheques,view');
+            Route::get('customer-cheques/{customer_cheque}', [CustomerChequeController::class, 'show'])
+                ->middleware('check.permission:customer_cheques,view');
+            Route::post('customer-cheques/{customer_cheque}/clear', [CustomerChequeController::class, 'clear'])
+                ->middleware('check.permission:customer_cheques,edit');
+            Route::post('customer-cheques/{customer_cheque}/bounce', [CustomerChequeController::class, 'bounce'])
+                ->middleware('check.permission:customer_cheques,edit');
+            Route::get('customer-receipts/available-credit', [CustomerReceiptController::class, 'availableCredit'])
+                ->middleware('check.permission:customer_receipts,view');
+            Route::post('customer-receipts/{customer_receipt}/apply-credit', [CustomerReceiptController::class, 'applyCredit'])
+                ->middleware('check.permission:customer_receipts,edit');
             Route::get('customer-receipts', [CustomerReceiptController::class, 'index'])
                 ->middleware('check.permission:customer_receipts,view');
             Route::post('customer-receipts', [CustomerReceiptController::class, 'store'])
@@ -1133,6 +1147,15 @@ Route::middleware([
                 ->middleware('check.permission:vat_settlements,add');
             Route::post('accounting/vat-settlements/{journal_entry}/reverse', [VatSettlementController::class, 'reverse'])
                 ->middleware('check.permission:vat_settlements,reverse');
+
+            Route::get('accounting/currency-revaluations', [CurrencyRevaluationController::class, 'index'])
+                ->middleware('check.permission:currency_revaluations,view');
+            Route::get('accounting/currency-revaluations/preview', [CurrencyRevaluationController::class, 'preview'])
+                ->middleware('check.permission:currency_revaluations,view');
+            Route::post('accounting/currency-revaluations', [CurrencyRevaluationController::class, 'store'])
+                ->middleware('check.permission:currency_revaluations,add');
+            Route::delete('accounting/currency-revaluations/{date}', [CurrencyRevaluationController::class, 'destroy'])
+                ->middleware('check.permission:currency_revaluations,reverse');
 
             Route::get('accounting/period', [AccountingPeriodController::class, 'show'])
                 ->middleware('check.permission:accounting_periods,view');

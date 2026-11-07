@@ -25,6 +25,7 @@ use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Sales\CustomerReceipt\Enums\CustomerReceiptStatus;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
+use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
 use App\Modules\Sales\CustomerReceipt\Services\CustomerReceiptService;
 use App\Modules\Sales\DeliveryNote\Services\DeliveryNoteInvoicing;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
@@ -36,6 +37,9 @@ use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Modules\Sales\SalesOrder\Services\SalesOrderFulfillment;
 use App\Modules\Sales\Support\CommercialLineBuilder;
 use App\Modules\Sales\Support\DiscountGuard;
+use App\Modules\Treasury\Enums\TreasuryDocumentStatus;
+use App\Modules\Treasury\Models\TreasuryTransfer;
+use App\Modules\Treasury\Services\TreasuryTransferService;
 use App\Modules\Treasury\Support\PaymentCashBankAccount;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\Decimal;
@@ -236,7 +240,11 @@ class SalesInvoiceService
 
             $customer = SalesInvoiceRules::assertCustomer((string) $locked->customer_id);
             $payments = SalesInvoicePayment::query()->where('sales_invoice_id', $locked->id)->orderBy('sort_order')->orderBy('id')->get();
-            $paidNow = $this->assertPayments($locked, $payments->map(fn (SalesInvoicePayment $p): array => $p->only(['payment_method_id', 'cash_bank_account_id', 'currency_id', 'exchange_rate', 'amount', 'reference', 'tendered']))->all());
+            $keepExtra = (bool) $locked->keep_extra_as_credit;
+            $paidNow = $this->assertPayments($locked, $payments->map(fn (SalesInvoicePayment $p): array => $this->paymentRowData($p))->all(), true, $keepExtra);
+            if (Decimal::cmp($paidNow, (string) $locked->grand_total) > 0) {
+                $paidNow = (string) $locked->grand_total;
+            }
             if ($customer->is_system && ! $this->withinReceiptTolerance($locked, $paidNow, (string) $locked->grand_total)) {
                 abort(422, 'A walk-in customer must pay the whole invoice at the counter.', ['X-Error-Code' => 'SALES_INVOICE_WALK_IN_MUST_PAY']);
             }
@@ -283,11 +291,7 @@ class SalesInvoiceService
             ]);
 
             // Each payment taken at the counter becomes a posted receipt allocated to this invoice.
-            $receipts = app(CustomerReceiptService::class);
-            foreach ($payments as $payment) {
-                $receipt = $receipts->postForInvoicePayment($locked->fresh() ?? $locked, $payment, $userId);
-                $payment->update(['customer_receipt_id' => $receipt->id]);
-            }
+            $this->settlePayments($locked, $payments, $userId, null, (string) $locked->grand_total, $keepExtra);
 
             return $this->find($locked->id);
         });
@@ -303,6 +307,20 @@ class SalesInvoiceService
                     'X-Error-Code' => 'SALES_INVOICE_NOT_POSTED',
                 ]);
             }
+            // Change given in another currency was a cash transfer between boxes: undo it first.
+            $transfers = app(TreasuryTransferService::class);
+            foreach (SalesInvoicePayment::query()->where('sales_invoice_id', $locked->id)->whereNotNull('treasury_transfer_id')->get() as $payment) {
+                $transfer = TreasuryTransfer::query()->find($payment->treasury_transfer_id);
+                if ($transfer !== null && $transfer->status === TreasuryDocumentStatus::Posted) {
+                    $transfers->reverse($transfer, $userId);
+                }
+            }
+            // Customer credit used on this invoice goes back to the receipts it came from.
+            $receiptService = app(CustomerReceiptService::class);
+            foreach (CustomerReceiptAllocation::query()->where('sales_invoice_id', $locked->id)->where('applied_later', true)->get() as $credit) {
+                $receiptService->unapplyCredit($credit, $userId);
+            }
+            $locked->refresh();
             // Payments taken with the invoice are reversed with it; other receipts still block.
             $ownReceipts = CustomerReceipt::query()
                 ->where('sales_invoice_id', $locked->id)
@@ -808,16 +826,17 @@ class SalesInvoiceService
      *
      * @param  list<array<string, mixed>>  $rows
      */
-    public function syncPayments(SalesInvoice $invoice, array $rows): SalesInvoice
+    public function syncPayments(SalesInvoice $invoice, array $rows, bool $keepExtraAsCredit = false): SalesInvoice
     {
-        return DB::transaction(function () use ($invoice, $rows): SalesInvoice {
+        return DB::transaction(function () use ($invoice, $rows, $keepExtraAsCredit): SalesInvoice {
             $locked = $this->lockDraft($invoice);
-            $this->assertPayments($locked, $rows, false);
+            $this->assertPayments($locked, $rows, false, $keepExtraAsCredit);
 
             SalesInvoicePayment::query()->where('sales_invoice_id', $locked->id)->delete();
             foreach (array_values($rows) as $index => $row) {
                 $this->createPaymentRow($locked, $row, $index + 1);
             }
+            $locked->update(['keep_extra_as_credit' => $keepExtraAsCredit]);
 
             return $this->find($locked->id);
         });
@@ -829,9 +848,9 @@ class SalesInvoiceService
      *
      * @param  list<array<string, mixed>>  $rows
      */
-    public function recordPayments(SalesInvoice $invoice, array $rows, ?string $paymentDate, ?string $userId): SalesInvoice
+    public function recordPayments(SalesInvoice $invoice, array $rows, ?string $paymentDate, ?string $userId, bool $keepExtraAsCredit = false): SalesInvoice
     {
-        return DB::transaction(function () use ($invoice, $rows, $paymentDate, $userId): SalesInvoice {
+        return DB::transaction(function () use ($invoice, $rows, $paymentDate, $userId, $keepExtraAsCredit): SalesInvoice {
             $locked = SalesInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== SalesInvoiceStatus::Posted) {
                 abort(422, 'Only a posted sales invoice can take a payment.', ['X-Error-Code' => 'SALES_INVOICE_NOT_POSTED']);
@@ -841,18 +860,17 @@ class SalesInvoiceService
                 abort(422, 'Add at least one payment.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENT_AMOUNT_INVALID']);
             }
 
-            $total = $this->assertPayments($locked, $rows, false);
-            if ($this->exceedsWithTolerance($locked, $total, (string) $locked->net_to_pay)) {
+            $total = $this->assertPayments($locked, $rows, false, $keepExtraAsCredit);
+            if (! $keepExtraAsCredit && $this->exceedsWithTolerance($locked, $total, (string) $locked->net_to_pay)) {
                 abort(422, 'Payments are more than what is still open on the invoice.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENTS_EXCEED_TOTAL']);
             }
 
-            $receipts = app(CustomerReceiptService::class);
             $sort = (int) SalesInvoicePayment::query()->where('sales_invoice_id', $locked->id)->max('sort_order');
+            $payments = new Collection;
             foreach (array_values($rows) as $row) {
-                $payment = $this->createPaymentRow($locked, $row, ++$sort);
-                $receipt = $receipts->postForInvoicePayment($locked->fresh() ?? $locked, $payment, $userId, $paymentDate ?? now()->toDateString());
-                $payment->update(['customer_receipt_id' => $receipt->id]);
+                $payments->push($this->createPaymentRow($locked, $row, ++$sort));
             }
+            $this->settlePayments($locked, $payments, $userId, $paymentDate ?? now()->toDateString(), (string) $locked->net_to_pay, $keepExtraAsCredit);
 
             return $this->find($locked->id);
         });
@@ -863,25 +881,207 @@ class SalesInvoiceService
      */
     private function createPaymentRow(SalesInvoice $invoice, array $row, int $sortOrder): SalesInvoicePayment
     {
-        $method = PaymentMethod::query()->findOrFail((int) $row['payment_method_id']);
-        $currency = $this->paymentCurrency($invoice, $row);
         $amount = Decimal::round($row['amount'], 4);
+        if ($this->isCreditRow($row)) {
+            // The customer's existing credit, in the invoice currency; applied from their receipts at post.
+            return SalesInvoicePayment::query()->create([
+                'sales_invoice_id' => $invoice->id,
+                'kind' => SalesInvoicePayment::KIND_CREDIT,
+                'payment_method_id' => null,
+                'currency_id' => (int) $invoice->currency_id,
+                'exchange_rate' => (string) $invoice->exchange_rate,
+                'amount' => $amount,
+                'sort_order' => $sortOrder,
+            ]);
+        }
+
+        $method = PaymentMethod::query()->findOrFail((int) $row['payment_method_id']);
+        $isCheque = $method->type === PaymentMethodType::Cheque;
+        $currency = $this->paymentCurrency($invoice, $row);
         $tendered = $method->supports_change && isset($row['tendered']) && $row['tendered'] !== null && $row['tendered'] !== ''
             ? Decimal::round($row['tendered'], 4)
             : null;
 
         return SalesInvoicePayment::query()->create([
             'sales_invoice_id' => $invoice->id,
+            'kind' => SalesInvoicePayment::KIND_PAYMENT,
             'payment_method_id' => $method->id,
-            'cash_bank_account_id' => $this->paymentAccountId($invoice, $method, $row['cash_bank_account_id'] ?? null, $currency['currency_id']),
+            'cash_bank_account_id' => $isCheque ? null : $this->paymentAccountId($invoice, $method, $row['cash_bank_account_id'] ?? null, $currency['currency_id']),
             'currency_id' => $currency['currency_id'],
             'exchange_rate' => $currency['rate'],
             'amount' => $amount,
             'reference' => $this->nullableString($row['reference'] ?? null),
             'tendered' => $tendered,
             'change_due' => $tendered !== null ? Decimal::round(Decimal::sub($tendered, $amount), 4) : null,
+            ...$this->paymentChange($invoice, $method, $row, $currency, $amount, $tendered),
+            'cheque_number' => $isCheque ? $this->nullableString($row['cheque_number'] ?? null) : null,
+            'cheque_bank' => $isCheque ? $this->nullableString($row['cheque_bank'] ?? null) : null,
+            'cheque_due_date' => $isCheque && ! empty($row['cheque_due_date']) ? Carbon::parse((string) $row['cheque_due_date'])->toDateString() : null,
             'sort_order' => $sortOrder,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function isCreditRow(array $row): bool
+    {
+        return ($row['kind'] ?? SalesInvoicePayment::KIND_PAYMENT) === SalesInvoicePayment::KIND_CREDIT;
+    }
+
+    /**
+     * Change handed back in another currency than the one paid (e.g. paid in USD, change in LBP).
+     * Empty when there is no change or it is in the paid currency (then it is printed only, not posted).
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{currency_id: int, rate: string, same: bool}  $currency
+     * @return array<string, mixed>
+     */
+    private function paymentChange(SalesInvoice $invoice, PaymentMethod $method, array $row, array $currency, string $amount, ?string $tendered): array
+    {
+        $none = ['change_currency_id' => null, 'change_rate' => null, 'change_amount' => null, 'change_cash_bank_account_id' => null];
+        $changeCurrencyId = isset($row['change_currency_id']) && $row['change_currency_id'] !== '' ? (int) $row['change_currency_id'] : null;
+        if ($tendered === null || $changeCurrencyId === null || $changeCurrencyId === $currency['currency_id']) {
+            return $none;
+        }
+        $due = Decimal::sub($tendered, $amount);
+        if (! Decimal::isPositive($due)) {
+            return $none;
+        }
+        $changeCurrency = Currency::query()->find($changeCurrencyId);
+        if ($changeCurrency === null || ! $changeCurrency->is_active) {
+            abort(422, 'Choose an active currency for the change.', ['X-Error-Code' => 'SALES_INVOICE_CHANGE_INVALID']);
+        }
+        $rate = ExchangeRateSnapshot::resolve($this->exchangeRateService, $changeCurrencyId, $row['change_rate'] ?? null, 'SALES_INVOICE_PAYMENT');
+        $changeAmount = isset($row['change_amount']) && $row['change_amount'] !== '' && $row['change_amount'] !== null
+            ? Decimal::round($row['change_amount'], 4)
+            : Decimal::round(PaymentAllocation::toInvoiceCurrency($due, $currency['rate'], $rate, false), 4);
+
+        return [
+            'change_currency_id' => $changeCurrencyId,
+            'change_rate' => $rate,
+            'change_amount' => $changeAmount,
+            'change_cash_bank_account_id' => PaymentCashBankAccount::resolve(
+                $row['change_cash_bank_account_id'] ?? null,
+                (int) $method->id,
+                $invoice->branch_id !== null ? (int) $invoice->branch_id : null,
+                $changeCurrencyId,
+                false,
+            ),
+        ];
+    }
+
+    /**
+     * A stored payment row as request-style data (to check it again at post).
+     *
+     * @return array<string, mixed>
+     */
+    private function paymentRowData(SalesInvoicePayment $payment): array
+    {
+        return [
+            ...$payment->only([
+                'kind', 'payment_method_id', 'cash_bank_account_id', 'currency_id', 'exchange_rate', 'amount', 'reference', 'tendered',
+                'change_currency_id', 'change_rate', 'change_amount', 'change_cash_bank_account_id', 'cheque_number', 'cheque_bank',
+            ]),
+            'cheque_due_date' => $payment->cheque_due_date?->toDateString(),
+        ];
+    }
+
+    /**
+     * Turns payment rows into receipts allocated to the invoice: customer credit first (it was already paid),
+     * then money taken now. With `$keepExtra`, what is paid beyond `$due` (invoice currency) stays on the
+     * receipts as customer credit. Change in another currency is posted as a cash transfer.
+     *
+     * @param  Collection<int, SalesInvoicePayment>  $payments
+     */
+    private function settlePayments(SalesInvoice $invoice, Collection $payments, ?string $userId, ?string $date, string $due, bool $keepExtra): void
+    {
+        $receipts = app(CustomerReceiptService::class);
+        $left = Decimal::isPositive($due) ? Decimal::round($due, 4) : '0';
+
+        foreach ($payments->filter(fn (SalesInvoicePayment $p): bool => $p->isCredit()) as $credit) {
+            $want = Decimal::cmp($credit->amount, $left) > 0 ? $left : (string) $credit->amount;
+            if (! Decimal::isPositive($want)) {
+                continue;
+            }
+            $applied = $receipts->applyCreditToInvoice($invoice->fresh() ?? $invoice, $want, $userId, $date);
+            $left = Decimal::isPositive(Decimal::sub($left, $applied)) ? Decimal::round(Decimal::sub($left, $applied), 4) : '0';
+        }
+
+        $tolerance = $this->receiptTolerance($invoice);
+        foreach ($payments->reject(fn (SalesInvoicePayment $p): bool => $p->isCredit()) as $payment) {
+            $allocate = null;
+            if ($keepExtra) {
+                $worth = $this->paymentInInvoiceCurrency($invoice, (string) $payment->amount, $this->storedPaymentCurrency($invoice, $payment));
+                if (Decimal::cmp(Decimal::sub($worth, $left), $tolerance) > 0) {
+                    // Only part of this payment is needed; the rest stays on the receipt as customer credit.
+                    $allocate = Decimal::isPositive($left)
+                        ? Decimal::round(Decimal::div(Decimal::mul((string) $payment->amount, $left), $worth), 4)
+                        : '0';
+                }
+                $left = Decimal::isPositive(Decimal::sub($left, $worth)) ? Decimal::round(Decimal::sub($left, $worth), 4) : '0';
+            }
+
+            $receipt = $receipts->postForInvoicePayment($invoice->fresh() ?? $invoice, $payment, $userId, $date, $allocate);
+            $payment->update([
+                'customer_receipt_id' => $receipt->id,
+                'treasury_transfer_id' => $this->postChangeTransfer($invoice, $payment, $receipt, $userId, $date),
+            ]);
+        }
+    }
+
+    /**
+     * Change given in another currency: the change leaves its cash box and the extra cash given stays in the
+     * box the payment went to. Posted as a transfer (rate gap to exchange gain/loss). Null when not needed.
+     */
+    private function postChangeTransfer(SalesInvoice $invoice, SalesInvoicePayment $payment, CustomerReceipt $receipt, ?string $userId, ?string $date): ?string
+    {
+        if ($payment->change_currency_id === null || $payment->change_amount === null || $payment->tendered === null) {
+            return null;
+        }
+        $received = Decimal::sub((string) $payment->tendered, (string) $payment->amount);
+        if (! Decimal::isPositive($received) || $receipt->cash_bank_account_id === null) {
+            return null;
+        }
+        $from = PaymentCashBankAccount::resolve(
+            $payment->change_cash_bank_account_id,
+            (int) $payment->payment_method_id,
+            $invoice->branch_id !== null ? (int) $invoice->branch_id : null,
+            (int) $payment->change_currency_id,
+            true,
+        );
+
+        $transfers = app(TreasuryTransferService::class);
+        $transfer = $transfers->create([
+            'from_account_id' => $from,
+            'to_account_id' => (int) $receipt->cash_bank_account_id,
+            'amount_from' => (string) $payment->change_amount,
+            'amount_to' => Decimal::round($received, 4),
+            'exchange_rate' => (string) $payment->change_rate,
+            'exchange_rate_to' => (string) $receipt->exchange_rate,
+            'transfer_date' => $date ?? $invoice->invoice_date->toDateString(),
+            'reference' => $invoice->invoice_number,
+            'notes' => 'Change for sales invoice '.$invoice->invoice_number,
+        ], $userId);
+
+        return (string) $transfers->post($transfer, $userId)->id;
+    }
+
+    /**
+     * Currency and rate stored on a payment row.
+     *
+     * @return array{currency_id: int, rate: string, same: bool}
+     */
+    private function storedPaymentCurrency(SalesInvoice $invoice, SalesInvoicePayment $payment): array
+    {
+        $currencyId = $payment->currency_id !== null ? (int) $payment->currency_id : (int) $invoice->currency_id;
+        $same = $currencyId === (int) $invoice->currency_id;
+
+        return [
+            'currency_id' => $currencyId,
+            'rate' => $same ? (string) $invoice->exchange_rate : (string) $payment->exchange_rate,
+            'same' => $same,
+        ];
     }
 
     /**
@@ -890,10 +1090,22 @@ class SalesInvoiceService
      *
      * @param  list<array<string, mixed>>  $rows
      */
-    private function assertPayments(SalesInvoice $invoice, array $rows, bool $atPost = true): string
+    private function assertPayments(SalesInvoice $invoice, array $rows, bool $atPost = true, bool $keepExtra = false): string
     {
         $total = '0';
+        $creditTotal = '0';
         foreach ($rows as $row) {
+            if ($this->isCreditRow($row)) {
+                $amount = Decimal::round($row['amount'] ?? '0', 4);
+                if (! Decimal::isPositive($amount)) {
+                    abort(422, 'Each payment must be greater than zero.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENT_AMOUNT_INVALID']);
+                }
+                $creditTotal = Decimal::add($creditTotal, $amount);
+                $total = Decimal::add($total, $amount);
+
+                continue;
+            }
+
             $method = PaymentMethod::query()->find((int) ($row['payment_method_id'] ?? 0));
             if ($method === null || ! $method->is_active || $method->type === PaymentMethodType::Credit) {
                 abort(422, 'Choose an active payment method that takes money now.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENT_METHOD_INVALID']);
@@ -909,16 +1121,67 @@ class SalesInvoiceService
                 abort(422, 'Cash given cannot be less than the amount paid.', ['X-Error-Code' => 'SALES_INVOICE_TENDERED_TOO_LOW']);
             }
             $currency = $this->paymentCurrency($invoice, $row);
-            $this->paymentAccountId($invoice, $method, $row['cash_bank_account_id'] ?? null, $currency['currency_id'], $atPost);
+            if ($method->type === PaymentMethodType::Cheque) {
+                // A cheque waits in "Cheques to collect": no cash box, but its number and due date are needed.
+                if (trim((string) ($row['cheque_number'] ?? '')) === '' || empty($row['cheque_due_date'])) {
+                    abort(422, 'Enter the cheque number and due date.', ['X-Error-Code' => 'SALES_INVOICE_CHEQUE_DETAILS_REQUIRED']);
+                }
+            } else {
+                $this->paymentAccountId($invoice, $method, $row['cash_bank_account_id'] ?? null, $currency['currency_id'], $atPost);
+            }
+            $this->assertPaymentChange($invoice, $method, $row, $currency, $amount, $atPost);
             $total = Decimal::add($total, $this->paymentInInvoiceCurrency($invoice, $amount, $currency));
         }
 
-        // While editing, totals may still change; at post the payments must fit the final total.
-        if ($atPost && $this->exceedsWithTolerance($invoice, $total, (string) $invoice->grand_total)) {
+        $customer = Customer::query()->find($invoice->customer_id);
+        if (Decimal::isPositive($creditTotal)) {
+            if ($customer === null || $customer->is_system) {
+                abort(422, 'A walk-in customer has no credit to use.', ['X-Error-Code' => 'SALES_INVOICE_CREDIT_EXCEEDED']);
+            }
+            $available = '0';
+            foreach (app(CustomerReceiptService::class)->availableCredit((string) $invoice->customer_id, (int) $invoice->currency_id) as $credit) {
+                $available = Decimal::add($available, (string) $credit['in_invoice_currency']);
+            }
+            if ($this->exceedsWithTolerance($invoice, $creditTotal, $available)) {
+                abort(422, 'That is more than the customer\'s credit.', ['X-Error-Code' => 'SALES_INVOICE_CREDIT_EXCEEDED']);
+            }
+        }
+        if ($keepExtra && ($customer === null || $customer->is_system) && $this->exceedsWithTolerance($invoice, $total, (string) $invoice->grand_total)) {
+            abort(422, 'A walk-in customer cannot keep credit.', ['X-Error-Code' => 'SALES_INVOICE_WALK_IN_NO_CREDIT']);
+        }
+
+        // While editing, totals may still change; at post the payments must fit the final total
+        // (unless the extra is kept as customer credit).
+        if ($atPost && ! $keepExtra && $this->exceedsWithTolerance($invoice, $total, (string) $invoice->grand_total)) {
             abort(422, 'Payments are more than the invoice total.', ['X-Error-Code' => 'SALES_INVOICE_PAYMENTS_EXCEED_TOTAL']);
         }
 
         return Decimal::round($total, 4);
+    }
+
+    /**
+     * Change in another currency needs cash given above the amount, and (at post) a cash box in that currency.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{currency_id: int, rate: string, same: bool}  $currency
+     */
+    private function assertPaymentChange(SalesInvoice $invoice, PaymentMethod $method, array $row, array $currency, string $amount, bool $atPost): void
+    {
+        $changeCurrencyId = isset($row['change_currency_id']) && $row['change_currency_id'] !== '' && $row['change_currency_id'] !== null ? (int) $row['change_currency_id'] : null;
+        if ($changeCurrencyId === null || $changeCurrencyId === $currency['currency_id']) {
+            return;
+        }
+        $tendered = $row['tendered'] ?? null;
+        if (! $method->supports_change || $tendered === null || $tendered === '' || Decimal::cmp($tendered, $amount) <= 0) {
+            abort(422, 'Change in another currency needs cash given above the amount.', ['X-Error-Code' => 'SALES_INVOICE_CHANGE_INVALID']);
+        }
+        PaymentCashBankAccount::resolve(
+            $row['change_cash_bank_account_id'] ?? null,
+            (int) $method->id,
+            $invoice->branch_id !== null ? (int) $invoice->branch_id : null,
+            $changeCurrencyId,
+            $atPost,
+        );
     }
 
     /**

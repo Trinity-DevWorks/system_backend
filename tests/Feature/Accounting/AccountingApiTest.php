@@ -36,12 +36,17 @@ use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Rbac\Models\RolePermission;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Enums\WarehouseType;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\ModuleEntitlementService;
 use App\Services\PermissionService;
+use App\Support\DocumentPdf\DocumentMoney;
+use App\Support\DocumentPdf\DocumentPdfOptions;
+use App\Support\DocumentPdf\DocumentPdfRenderer;
+use App\Support\DocumentPdf\DocumentPdfSupport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
@@ -2044,6 +2049,258 @@ class AccountingApiTest extends TestCase
         // Reversing the invoice reverses these receipts too.
         $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoice}/reverse"))->assertOk();
         $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$cash}"))->assertJsonPath('data.balance', '0.0000');
+    }
+
+    public function test_currency_revaluation_reprices_foreign_balances_and_reverses_next_day(): void
+    {
+        // 1 USD (primary) = 3.5 EUR when booked. EUR stands in for LBP.
+        $eur = $this->catalog['eur_id'];
+        $eurCash = $this->createCashBank('EURC', '5110', 'eur_id', 'cash');
+        $method = $this->catalog['cash_method_id'];
+
+        // An EUR invoice left open (customer owes EUR) and one paid in EUR cash.
+        $open = $this->draftInvoice(35, ['currency_id' => $eur, 'exchange_rate' => 3.5]);
+        $openGrand = (float) $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$open}/post"))->assertOk()->json('data.grand_total');
+        $paid = $this->draftInvoice(70, ['currency_id' => $eur, 'exchange_rate' => 3.5]);
+        $paidGrand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$paid}"))->json('data.grand_total');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$paid}/payments"), ['payments' => [
+                ['payment_method_id' => $method, 'cash_bank_account_id' => $eurCash, 'amount' => $paidGrand],
+            ]])
+            ->assertOk();
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$paid}/post"))->assertOk();
+        $receivableBefore = $openGrand / 3.5;
+
+        // At that day's rate nothing changes.
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/accounting/currency-revaluations'), ['date' => '2026-09-30', 'rates' => [$eur => 3.5]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CURRENCY_REVALUATION_EMPTY');
+
+        // EUR weakens to 4: both balances lose value. USD balances never appear.
+        $preview = $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/accounting/currency-revaluations/preview?date=2026-09-30&rates['.$eur.']=4'))
+            ->assertOk()
+            ->json('data');
+        $this->assertCount(2, $preview['lines']);
+        foreach ($preview['lines'] as $line) {
+            $this->assertSame($eur, $line['currency_id']);
+        }
+        $customerLine = collect($preview['lines'])->firstWhere('party_type', 'customer');
+        $this->assertEqualsWithDelta($openGrand, (float) $customerLine['foreign_balance'], 0.0001);
+        $this->assertEqualsWithDelta($openGrand / 4 - $openGrand / 3.5, (float) $customerLine['difference'], 0.011);
+        $expectedLoss = ($openGrand + $paidGrand) / 3.5 - ($openGrand + $paidGrand) / 4;
+        $this->assertEqualsWithDelta($expectedLoss, (float) $preview['loss'], 0.021);
+        $this->assertEqualsWithDelta(0, (float) $preview['gain'], 0.0001);
+
+        // Post: the loss is on 30 Sep, the reversal on 1 Oct.
+        $row = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/accounting/currency-revaluations'), ['date' => '2026-09-30', 'rates' => [$eur => 4]])
+            ->assertOk()
+            ->assertJsonPath('data.date', '2026-09-30')
+            ->assertJsonPath('data.reversal_date', '2026-10-01')
+            ->json('data');
+        $this->assertEqualsWithDelta((float) $preview['loss'], (float) $row['loss'], 0.0001);
+        $this->assertEqualsWithDelta(-($openGrand / 4), $this->balanceAt(self::RECEIVABLE, '2026-09-30') * -1, 0.011);
+        $this->assertEqualsWithDelta((float) $preview['loss'], $this->balanceAt('6753', '2026-09-30'), 0.0001);
+
+        // The EUR amounts never move; after the reversal everything is back to the booked value.
+        $this->tenant->run(function () use ($eur): void {
+            $entry = JournalEntry::query()->where('source_type', JournalEntry::SOURCE_CURRENCY_REVALUATION)->where('source_event', 'post')->firstOrFail();
+            $foreign = $entry->lines->where('currency_id', $eur);
+            $this->assertCount(2, $foreign);
+            foreach ($foreign as $line) {
+                $this->assertEqualsWithDelta(0, (float) $line->amount_currency, 0.0001);
+            }
+        });
+        $this->assertBalance($receivableBefore, self::RECEIVABLE);
+        $this->assertBalance(0, '6753');
+
+        // One per date, and never on or before the last one.
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/accounting/currency-revaluations'), ['date' => '2026-09-30', 'rates' => [$eur => 4]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CURRENCY_REVALUATION_OVERLAP');
+        $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/accounting/currency-revaluations'))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.can_undo', true);
+
+        // Undo removes the entry and its reversal.
+        $this->asTenantRequest($this->token)->deleteJson($this->tenantUrl('/accounting/currency-revaluations/2026-09-30'))->assertOk();
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl('/accounting/currency-revaluations'))->assertOk()->assertJsonCount(0, 'data');
+        $this->assertEqualsWithDelta($receivableBefore, $this->balanceAt(self::RECEIVABLE, '2026-09-30'), 0.0001);
+        $this->tenant->run(fn () => $this->assertSame(0, JournalEntry::query()->where('source_type', JournalEntry::SOURCE_CURRENCY_REVALUATION)->count()));
+    }
+
+    private function balanceAt(string $code, string $to): float
+    {
+        return $this->tenant->run(function () use ($code, $to): float {
+            $id = (int) Account::query()->where('code', $code)->value('id');
+            $sum = app(AccountBalanceService::class)->totals(null, $to)[$id] ?? ['debit' => '0', 'credit' => '0'];
+
+            return (float) $sum['debit'] - (float) $sum['credit'];
+        });
+    }
+
+    public function test_cheque_at_sale_waits_in_cheques_to_collect_then_clears_or_bounces(): void
+    {
+        [, $bank] = $this->tillSetup();
+        $cheque = $this->tenant->run(fn (): int => (int) PaymentMethod::query()->create([
+            'code' => 'CHQ', 'name' => 'Cheque', 'type' => 'cheque', 'requires_reference' => false, 'is_active' => true,
+        ])->id);
+        $invoice = $this->draftInvoice(100);
+        $grand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$invoice}"))->json('data.grand_total');
+
+        // A cheque needs its number and due date.
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$invoice}/payments"), ['payments' => [
+                ['payment_method_id' => $cheque, 'amount' => $grand],
+            ]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'SALES_INVOICE_CHEQUE_DETAILS_REQUIRED');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$invoice}/payments"), ['payments' => [
+                ['payment_method_id' => $cheque, 'amount' => $grand, 'cheque_number' => 'CHQ-77', 'cheque_bank' => 'BLOM', 'cheque_due_date' => '2026-10-15'],
+            ]])
+            ->assertOk()
+            ->assertJsonPath('data.payments.0.cheque_number', 'CHQ-77');
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoice}/post"))->assertOk()->assertJsonPath('data.net_to_pay', '0.0000');
+
+        // The money waits in Cheques to collect (5110), not in a bank.
+        $this->assertBalance($grand, '5110');
+        $this->assertBalance(0, self::RECEIVABLE);
+        $row = $this->asTenantRequest($this->token)->getJson($this->tenantUrl('/customer-cheques?status=in_hand'))->assertOk()->json('data.data.0');
+        $this->assertSame('CHQ-77', $row['cheque_number']);
+        $this->assertSame('BLOM', $row['bank_name']);
+
+        // Clear into the bank.
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/customer-cheques/{$row['id']}/clear"), ['cash_bank_account_id' => $bank, 'date' => '2026-10-15'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'cleared');
+        $this->assertBalance(0, '5110');
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$bank}"))->assertJsonPath('data.balance', fn ($v): bool => abs((float) $v - $grand) < 0.001);
+
+        // It bounces: the bank gives it back, the receipt is reversed and the invoice is open again.
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/customer-cheques/{$row['id']}/bounce"))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'bounced');
+        $this->assertBalance(0, '5110');
+        $this->assertBalance($grand, self::RECEIVABLE);
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$bank}"))->assertJsonPath('data.balance', '0.0000');
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$invoice}"))->assertJsonPath('data.net_to_pay', fn ($v): bool => abs((float) $v - $grand) < 0.001);
+    }
+
+    public function test_change_can_be_given_in_another_currency(): void
+    {
+        // 1 USD (primary) = 3.5 EUR. EUR stands in for LBP.
+        [$cash] = $this->tillSetup();
+        $eur = $this->catalog['eur_id'];
+        $method = $this->catalog['cash_method_id'];
+        // A first sale paid in EUR puts money in the Cash method's EUR box.
+        $first = $this->draftInvoice(100);
+        $firstGrand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$first}"))->json('data.grand_total');
+        $eurIn = round($firstGrand * 3.5, 4);
+        $eurCash = (int) $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$first}/payments"), ['payments' => [
+                ['payment_method_id' => $method, 'currency_id' => $eur, 'amount' => $eurIn],
+            ]])
+            ->assertOk()
+            ->json('data.payments.0.cash_bank_account_id');
+        $this->assertGreaterThan(0, $eurCash);
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$first}/post"))->assertOk();
+
+        // Paid in USD with 10 $ extra; the change is handed back in EUR (35 EUR).
+        $invoice = $this->draftInvoice(20);
+        $grand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$invoice}"))->json('data.grand_total');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$invoice}/payments"), ['payments' => [
+                ['payment_method_id' => $method, 'amount' => $grand, 'tendered' => $grand + 10, 'change_currency_id' => $eur, 'change_amount' => 35],
+            ]])
+            ->assertOk()
+            ->assertJsonPath('data.payments.0.change_cash_bank_account_id', $eurCash);
+        $posted = $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoice}/post"))->assertOk()->json('data');
+        $this->assertSame('0.0000', $posted['net_to_pay']);
+        $this->assertNotNull($posted['payments'][0]['treasury_transfer_id']);
+
+        // USD box kept the 10 $ extra; the EUR box paid out 35 EUR. Customers are settled.
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$cash}"))->assertJsonPath('data.balance', fn ($v): bool => abs((float) $v - ($grand + 10)) < 0.001);
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$eurCash}"))->assertJsonPath('data.balance', fn ($v): bool => abs((float) $v - ($eurIn - 35)) < 0.001);
+        $this->assertBalance(0, self::RECEIVABLE);
+
+        // The print lists the payment with its cash given and the change in EUR.
+        $rows = $this->tenant->run(function () use ($invoice): array {
+            $model = SalesInvoice::query()->with(['currency', 'payments.paymentMethod', 'payments.cashBankAccount', 'payments.currency', 'payments.changeCurrency', 'payments.customerReceipt.allocations'])->findOrFail($invoice);
+            $labels = app(DocumentPdfRenderer::class)->labelsFor(DocumentPdfOptions::fromRequest(null, null));
+
+            return DocumentPdfSupport::paymentRows($model->payments, $model, new DocumentMoney, $labels);
+        });
+        $this->assertCount(1, $rows);
+        $this->assertStringContainsString('EUR', implode(' ', $rows[0]['details']));
+        $this->asTenantRequest($this->token)->get($this->tenantUrl("/sales-invoices/{$invoice}/pdf?template=receipt"))->assertOk();
+
+        // Reversing the invoice undoes the change transfer too.
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$invoice}/reverse"))->assertOk();
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$cash}"))->assertJsonPath('data.balance', '0.0000');
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/cash-bank-accounts/{$eurCash}"))->assertJsonPath('data.balance', fn ($v): bool => abs((float) $v - $eurIn) < 0.001);
+    }
+
+    public function test_overpayment_can_be_kept_as_customer_credit_and_used_later(): void
+    {
+        $this->tillSetup();
+        $method = $this->catalog['cash_method_id'];
+        $customer = $this->catalog['customer_id'];
+        $usd = $this->catalog['usd_id'];
+
+        // Paid 20 $ more than the invoice: refused unless the extra is kept as credit.
+        $first = $this->draftInvoice(50);
+        $grand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$first}"))->json('data.grand_total');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$first}/payments"), ['payments' => [['payment_method_id' => $method, 'amount' => $grand + 20]]])
+            ->assertOk();
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$first}/post"))->assertStatus(422)->assertJsonPath('code', 'SALES_INVOICE_PAYMENTS_EXCEED_TOTAL');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$first}/payments"), ['keep_extra_as_credit' => true, 'payments' => [['payment_method_id' => $method, 'amount' => $grand + 20]]])
+            ->assertOk();
+        $posted = $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$first}/post"))->assertOk()->assertJsonPath('data.net_to_pay', '0.0000')->json('data');
+        $receiptId = (string) $posted['payments'][0]['customer_receipt_id'];
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/customer-receipts/{$receiptId}"))->assertJsonPath('data.unapplied_amount', '20.0000');
+        $this->assertBalance(-20, self::RECEIVABLE);
+        $credit = $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/customer-receipts/available-credit?customer_id={$customer}&currency_id={$usd}"))->assertOk()->json('data');
+        $this->assertCount(1, $credit);
+        $this->assertEqualsWithDelta(20, (float) $credit[0]['in_invoice_currency'], 0.0001);
+
+        // A later invoice is paid with that credit.
+        $second = $this->draftInvoice(10);
+        $secondGrand = (float) $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$second}"))->json('data.grand_total');
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$second}/payments"), ['payments' => [['kind' => 'credit', 'amount' => $secondGrand]]])
+            ->assertOk();
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$second}/post"))->assertOk()->assertJsonPath('data.net_to_pay', '0.0000');
+        $this->assertBalance(-(20 - $secondGrand), self::RECEIVABLE);
+
+        // Not more than what is left.
+        $third = $this->draftInvoice(100);
+        $this->asTenantRequest($this->token)
+            ->putJson($this->tenantUrl("/sales-invoices/{$third}/payments"), ['payments' => [['kind' => 'credit', 'amount' => 50]]])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'SALES_INVOICE_CREDIT_EXCEEDED');
+
+        // Credit applied from the receipt to an EUR invoice (2 $ = 7 EUR).
+        $eurInvoice = $this->draftInvoice(35, ['currency_id' => $this->catalog['eur_id'], 'exchange_rate' => 3.5]);
+        $eurOpen = (float) $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$eurInvoice}/post"))->assertOk()->json('data.net_to_pay');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/customer-receipts/{$receiptId}/apply-credit"), ['allocations' => [['sales_invoice_id' => $eurInvoice, 'amount' => 2]]])
+            ->assertOk();
+        $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/sales-invoices/{$eurInvoice}"))->assertJsonPath('data.net_to_pay', fn ($v): bool => abs((float) $v - ($eurOpen - 7)) < 0.001);
+
+        // Reversing the invoice paid by credit gives the credit back to the receipt.
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$second}/reverse"))->assertOk();
+        $left = $this->asTenantRequest($this->token)->getJson($this->tenantUrl("/customer-receipts/{$receiptId}"))->json('data.unapplied_amount');
+        $this->assertEqualsWithDelta(18, (float) $left, 0.0001);
     }
 
     public function test_payment_at_sale_can_be_split_across_currencies(): void

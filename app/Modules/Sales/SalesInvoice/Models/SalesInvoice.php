@@ -66,6 +66,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'paid_total',
     'credited_total',
     'net_to_pay',
+    'keep_extra_as_credit',
     'notes',
     'created_by',
     'posted_by',
@@ -110,6 +111,7 @@ class SalesInvoice extends Model implements AuditableContract
             'paid_total' => 'decimal:4',
             'credited_total' => 'decimal:4',
             'net_to_pay' => 'decimal:4',
+            'keep_extra_as_credit' => 'boolean',
             'posted_at' => 'datetime',
         ];
     }

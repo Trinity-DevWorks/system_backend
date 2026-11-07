@@ -8,9 +8,11 @@ use App\Modules\Currency\Models\Currency;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Treasury\Models\CashBankAccount;
+use App\Modules\Treasury\Models\TreasuryTransfer;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * A payment taken when the sales invoice is posted (split payment: cash, card, ...).
@@ -27,9 +29,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $tendered
  * @property string|null $change_due
  * @property string|null $customer_receipt_id
+ * @property string $kind payment | credit (the customer's existing credit applied to the invoice)
+ * @property int|null $change_currency_id change handed back in another currency
+ * @property string|null $change_rate
+ * @property string|null $change_amount in the change currency
+ * @property int|null $change_cash_bank_account_id
+ * @property string|null $treasury_transfer_id
+ * @property string|null $cheque_number
+ * @property string|null $cheque_bank
+ * @property Carbon|null $cheque_due_date
  */
 #[Fillable([
     'sales_invoice_id',
+    'kind',
     'payment_method_id',
     'cash_bank_account_id',
     'currency_id',
@@ -38,11 +50,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'reference',
     'tendered',
     'change_due',
+    'change_currency_id',
+    'change_rate',
+    'change_amount',
+    'change_cash_bank_account_id',
+    'treasury_transfer_id',
+    'cheque_number',
+    'cheque_bank',
+    'cheque_due_date',
     'customer_receipt_id',
     'sort_order',
 ])]
 class SalesInvoicePayment extends Model
 {
+    public const KIND_PAYMENT = 'payment';
+
+    public const KIND_CREDIT = 'credit';
+
     /**
      * @return array<string, string>
      */
@@ -53,7 +77,39 @@ class SalesInvoicePayment extends Model
             'tendered' => 'decimal:4',
             'change_due' => 'decimal:4',
             'exchange_rate' => 'decimal:12',
+            'change_rate' => 'decimal:12',
+            'change_amount' => 'decimal:4',
+            'cheque_due_date' => 'date',
         ];
+    }
+
+    public function isCredit(): bool
+    {
+        return $this->kind === self::KIND_CREDIT;
+    }
+
+    /**
+     * @return BelongsTo<Currency, $this>
+     */
+    public function changeCurrency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class, 'change_currency_id');
+    }
+
+    /**
+     * @return BelongsTo<CashBankAccount, $this>
+     */
+    public function changeCashBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(CashBankAccount::class, 'change_cash_bank_account_id');
+    }
+
+    /**
+     * @return BelongsTo<TreasuryTransfer, $this>
+     */
+    public function treasuryTransfer(): BelongsTo
+    {
+        return $this->belongsTo(TreasuryTransfer::class);
     }
 
     /**

@@ -38,6 +38,7 @@ use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Inventory\Stock\Models\StockRevaluation;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferClosure;
+use App\Modules\Sales\CustomerCheque\Models\CustomerCheque;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
 use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
@@ -254,8 +255,12 @@ class JournalPostingService
         }
 
         $label = 'Customer receipt '.$receipt->receipt_number;
+        // A cheque waits in "Cheques to collect" until it clears into a bank account.
+        $moneyLedger = $receipt->cheque_number !== null && $receipt->cheque_number !== ''
+            ? $this->account(AccountRole::ChequesToCollect)
+            : $this->cashBankLedger($receipt->cash_bank_account_id);
         $builder = $this->builder()->foreign(
-            $this->cashBankLedger($receipt->cash_bank_account_id),
+            $moneyLedger,
             $receipt->amount,
             (int) $receipt->currency_id,
             (string) $receipt->exchange_rate,
@@ -264,9 +269,12 @@ class JournalPostingService
             $label,
         );
 
-        $allocations = CustomerReceiptAllocation::query()->where('customer_receipt_id', $id)->orderBy('id')->get();
+        // Allocations made later (customer credit applied to other invoices) have their own entries.
+        $allocations = CustomerReceiptAllocation::query()->where('customer_receipt_id', $id)->where('applied_later', false)->orderBy('id')->get();
         $invoices = SalesInvoice::query()->whereIn('id', $allocations->pluck('sales_invoice_id')->all())->get()->keyBy('id');
+        $allocated = '0';
         foreach ($allocations as $allocation) {
+            $allocated = JournalMath::add($allocated, $allocation->amount);
             $invoice = $invoices->get($allocation->sales_invoice_id);
             if ($invoice === null) {
                 continue;
@@ -282,9 +290,84 @@ class JournalPostingService
             );
         }
 
+        // What is not allocated stays on the customer's account as credit, in the receipt currency.
+        $unapplied = JournalMath::sub($receipt->amount, $allocated);
+        if (JournalMath::isPositive($unapplied)) {
+            $builder->foreign(
+                $this->account(AccountRole::Receivable),
+                JournalMath::neg($unapplied),
+                (int) $receipt->currency_id,
+                (string) $receipt->exchange_rate,
+                JournalEntryLine::PARTY_CUSTOMER,
+                (string) $receipt->customer_id,
+                $label.' — customer credit',
+            );
+        }
+
         $this->exchangeDifference($builder, $label);
         $this->create(CustomerReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->payment_date->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
     }
+
+    /**
+     * Customer credit (unapplied receipt money) applied to an invoice later: moves the amount from the
+     * receipt's currency and rate to the invoice's on the customer's account. A rate gap is exchange gain/loss.
+     */
+    public function customerCreditApplication(CustomerReceiptAllocation $allocation, CustomerReceipt $receipt, SalesInvoice $invoice, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $allocation->id;
+        if (! $this->shouldPost(self::CUSTOMER_CREDIT_APPLICATION, $id)) {
+            return;
+        }
+
+        $label = 'Customer credit '.$receipt->receipt_number.' — '.$invoice->invoice_number;
+        $builder = $this->builder()
+            ->foreign(
+                $this->account(AccountRole::Receivable),
+                $allocation->amount,
+                (int) $receipt->currency_id,
+                (string) $receipt->exchange_rate,
+                JournalEntryLine::PARTY_CUSTOMER,
+                (string) $receipt->customer_id,
+                $label,
+            )
+            ->foreign(
+                $this->account(AccountRole::Receivable),
+                JournalMath::neg($allocation->applied_amount),
+                (int) $invoice->currency_id,
+                (string) $invoice->exchange_rate,
+                JournalEntryLine::PARTY_CUSTOMER,
+                (string) $receipt->customer_id,
+                $label,
+            );
+
+        $this->exchangeDifference($builder, $label);
+        $this->create(self::CUSTOMER_CREDIT_APPLICATION, $id, $date ?? now()->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
+    }
+
+    /**
+     * A customer cheque clears: Dr the bank account / Cr Cheques to collect, in the cheque currency.
+     */
+    public function customerChequeCleared(CustomerCheque $cheque, CashBankAccount $bank, ?string $userId, string $date): void
+    {
+        $id = (string) $cheque->id;
+        if (! $this->shouldPost(CustomerCheque::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $bank->loadMissing('account');
+        if ($bank->account === null) {
+            abort(422, 'The bank account needs a ledger account.', ['X-Error-Code' => 'TREASURY_ACCOUNT_REQUIRED']);
+        }
+
+        $label = 'Cheque '.$cheque->cheque_number.' cleared';
+        $builder = $this->builder()
+            ->foreign($bank->account, $cheque->amount, (int) $cheque->currency_id, (string) $cheque->exchange_rate, null, null, $label)
+            ->foreign($this->account(AccountRole::ChequesToCollect), JournalMath::neg($cheque->amount), (int) $cheque->currency_id, (string) $cheque->exchange_rate, null, null, $label);
+
+        $this->create(CustomerCheque::REFERENCE_TYPE, $id, $date, $label, $cheque->branch_id !== null ? (int) $cheque->branch_id : null, $builder, $userId);
+    }
+
+    public const CUSTOMER_CREDIT_APPLICATION = 'customer_credit_application';
 
     /**
      * Cash/bank transfer: Dr destination account / Cr source account. When the two accounts use

@@ -241,6 +241,71 @@ final class DocumentPdfSupport
     }
 
     /**
+     * Payment lines of a sales invoice for printing: method and cash box, the amount in its own currency
+     * (with its value in the invoice currency when they differ), and cash given / change / cheque / credit details.
+     *
+     * @param  iterable<int, object>  $payments  sales invoice payments with paymentMethod, cashBankAccount, currency, changeCurrency, customerReceipt.allocations loaded
+     * @param  array<string, string>  $labels
+     * @return list<array{method: string, amount: string, equivalent: ?string, details: list<string>}>
+     */
+    public static function paymentRows(iterable $payments, object $invoice, DocumentMoney $money, array $labels): array
+    {
+        $rows = [];
+        $invoiceCode = (string) ($invoice->currency?->code ?? '');
+        foreach ($payments as $payment) {
+            $isCredit = ($payment->kind ?? 'payment') === 'credit';
+            $code = (string) ($payment->currency?->code ?? $invoiceCode);
+            $method = $isCredit
+                ? $labels['customer_credit']
+                : collect([$payment->paymentMethod?->name, $payment->cashBankAccount?->code])->filter()->implode(' · ');
+
+            $equivalent = null;
+            $receipt = $payment->customerReceipt ?? null;
+            $applied = null;
+            if ($receipt !== null) {
+                $applied = collect($receipt->allocations ?? [])->firstWhere('sales_invoice_id', $invoice->id)?->applied_amount;
+            }
+            if ($code !== $invoiceCode && $applied !== null) {
+                $equivalent = '≈ '.$money->money($applied).' '.$invoiceCode;
+            }
+
+            $details = [];
+            if ($payment->tendered !== null && $payment->change_due !== null && (float) $payment->change_due > 0) {
+                $details[] = $labels['cash_given'].': '.$money->money($payment->tendered).' '.$code;
+                $changeCode = (string) ($payment->changeCurrency?->code ?? $code);
+                $changeAmount = $payment->change_amount !== null && $payment->change_currency_id !== null ? $payment->change_amount : $payment->change_due;
+                $details[] = $labels['change'].': '.$money->money($changeAmount).' '.$changeCode;
+            }
+            if (! empty($payment->cheque_number)) {
+                $details[] = $labels['cheque'].' '.collect([
+                    $payment->cheque_number,
+                    $payment->cheque_bank,
+                    $payment->cheque_due_date !== null ? $money->date($payment->cheque_due_date) : null,
+                ])->filter()->implode(' · ');
+            }
+            if ($payment->reference !== null && $payment->reference !== '' && empty($payment->cheque_number)) {
+                $details[] = $labels['reference'].': '.$payment->reference;
+            }
+            if ($receipt !== null && $applied !== null && isset($receipt->amount)) {
+                $allocated = collect($receipt->allocations ?? [])->sum(fn ($a): float => (float) $a->amount);
+                $kept = round((float) $receipt->amount - $allocated, 4);
+                if ($kept > 0.00005) {
+                    $details[] = $labels['kept_as_credit'].': '.$money->money($kept).' '.$code;
+                }
+            }
+
+            $rows[] = [
+                'method' => $money->dash($method),
+                'amount' => $money->money($payment->amount).' '.$code,
+                'equivalent' => $equivalent,
+                'details' => array_map(fn (string $d): string => $money->text($d), $details),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
      * Amount row plus the part not allocated to any document (when there is one).
      *
      * @param  iterable<int, object>  $allocations

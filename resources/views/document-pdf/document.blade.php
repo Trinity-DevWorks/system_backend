@@ -3,4 +3,5 @@
 @section('body')
     @include('document-pdf.partials.lines')
     @include('document-pdf.partials.totals')
+    @include('document-pdf.partials.payments')
 @endsection

@@ -50,7 +50,7 @@ return [
             'description' => 'Customers, customer groups, salesmen, quotations, sales orders, sales invoices, credit notes, customer receipts, and customer refunds.',
             'is_core' => false,
             'sort_order' => 40,
-            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_quotations', 'sales_orders', 'delivery_notes', 'sales_invoices', 'credit_limit_override', 'discount_override', 'price_lists', 'sales_credit_notes', 'customer_receipts', 'customer_refunds'],
+            'resources' => ['customer_groups', 'customers', 'salesmen', 'sales_quotations', 'sales_orders', 'delivery_notes', 'sales_invoices', 'credit_limit_override', 'discount_override', 'price_lists', 'sales_credit_notes', 'customer_receipts', 'customer_cheques', 'customer_refunds'],
         ],
         'purchasing' => [
             'name' => 'Purchasing',
@@ -64,7 +64,7 @@ return [
             'description' => 'Chart of accounts, journal entries, financial statements, VAT, and fiscal years.',
             'is_core' => false,
             'sort_order' => 60,
-            'resources' => ['accounts', 'account_mappings', 'journal_entries', 'accounting_reports', 'vat_settlements', 'accounting_periods', 'cash_bank_accounts', 'treasury_transfers', 'expense_vouchers'],
+            'resources' => ['accounts', 'account_mappings', 'journal_entries', 'accounting_reports', 'vat_settlements', 'currency_revaluations', 'accounting_periods', 'cash_bank_accounts', 'treasury_transfers', 'expense_vouchers'],
         ],
     ],
 

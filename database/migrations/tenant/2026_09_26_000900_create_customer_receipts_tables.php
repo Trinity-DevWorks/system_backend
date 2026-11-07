@@ -42,7 +42,8 @@ return new class extends Migration
             $table->decimal('applied_amount', 20, 4);
             $table->decimal('applied_exchange_rate', 24, 12);
             $table->decimal('exchange_difference', 20, 4)->default(0);
-            $table->unique(['customer_receipt_id', 'sales_invoice_id']);
+            // Not unique: customer credit left on a receipt can be applied to the same invoice more than once.
+            $table->index(['customer_receipt_id', 'sales_invoice_id']);
         });
     }
 

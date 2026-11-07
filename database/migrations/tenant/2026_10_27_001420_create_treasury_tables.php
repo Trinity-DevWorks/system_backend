@@ -113,6 +113,16 @@ return new class extends Migration
             $table->foreignId('cash_bank_account_id')->nullable()->constrained('cash_bank_accounts')->restrictOnDelete();
             $table->foreignUuid('sales_invoice_id')->nullable()->constrained('sales_invoices')->restrictOnDelete();
             $table->index('sales_invoice_id');
+            // Paid by cheque: held in "Cheques to collect" until the cheque clears.
+            $table->string('cheque_number', 64)->nullable();
+            $table->string('cheque_bank', 128)->nullable();
+            $table->date('cheque_due_date')->nullable();
+        });
+
+        // Credit left on a receipt can be applied to invoices later (customer credit).
+        Schema::table('customer_receipt_allocations', function (Blueprint $table) {
+            $table->boolean('applied_later')->default(false);
+            $table->timestamp('applied_at')->nullable();
         });
 
         // Cash box / bank account the money leaves or enters (filled from the payment method when posted).
@@ -126,7 +136,9 @@ return new class extends Migration
         Schema::create('sales_invoice_payments', function (Blueprint $table) {
             $table->id();
             $table->foreignUuid('sales_invoice_id')->constrained('sales_invoices')->cascadeOnDelete();
-            $table->foreignId('payment_method_id')->constrained('payment_methods')->restrictOnDelete();
+            // payment = money taken now; credit = the customer's existing credit applied to this invoice.
+            $table->string('kind', 16)->default('payment');
+            $table->foreignId('payment_method_id')->nullable()->constrained('payment_methods')->restrictOnDelete();
             // Chosen in the payment modal, else filled from the payment method when the invoice is posted.
             $table->foreignId('cash_bank_account_id')->nullable()->constrained('cash_bank_accounts')->restrictOnDelete();
             // A payment may be in another currency (e.g. a USD invoice paid partly in LBP).
@@ -138,23 +150,61 @@ return new class extends Migration
             // Cash given by the customer and the change handed back (printed only, not posted).
             $table->decimal('tendered', 20, 4)->nullable();
             $table->decimal('change_due', 20, 4)->nullable();
+            // Change handed back in another currency (e.g. paid in USD, change in LBP): posted as a cash
+            // transfer from the change cash box into the paid one.
+            $table->foreignId('change_currency_id')->nullable()->constrained('currencies')->restrictOnDelete();
+            $table->decimal('change_rate', 24, 12)->nullable();
+            $table->decimal('change_amount', 20, 4)->nullable();
+            $table->foreignId('change_cash_bank_account_id')->nullable()->constrained('cash_bank_accounts')->restrictOnDelete();
+            $table->foreignUuid('treasury_transfer_id')->nullable()->constrained('treasury_transfers')->nullOnDelete();
+            $table->string('cheque_number', 64)->nullable();
+            $table->string('cheque_bank', 128)->nullable();
+            $table->date('cheque_due_date')->nullable();
             $table->foreignUuid('customer_receipt_id')->nullable()->constrained('customer_receipts')->nullOnDelete();
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
 
             $table->index('sales_invoice_id');
         });
+
+        // Cheques received from customers, held in "Cheques to collect" until they clear or bounce.
+        Schema::create('customer_cheques', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('customer_receipt_id')->constrained('customer_receipts')->restrictOnDelete();
+            $table->foreignUuid('customer_id')->constrained('customers')->restrictOnDelete();
+            $table->foreignId('branch_id')->nullable()->constrained('branches')->nullOnDelete();
+            $table->string('cheque_number', 64);
+            $table->string('bank_name', 128)->nullable();
+            $table->date('due_date');
+            $table->decimal('amount', 20, 4);
+            $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
+            $table->decimal('exchange_rate', 24, 12);
+            // in_hand | cleared | bounced
+            $table->string('status', 16)->default('in_hand');
+            $table->foreignId('cleared_cash_bank_account_id')->nullable()->constrained('cash_bank_accounts')->restrictOnDelete();
+            $table->date('cleared_on')->nullable();
+            $table->date('bounced_on')->nullable();
+            $table->foreignUuid('updated_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamps();
+
+            $table->index(['status', 'due_date']);
+        });
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('customer_cheques');
         Schema::dropIfExists('sales_invoice_payments');
+        Schema::table('customer_receipt_allocations', function (Blueprint $table) {
+            $table->dropColumn(['applied_later', 'applied_at']);
+        });
         foreach (['supplier_payments', 'customer_refunds', 'supplier_refunds'] as $documents) {
             Schema::table($documents, function (Blueprint $table) {
                 $table->dropConstrainedForeignId('cash_bank_account_id');
             });
         }
         Schema::table('customer_receipts', function (Blueprint $table) {
+            $table->dropColumn(['cheque_number', 'cheque_bank', 'cheque_due_date']);
             $table->dropConstrainedForeignId('sales_invoice_id');
             $table->dropConstrainedForeignId('cash_bank_account_id');
         });

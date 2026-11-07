@@ -9,6 +9,7 @@ use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\Sales\CustomerCheque\Models\CustomerCheque;
 use App\Modules\Sales\CustomerReceipt\Enums\CustomerReceiptStatus;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
@@ -44,6 +45,11 @@ readonly class CustomerReceiptResponseData
             'payment_date' => $receipt->payment_date?->toDateString(),
             'amount' => (string) $receipt->amount,
             'reference' => $receipt->reference,
+            'cheque_number' => $receipt->cheque_number,
+            'cheque_bank' => $receipt->cheque_bank,
+            'cheque_due_date' => $receipt->cheque_due_date?->toDateString(),
+            'cheque_status' => CustomerCheque::query()->where('customer_receipt_id', $receipt->id)->value('status'),
+            'unapplied_amount' => $receipt->unappliedAmount(),
             'notes' => $receipt->notes,
             'status' => $receipt->status instanceof CustomerReceiptStatus
                 ? $receipt->status->value
@@ -87,6 +93,7 @@ readonly class CustomerReceiptResponseData
                     'applied_amount' => (string) $allocation->applied_amount,
                     'applied_exchange_rate' => (string) $allocation->applied_exchange_rate,
                     'exchange_difference' => (string) $allocation->exchange_difference,
+                    'applied_later' => (bool) $allocation->applied_later,
                     'currency_id' => $invoice?->currency_id,
                     'currency' => self::currencyBrief($invoice?->currency),
                     'invoice_number' => $invoice?->invoice_number,

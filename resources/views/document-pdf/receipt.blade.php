@@ -113,6 +113,24 @@
         </table>
     @endif
 
+    @if (!empty($payments))
+        <div class="rule"></div>
+        <table>
+            @foreach ($payments as $row)
+                <tr>
+                    <td>{{ $row['method'] }}</td>
+                    <td class="end">{{ $row['amount'] }}</td>
+                </tr>
+                @if (!empty($row['equivalent']))
+                    <tr><td></td><td class="end small">{{ $row['equivalent'] }}</td></tr>
+                @endif
+                @foreach ($row['details'] as $detail)
+                    <tr><td colspan="2" class="small">{{ $detail }}</td></tr>
+                @endforeach
+            @endforeach
+        </table>
+    @endif
+
     @if (!empty($notes))
         <div class="rule"></div>
         <div class="pre">{{ $notes }}</div>

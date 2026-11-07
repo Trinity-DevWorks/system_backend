@@ -47,6 +47,8 @@ return new class extends Migration
             $table->decimal('paid_total', 20, 4)->default(0);
             $table->decimal('credited_total', 20, 4)->default(0);
             $table->decimal('net_to_pay', 20, 4)->default(0);
+            // Payments taken at sale may be more than the total: the extra stays on the customer's account as credit.
+            $table->boolean('keep_extra_as_credit')->default(false);
             $table->text('notes')->nullable();
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();

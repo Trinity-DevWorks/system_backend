@@ -18,6 +18,7 @@ final class SourceDocuments
         'sales_invoice' => ['table' => 'sales_invoices', 'number' => 'invoice_number'],
         'sales_credit_note' => ['table' => 'sales_credit_notes', 'number' => 'credit_note_number'],
         'customer_receipt' => ['table' => 'customer_receipts', 'number' => 'receipt_number'],
+        'customer_cheque' => ['table' => 'customer_cheques', 'number' => 'cheque_number'],
         'delivery_note' => ['table' => 'delivery_notes', 'number' => 'delivery_number'],
         'landed_cost' => ['table' => 'landed_costs', 'number' => 'landed_cost_number'],
         'treasury_transfer' => ['table' => 'treasury_transfers', 'number' => 'transfer_number'],

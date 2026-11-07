@@ -181,6 +181,10 @@ return [
             'label' => 'Customer Receipt Management',
             'actions' => [...$crud, 'reverse', 'print'],
         ],
+        'customer_cheques' => [
+            'label' => 'Customer Cheques',
+            'actions' => ['view', 'edit'],
+        ],
         'sales_credit_notes' => [
             'label' => 'Sales Credit Note Management',
             'actions' => [...$crud, 'reverse', 'export', 'print'],
@@ -232,6 +236,10 @@ return [
         ],
         'vat_settlements' => [
             'label' => 'VAT Settlements',
+            'actions' => ['view', 'add', 'reverse'],
+        ],
+        'currency_revaluations' => [
+            'label' => 'Currency Revaluations',
             'actions' => ['view', 'add', 'reverse'],
         ],
         'accounting_periods' => [
