@@ -24,6 +24,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * @property int $branch_id
  * @property CustomerReceiptStatus $status
  * @property Carbon|null $payment_date
+ * @property Carbon|null $cheque_due_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
