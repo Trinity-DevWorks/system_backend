@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesOrder\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
@@ -23,13 +24,16 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property SalesOrderStatus $status
  * @property Carbon|null $order_date
  * @property Carbon|null $requested_date
  * @property Carbon|null $confirmed_at
+ * @property Carbon|null $discount_approved_at
  * @property Carbon|null $cancelled_at
  */
 #[Fillable([
+    'branch_id',
     'order_number',
     'customer_id',
     'warehouse_id',
@@ -43,6 +47,10 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'exchange_rate',
     'subtotal',
     'discount_total',
+    'header_discount_type',
+    'header_discount_value',
+    'discount_approved_by',
+    'discount_approved_at',
     'tax_total',
     'grand_total',
     'notes',
@@ -55,7 +63,16 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class SalesOrder extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * Quotation → order keeps the quotation's branch when the warehouse does not decide it.
+     */
+    public function documentBranchFromParent(): ?int
+    {
+        return $this->branchOfDocument(SalesQuotation::class, $this->sales_quotation_id);
+    }
 
     /**
      * @return array<string, string>
@@ -69,6 +86,8 @@ class SalesOrder extends Model implements AuditableContract
             'exchange_rate' => 'decimal:12',
             'subtotal' => 'decimal:4',
             'discount_total' => 'decimal:4',
+            'header_discount_value' => 'decimal:4',
+            'discount_approved_at' => 'datetime',
             'tax_total' => 'decimal:4',
             'grand_total' => 'decimal:4',
             'confirmed_at' => 'datetime',

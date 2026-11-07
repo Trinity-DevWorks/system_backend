@@ -29,6 +29,7 @@ class StoreCustomerGroupRequest extends FormRequest
             ],
             'name' => ['required', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
+            'price_list_id' => ['sometimes', 'nullable', 'integer', 'exists:price_lists,id'],
         ];
     }
 }

@@ -14,6 +14,8 @@ enum AccountRole: string
     case Payable = 'payable';
     case Inventory = 'inventory';
     case GoodsReceivedNotInvoiced = 'goods_received_not_invoiced';
+    /** Freight / customs bills wait here until a landed cost spreads them over the goods. */
+    case LandedCostClearing = 'landed_cost_clearing';
     case SalesRevenue = 'sales_revenue';
     case SalesReturns = 'sales_returns';
     case SalesDiscount = 'sales_discount';
@@ -34,6 +36,9 @@ enum AccountRole: string
     case OpeningBalanceEquity = 'opening_balance_equity';
     case ExchangeLoss = 'exchange_loss';
     case ExchangeGain = 'exchange_gain';
+    /** Month-end currency revaluation (reversed the next day). */
+    case UnrealizedExchangeLoss = 'unrealized_exchange_loss';
+    case UnrealizedExchangeGain = 'unrealized_exchange_gain';
     case Rounding = 'rounding';
     case RetainedEarnings = 'retained_earnings';
     case AccumulatedLosses = 'accumulated_losses';
@@ -64,13 +69,15 @@ enum AccountRole: string
             self::SalesReturns,
             self::SalesDiscount,
             self::InventorySurplus,
-            self::ExchangeGain => [AccountType::Revenue],
+            self::ExchangeGain,
+            self::UnrealizedExchangeGain => [AccountType::Revenue],
             self::PurchaseDiscount,
             self::CostOfGoodsSold,
             self::PurchasePriceDifference,
             self::NonStockPurchase,
             self::InventoryShortage,
-            self::ExchangeLoss => [AccountType::Expense],
+            self::ExchangeLoss,
+            self::UnrealizedExchangeLoss => [AccountType::Expense],
             self::Rounding => [AccountType::Expense, AccountType::Revenue],
             self::OpeningBalanceEquity,
             self::RetainedEarnings,

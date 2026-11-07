@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesQuotation\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
@@ -21,6 +22,7 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property SalesQuotationStatus $status
  * @property Carbon|null $quotation_date
  * @property Carbon|null $valid_until
@@ -29,6 +31,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * @property Carbon|null $rejected_at
  */
 #[Fillable([
+    'branch_id',
     'quotation_number',
     'customer_id',
     'currency_id',
@@ -40,6 +43,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'exchange_rate',
     'subtotal',
     'discount_total',
+    'header_discount_type',
+    'header_discount_value',
     'tax_total',
     'grand_total',
     'notes',
@@ -55,6 +60,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class SalesQuotation extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
 
     /**
@@ -72,6 +78,7 @@ class SalesQuotation extends Model implements AuditableContract
             'exchange_rate' => 'decimal:12',
             'subtotal' => 'decimal:4',
             'discount_total' => 'decimal:4',
+            'header_discount_value' => 'decimal:4',
             'tax_total' => 'decimal:4',
             'grand_total' => 'decimal:4',
         ];

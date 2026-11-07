@@ -7,6 +7,7 @@ namespace App\Modules\Branch\Services;
 use App\Models\User;
 use App\Modules\Branch\DTOs\BranchData;
 use App\Modules\Branch\Models\Branch;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
 use App\Support\ListPagination;
@@ -142,6 +143,8 @@ class BranchService
 
     public function update(Branch $branch, BranchData $data): Branch
     {
+        DocumentBranchPayload::flush();
+
         return DB::transaction(function () use ($branch, $data): Branch {
             if ($branch->is_default && ! $data->isDefault) {
                 abort(422, 'Cannot unset the default branch. Set another branch as default first.', [

@@ -12,10 +12,11 @@ use App\Modules\Accounting\Models\JournalEntryLine;
 use App\Modules\Accounting\Support\JournalBuilder;
 use App\Modules\Accounting\Support\JournalMath;
 use App\Modules\Accounting\Support\SourceDocuments;
+use App\Modules\Branch\Models\Branch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\ExchangeRateService;
-use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Inventory\Item\Models\Item;
+use App\Modules\Inventory\Purchasing\LandedCost\Models\LandedCost;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
@@ -34,21 +35,24 @@ use App\Modules\Inventory\Stock\Models\Production;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockCount;
 use App\Modules\Inventory\Stock\Models\StockMovement;
+use App\Modules\Inventory\Stock\Models\StockRevaluation;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferClosure;
-use App\Modules\PaymentMethod\Enums\PaymentMethodType;
-use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\Sales\CustomerCheque\Models\CustomerCheque;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
 use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
 use App\Modules\Sales\CustomerRefund\Models\CustomerRefundAllocation;
+use App\Modules\Sales\DeliveryNote\Models\DeliveryNote;
 use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteType;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
-use App\Modules\Supplier\Models\SupplierBalance;
-use App\Modules\Warehouse\Models\Warehouse;
+use App\Modules\Treasury\Models\CashBankAccount;
+use App\Modules\Treasury\Models\ExpenseVoucher;
+use App\Modules\Treasury\Models\TreasuryTransfer;
 use App\Services\ModuleEntitlementService;
 use App\Support\ExchangeRateSnapshot;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -89,6 +93,12 @@ class JournalPostingService
             return;
         }
 
+        if ($invoice->is_opening) {
+            $this->openingDocument(SalesInvoice::REFERENCE_TYPE, $id, 'Opening invoice '.$invoice->invoice_number, (string) $invoice->grand_total, $invoice, AccountRole::Receivable, JournalEntryLine::PARTY_CUSTOMER, (string) $invoice->customer_id, $date ?? $invoice->invoice_date->toDateString(), $userId);
+
+            return;
+        }
+
         $currencyId = (int) $invoice->currency_id;
         $rate = (string) $invoice->exchange_rate;
         $grand = (string) $invoice->grand_total;
@@ -108,7 +118,27 @@ class JournalPostingService
             ->primary($this->account(AccountRole::CostOfGoodsSold), JournalMath::neg($value), null, null, $label)
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label);
 
-        $this->create(SalesInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->warehouseBranch($invoice->warehouse_id), $builder, $userId);
+        $this->create(SalesInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->documentBranch($invoice), $builder, $userId);
+    }
+
+    /**
+     * Delivery note: the stock leaves here, so the cost of sales is booked here (Dr COGS / Cr Inventory).
+     * The invoice made from it books only the revenue (its delivery lines have no stock movements).
+     */
+    public function deliveryNote(DeliveryNote $note, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $note->id;
+        if (! $this->shouldPost(DeliveryNote::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $label = 'Delivery note '.$note->delivery_number;
+        $value = $this->stockValue(DeliveryNote::REFERENCE_TYPE, $id);
+        $builder = $this->builder()
+            ->primary($this->account(AccountRole::CostOfGoodsSold), JournalMath::neg($value), null, null, $label)
+            ->primary($this->account(AccountRole::Inventory), $value, null, null, $label);
+
+        $this->create(DeliveryNote::REFERENCE_TYPE, $id, $date ?? $note->delivery_date->toDateString(), $label, $this->documentBranch($note), $builder, $userId);
     }
 
     public function goodsReceipt(GoodsReceipt $receipt, ?string $userId, ?string $date = null): void
@@ -124,13 +154,19 @@ class JournalPostingService
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
             ->primary($this->account(AccountRole::GoodsReceivedNotInvoiced), JournalMath::neg($value), null, null, $label);
 
-        $this->create(GoodsReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->received_date->toDateString(), $label, $this->warehouseBranch($receipt->warehouse_id), $builder, $userId);
+        $this->create(GoodsReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->received_date->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
     }
 
     public function purchaseInvoice(PurchaseInvoice $invoice, ?string $userId, ?string $date = null): void
     {
         $id = (string) $invoice->id;
         if (! $this->shouldPost(PurchaseInvoice::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        if ($invoice->is_opening) {
+            $this->openingDocument(PurchaseInvoice::REFERENCE_TYPE, $id, 'Opening invoice '.$invoice->invoice_number, JournalMath::neg((string) $invoice->grand_total), $invoice, AccountRole::Payable, JournalEntryLine::PARTY_SUPPLIER, (string) $invoice->supplier_id, $date ?? $invoice->invoice_date->toDateString(), $userId);
+
             return;
         }
 
@@ -143,15 +179,26 @@ class JournalPostingService
             ->foreign($this->account(AccountRole::VatInput), $invoice->tax_total, $currencyId, $rate, null, null, $label);
 
         $lines = PurchaseInvoiceLine::query()->where('purchase_invoice_id', $id)->orderBy('id')->get();
-        $tracked = Item::query()->whereIn('id', $lines->pluck('item_id')->unique()->all())->pluck('track_inventory', 'id');
+        $lineItems = Item::query()->whereIn('id', $lines->pluck('item_id')->unique()->all())->get(['id', 'track_inventory', 'is_landed_cost'])->keyBy('id');
 
         $nonStock = '0';
+        $landed = '0';
         foreach ($lines as $line) {
-            if (! ($tracked[(string) $line->item_id] ?? true)) {
+            $lineItem = $lineItems->get((string) $line->item_id);
+            if ($lineItem === null || $lineItem->track_inventory) {
+                continue;
+            }
+            // Freight / customs bills wait on the clearing account until a landed cost puts them on stock.
+            if ($lineItem->is_landed_cost) {
+                $landed = JournalMath::add($landed, $line->line_subtotal);
+            } else {
                 $nonStock = JournalMath::add($nonStock, $line->line_subtotal);
             }
         }
         $builder->foreign($this->account(AccountRole::NonStockPurchase), $nonStock, $currencyId, $rate, null, null, $label);
+        if (JournalMath::isPositive($landed)) {
+            $builder->foreign($this->account(AccountRole::LandedCostClearing), $landed, $currencyId, $rate, null, null, $label);
+        }
 
         if ($invoice->goods_receipt_id === null) {
             $builder->primary($this->account(AccountRole::Inventory), $this->stockValue(PurchaseInvoice::REFERENCE_TYPE, $id), null, null, $label);
@@ -167,7 +214,37 @@ class JournalPostingService
 
         $builder->balanceTo($this->account(AccountRole::PurchasePriceDifference), $label);
 
-        $this->create(PurchaseInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->warehouseBranch($invoice->warehouse_id), $builder, $userId);
+        $this->create(PurchaseInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->documentBranch($invoice), $builder, $userId);
+    }
+
+    /**
+     * Landed cost: Dr Inventory (share still in stock), Dr COGS (share already sold),
+     * Dr Purchase price difference (standard-costed items), Cr Landed cost clearing (total).
+     * The reversal is built from the recomputed split, not mirrored, and posted as the reverse event.
+     *
+     * @param  array{inventory: string, cogs: string, variance: string}  $totals
+     */
+    public function landedCost(LandedCost $document, array $totals, ?string $userId, bool $reverse): void
+    {
+        $id = (string) $document->id;
+        $type = LandedCost::REFERENCE_TYPE;
+        $event = $reverse ? JournalEntry::EVENT_REVERSE : JournalEntry::EVENT_POST;
+        if (! $this->enabled() || $this->hasEntry($type, $id, $event)) {
+            return;
+        }
+
+        $sign = fn (string $v): string => $reverse ? JournalMath::neg($v) : $v;
+        $total = JournalMath::add(JournalMath::add($totals['inventory'], $totals['cogs']), $totals['variance']);
+        $label = 'Landed cost '.$document->landed_cost_number.($reverse ? ' (reversal)' : '');
+
+        $builder = $this->builder()
+            ->primary($this->account(AccountRole::Inventory), $sign($totals['inventory']), null, null, $label)
+            ->primary($this->account(AccountRole::CostOfGoodsSold), $sign($totals['cogs']), null, null, $label)
+            ->primary($this->account(AccountRole::PurchasePriceDifference), $sign($totals['variance']), null, null, $label)
+            ->primary($this->account(AccountRole::LandedCostClearing), JournalMath::neg($sign($total)), null, null, $label);
+
+        $date = $reverse ? now()->toDateString() : $document->cost_date->toDateString();
+        $this->create($type, $id, $date, $label, $this->documentBranch($document), $builder, $userId, $event);
     }
 
     public function customerReceipt(CustomerReceipt $receipt, ?string $userId, ?string $date = null): void
@@ -178,8 +255,12 @@ class JournalPostingService
         }
 
         $label = 'Customer receipt '.$receipt->receipt_number;
+        // A cheque waits in "Cheques to collect" until it clears into a bank account.
+        $moneyLedger = $receipt->cheque_number !== null && $receipt->cheque_number !== ''
+            ? $this->account(AccountRole::ChequesToCollect)
+            : $this->cashBankLedger($receipt->cash_bank_account_id);
         $builder = $this->builder()->foreign(
-            $this->paymentAccount((int) $receipt->payment_method_id),
+            $moneyLedger,
             $receipt->amount,
             (int) $receipt->currency_id,
             (string) $receipt->exchange_rate,
@@ -188,9 +269,12 @@ class JournalPostingService
             $label,
         );
 
-        $allocations = CustomerReceiptAllocation::query()->where('customer_receipt_id', $id)->orderBy('id')->get();
+        // Allocations made later (customer credit applied to other invoices) have their own entries.
+        $allocations = CustomerReceiptAllocation::query()->where('customer_receipt_id', $id)->where('applied_later', false)->orderBy('id')->get();
         $invoices = SalesInvoice::query()->whereIn('id', $allocations->pluck('sales_invoice_id')->all())->get()->keyBy('id');
+        $allocated = '0';
         foreach ($allocations as $allocation) {
+            $allocated = JournalMath::add($allocated, $allocation->amount);
             $invoice = $invoices->get($allocation->sales_invoice_id);
             if ($invoice === null) {
                 continue;
@@ -206,8 +290,147 @@ class JournalPostingService
             );
         }
 
+        // What is not allocated stays on the customer's account as credit, in the receipt currency.
+        $unapplied = JournalMath::sub($receipt->amount, $allocated);
+        if (JournalMath::isPositive($unapplied)) {
+            $builder->foreign(
+                $this->account(AccountRole::Receivable),
+                JournalMath::neg($unapplied),
+                (int) $receipt->currency_id,
+                (string) $receipt->exchange_rate,
+                JournalEntryLine::PARTY_CUSTOMER,
+                (string) $receipt->customer_id,
+                $label.' — customer credit',
+            );
+        }
+
         $this->exchangeDifference($builder, $label);
-        $this->create(CustomerReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->payment_date->toDateString(), $label, null, $builder, $userId);
+        $this->create(CustomerReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->payment_date->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
+    }
+
+    /**
+     * Customer credit (unapplied receipt money) applied to an invoice later: moves the amount from the
+     * receipt's currency and rate to the invoice's on the customer's account. A rate gap is exchange gain/loss.
+     */
+    public function customerCreditApplication(CustomerReceiptAllocation $allocation, CustomerReceipt $receipt, SalesInvoice $invoice, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $allocation->id;
+        if (! $this->shouldPost(self::CUSTOMER_CREDIT_APPLICATION, $id)) {
+            return;
+        }
+
+        $label = 'Customer credit '.$receipt->receipt_number.' — '.$invoice->invoice_number;
+        $builder = $this->builder()
+            ->foreign(
+                $this->account(AccountRole::Receivable),
+                $allocation->amount,
+                (int) $receipt->currency_id,
+                (string) $receipt->exchange_rate,
+                JournalEntryLine::PARTY_CUSTOMER,
+                (string) $receipt->customer_id,
+                $label,
+            )
+            ->foreign(
+                $this->account(AccountRole::Receivable),
+                JournalMath::neg($allocation->applied_amount),
+                (int) $invoice->currency_id,
+                (string) $invoice->exchange_rate,
+                JournalEntryLine::PARTY_CUSTOMER,
+                (string) $receipt->customer_id,
+                $label,
+            );
+
+        $this->exchangeDifference($builder, $label);
+        $this->create(self::CUSTOMER_CREDIT_APPLICATION, $id, $date ?? now()->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
+    }
+
+    /**
+     * A customer cheque clears: Dr the bank account / Cr Cheques to collect, in the cheque currency.
+     */
+    public function customerChequeCleared(CustomerCheque $cheque, CashBankAccount $bank, ?string $userId, string $date): void
+    {
+        $id = (string) $cheque->id;
+        if (! $this->shouldPost(CustomerCheque::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $bank->loadMissing('account');
+        if ($bank->account === null) {
+            abort(422, 'The bank account needs a ledger account.', ['X-Error-Code' => 'TREASURY_ACCOUNT_REQUIRED']);
+        }
+
+        $label = 'Cheque '.$cheque->cheque_number.' cleared';
+        $builder = $this->builder()
+            ->foreign($bank->account, $cheque->amount, (int) $cheque->currency_id, (string) $cheque->exchange_rate, null, null, $label)
+            ->foreign($this->account(AccountRole::ChequesToCollect), JournalMath::neg($cheque->amount), (int) $cheque->currency_id, (string) $cheque->exchange_rate, null, null, $label);
+
+        $this->create(CustomerCheque::REFERENCE_TYPE, $id, $date, $label, $cheque->branch_id !== null ? (int) $cheque->branch_id : null, $builder, $userId);
+    }
+
+    public const CUSTOMER_CREDIT_APPLICATION = 'customer_credit_application';
+
+    /**
+     * Cash/bank transfer: Dr destination account / Cr source account. When the two accounts use
+     * different currencies, the primary-currency gap goes to exchange gain or loss.
+     */
+    public function treasuryTransfer(TreasuryTransfer $transfer, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $transfer->id;
+        if (! $this->shouldPost(TreasuryTransfer::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $transfer->loadMissing(['fromAccount.account', 'toAccount.account']);
+        $from = $transfer->fromAccount;
+        $to = $transfer->toAccount;
+        if ($from?->account === null || $to?->account === null) {
+            abort(422, 'Both cash/bank accounts need a ledger account.', ['X-Error-Code' => 'TREASURY_ACCOUNT_REQUIRED']);
+        }
+
+        $label = 'Cash/bank transfer '.$transfer->transfer_number;
+        $builder = $this->builder()
+            ->foreign($to->account, $transfer->amount_to, (int) $to->currency_id, (string) $transfer->exchange_rate_to, null, null, $label)
+            ->foreign($from->account, JournalMath::neg($transfer->amount_from), (int) $from->currency_id, (string) $transfer->exchange_rate, null, null, $label);
+
+        $this->exchangeDifference($builder, $label);
+        $this->create(TreasuryTransfer::REFERENCE_TYPE, $id, $date ?? $transfer->transfer_date->toDateString(), $label, $this->documentBranch($transfer), $builder, $userId);
+    }
+
+    /**
+     * Expense voucher: Dr each expense account (net) + VAT input / Cr the cash/bank account (total).
+     */
+    public function expenseVoucher(ExpenseVoucher $voucher, ?string $userId, ?string $date = null): void
+    {
+        $id = (string) $voucher->id;
+        if (! $this->shouldPost(ExpenseVoucher::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $voucher->loadMissing(['cashBankAccount.account', 'lines.account']);
+        $cash = $voucher->cashBankAccount;
+        if ($cash?->account === null) {
+            abort(422, 'The cash/bank account needs a ledger account.', ['X-Error-Code' => 'TREASURY_ACCOUNT_REQUIRED']);
+        }
+
+        $label = 'Expense voucher '.$voucher->voucher_number;
+        $currencyId = (int) $voucher->currency_id;
+        $rate = (string) $voucher->exchange_rate;
+        $builder = $this->builder();
+        $tax = '0';
+        foreach ($voucher->lines as $line) {
+            if ($line->account === null) {
+                continue;
+            }
+            $builder->foreign($line->account, $line->amount, $currencyId, $rate, null, null, $line->description ?: $label);
+            $tax = JournalMath::add($tax, $line->tax_amount);
+        }
+        if (JournalMath::isPositive($tax)) {
+            $builder->foreign($this->account(AccountRole::VatInput), $tax, $currencyId, $rate, null, null, $label.' — VAT');
+        }
+        $builder->foreign($cash->account, JournalMath::neg($voucher->total), $currencyId, $rate, null, null, $label);
+
+        $this->exchangeDifference($builder, $label);
+        $this->create(ExpenseVoucher::REFERENCE_TYPE, $id, $date ?? $voucher->voucher_date->toDateString(), $label, $this->documentBranch($voucher), $builder, $userId);
     }
 
     public function supplierPayment(SupplierPayment $payment, ?string $userId, ?string $date = null): void
@@ -219,7 +442,7 @@ class JournalPostingService
 
         $label = 'Supplier payment '.$payment->payment_number;
         $builder = $this->builder()->foreign(
-            $this->paymentAccount((int) $payment->payment_method_id),
+            $this->cashBankLedger($payment->cash_bank_account_id),
             JournalMath::neg($payment->amount),
             (int) $payment->currency_id,
             (string) $payment->exchange_rate,
@@ -247,13 +470,19 @@ class JournalPostingService
         }
 
         $this->exchangeDifference($builder, $label);
-        $this->create(SupplierPayment::REFERENCE_TYPE, $id, $date ?? $payment->payment_date->toDateString(), $label, null, $builder, $userId);
+        $this->create(SupplierPayment::REFERENCE_TYPE, $id, $date ?? $payment->payment_date->toDateString(), $label, $this->documentBranch($payment), $builder, $userId);
     }
 
     public function salesCreditNote(SalesCreditNote $note, ?string $userId, ?string $date = null): void
     {
         $id = (string) $note->id;
         if (! $this->shouldPost(SalesCreditNote::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        if ($note->is_opening) {
+            $this->openingDocument(SalesCreditNote::REFERENCE_TYPE, $id, 'Opening credit '.$note->credit_note_number, JournalMath::neg((string) $note->grand_total), $note, AccountRole::Receivable, JournalEntryLine::PARTY_CUSTOMER, (string) $note->customer_id, $date ?? $note->credit_date->toDateString(), $userId);
+
             return;
         }
 
@@ -277,7 +506,7 @@ class JournalPostingService
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
             ->primary($this->account(AccountRole::CostOfGoodsSold), JournalMath::neg($value), null, null, $label);
 
-        $this->create(SalesCreditNote::REFERENCE_TYPE, $id, $date ?? $note->credit_date->toDateString(), $label, $this->documentWarehouseBranch($note), $builder, $userId);
+        $this->create(SalesCreditNote::REFERENCE_TYPE, $id, $date ?? $note->credit_date->toDateString(), $label, $this->documentBranch($note), $builder, $userId);
     }
 
     public function creditApplication(SalesCreditNote $note, SalesInvoice $invoice, string $amount, ?string $userId, ?string $date = null): void
@@ -296,6 +525,8 @@ class JournalPostingService
             (string) $note->customer_id,
             $userId,
             $date,
+            'Credit application',
+            $this->documentBranch($note),
         );
     }
 
@@ -334,7 +565,7 @@ class JournalPostingService
 
         $label = 'Customer refund '.$refund->refund_number;
         $builder = $this->builder()->foreign(
-            $this->paymentAccount((int) $refund->payment_method_id),
+            $this->cashBankLedger($refund->cash_bank_account_id),
             JournalMath::neg($refund->amount),
             (int) $refund->currency_id,
             (string) $refund->exchange_rate,
@@ -362,13 +593,19 @@ class JournalPostingService
         }
 
         $this->exchangeDifference($builder, $label);
-        $this->create(CustomerRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, null, $builder, $userId);
+        $this->create(CustomerRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, $this->documentBranch($refund), $builder, $userId);
     }
 
     public function purchaseDebitNote(PurchaseDebitNote $note, ?string $userId, ?string $date = null): void
     {
         $id = (string) $note->id;
         if (! $this->shouldPost(PurchaseDebitNote::REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        if ($note->is_opening) {
+            $this->openingDocument(PurchaseDebitNote::REFERENCE_TYPE, $id, 'Opening credit '.$note->debit_note_number, (string) $note->grand_total, $note, AccountRole::Payable, JournalEntryLine::PARTY_SUPPLIER, (string) $note->supplier_id, $date ?? $note->debit_date->toDateString(), $userId);
+
             return;
         }
 
@@ -402,7 +639,7 @@ class JournalPostingService
         }
 
         $builder->balanceTo($this->account(AccountRole::PurchasePriceDifference), $label);
-        $this->create(PurchaseDebitNote::REFERENCE_TYPE, $id, $date ?? $note->debit_date->toDateString(), $label, $this->documentWarehouseBranch($note), $builder, $userId);
+        $this->create(PurchaseDebitNote::REFERENCE_TYPE, $id, $date ?? $note->debit_date->toDateString(), $label, $this->documentBranch($note), $builder, $userId);
     }
 
     public function debitApplication(PurchaseDebitNote $note, PurchaseInvoice $invoice, string $amount, ?string $userId, ?string $date = null): void
@@ -422,6 +659,7 @@ class JournalPostingService
             $userId,
             $date,
             'Debit application',
+            $this->documentBranch($note),
         );
     }
 
@@ -456,7 +694,7 @@ class JournalPostingService
 
         $label = 'Supplier refund '.$refund->refund_number;
         $builder = $this->builder()->foreign(
-            $this->paymentAccount((int) $refund->payment_method_id),
+            $this->cashBankLedger($refund->cash_bank_account_id),
             $refund->amount,
             (int) $refund->currency_id,
             (string) $refund->exchange_rate,
@@ -484,7 +722,7 @@ class JournalPostingService
         }
 
         $this->exchangeDifference($builder, $label);
-        $this->create(SupplierRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, null, $builder, $userId);
+        $this->create(SupplierRefund::REFERENCE_TYPE, $id, $date ?? $refund->refund_date->toDateString(), $label, $this->documentBranch($refund), $builder, $userId);
     }
 
     public function stockAdjustment(StockAdjustment $document, ?string $userId, ?string $date = null): void
@@ -494,7 +732,7 @@ class JournalPostingService
             (string) $document->id,
             'Stock adjustment '.$document->adj_number,
             $date ?? $document->adjustment_date->toDateString(),
-            $document->warehouse_id,
+            $this->documentBranch($document),
             $userId,
             false,
         );
@@ -507,7 +745,20 @@ class JournalPostingService
             (string) $document->id,
             'Stock count '.$document->cnt_number,
             $date ?? $document->count_date->toDateString(),
-            $document->warehouse_id,
+            $this->documentBranch($document),
+            $userId,
+            false,
+        );
+    }
+
+    public function stockRevaluation(StockRevaluation $document, ?string $userId, ?string $date = null): void
+    {
+        $this->stockVariance(
+            StockRevaluation::REFERENCE_TYPE,
+            (string) $document->id,
+            'Stock revaluation '.$document->srv_number,
+            $date ?? $document->revaluation_date->toDateString(),
+            $this->documentBranch($document),
             $userId,
             false,
         );
@@ -520,7 +771,7 @@ class JournalPostingService
             (string) $document->id,
             'Production '.$document->prd_number,
             $date ?? $document->production_date->toDateString(),
-            $document->warehouse_id,
+            $this->documentBranch($document),
             $userId,
             true,
         );
@@ -563,7 +814,7 @@ class JournalPostingService
             $id,
             $date ?? $closedOn,
             $label,
-            $this->warehouseBranch($closure->warehouse_id),
+            $this->documentBranch($closure),
             $builder,
             $userId,
         );
@@ -582,64 +833,54 @@ class JournalPostingService
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
             ->primary($this->account(AccountRole::OpeningBalanceEquity), JournalMath::neg($value), null, null, $label);
 
-        $this->create(OpeningStock::REFERENCE_TYPE, $id, $date ?? $document->opening_date->toDateString(), $label, $this->warehouseBranch($document->warehouse_id), $builder, $userId);
+        $this->create(OpeningStock::REFERENCE_TYPE, $id, $date ?? $document->opening_date->toDateString(), $label, $this->documentBranch($document), $builder, $userId);
     }
 
     /**
-     * Positive opening balance = the customer owes us (debit).
+     * Opening documents are edited in place while nothing uses them: drop their entry so it can be posted again.
      */
-    public function customerOpeningBalance(CustomerBalance $balance, ?string $userId = null): void
-    {
-        $this->openingBalance(
-            SourceDocuments::CUSTOMER_OPENING_BALANCE,
-            (string) $balance->id,
-            (string) $balance->opening_balance,
-            (int) $balance->currency_id,
-            $balance->opening_date?->toDateString(),
-            AccountRole::Receivable,
-            JournalEntryLine::PARTY_CUSTOMER,
-            (string) $balance->customer_id,
-            $userId,
-        );
-    }
-
-    /**
-     * Positive opening balance = we owe the supplier (credit).
-     */
-    public function supplierOpeningBalance(SupplierBalance $balance, ?string $userId = null): void
-    {
-        $this->openingBalance(
-            SourceDocuments::SUPPLIER_OPENING_BALANCE,
-            (string) $balance->id,
-            JournalMath::neg((string) $balance->opening_balance),
-            (int) $balance->currency_id,
-            $balance->opening_date?->toDateString(),
-            AccountRole::Payable,
-            JournalEntryLine::PARTY_SUPPLIER,
-            (string) $balance->supplier_id,
-            $userId,
-        );
-    }
-
-    /**
-     * The party ledger deletes and re-inserts its opening entry, so the journal does the same.
-     */
-    public function replaceCustomerOpeningBalance(CustomerBalance $balance, ?string $userId = null): void
+    public function deleteDocumentEntries(string $sourceType, string $sourceId): void
     {
         if (! $this->enabled()) {
             return;
         }
-        $this->journalEntryService->deleteAutomatic(SourceDocuments::CUSTOMER_OPENING_BALANCE, (string) $balance->id);
-        $this->customerOpeningBalance($balance, $userId);
+        $this->journalEntryService->deleteAutomatic($sourceType, $sourceId);
     }
 
-    public function replaceSupplierOpeningBalance(SupplierBalance $balance, ?string $userId = null): void
+    /**
+     * Money already in a cash box / bank account when it is added: Dr its ledger account / Cr opening balance equity.
+     */
+    public function cashBankOpeningBalance(CashBankAccount $account, ?string $userId = null): void
+    {
+        $id = (string) $account->id;
+        $amount = (string) $account->opening_balance;
+        if (JournalMath::isZero($amount) || ! $this->shouldPost(SourceDocuments::CASH_BANK_OPENING_BALANCE, $id)) {
+            return;
+        }
+
+        $account->loadMissing('account');
+        if ($account->account === null) {
+            abort(422, 'The cash/bank account needs a ledger account.', ['X-Error-Code' => 'TREASURY_ACCOUNT_REQUIRED']);
+        }
+
+        $currencyId = (int) $account->currency_id;
+        $rate = ExchangeRateSnapshot::resolve($this->exchangeRateService, $currencyId, null, 'ACCOUNTING');
+        $label = 'Opening balance '.$account->code;
+        $builder = $this->builder()
+            ->foreign($account->account, $amount, $currencyId, $rate, null, null, $label)
+            ->foreign($this->account(AccountRole::OpeningBalanceEquity), JournalMath::neg($amount), $currencyId, $rate, null, null, $label);
+
+        $date = $account->opening_date?->toDateString() ?? Carbon::today()->toDateString();
+        $this->create(SourceDocuments::CASH_BANK_OPENING_BALANCE, $id, $date, $label, $this->branchOrDefault($account->branch_id), $builder, $userId);
+    }
+
+    public function replaceCashBankOpeningBalance(CashBankAccount $account, ?string $userId = null): void
     {
         if (! $this->enabled()) {
             return;
         }
-        $this->journalEntryService->deleteAutomatic(SourceDocuments::SUPPLIER_OPENING_BALANCE, (string) $balance->id);
-        $this->supplierOpeningBalance($balance, $userId);
+        $this->journalEntryService->deleteAutomatic(SourceDocuments::CASH_BANK_OPENING_BALANCE, (string) $account->id);
+        $this->cashBankOpeningBalance($account, $userId);
     }
 
     /**
@@ -666,7 +907,7 @@ class JournalPostingService
         $this->journalEntryService->reverseEntry($original, $userId, $date);
     }
 
-    private function stockVariance(string $type, string $id, string $label, string $date, mixed $warehouseId, ?string $userId, bool $netOnly): void
+    private function stockVariance(string $type, string $id, string $label, string $date, ?int $branchId, ?string $userId, bool $netOnly): void
     {
         if (! $this->shouldPost($type, $id)) {
             return;
@@ -700,31 +941,36 @@ class JournalPostingService
                 ->primary($this->account(AccountRole::Inventory), $decrease, null, null, $label);
         }
 
-        $this->create($type, $id, $date, $label, $this->warehouseBranch($warehouseId), $builder, $userId);
+        $this->create($type, $id, $date, $label, $branchId, $builder, $userId);
     }
 
-    private function openingBalance(
+    /**
+     * Opening invoice / opening credit: an old open balance brought in from before the system.
+     * Receivable or payable (signed, positive = debit) against Opening Balance Equity. No revenue, VAT or stock.
+     */
+    private function openingDocument(
         string $type,
         string $id,
+        string $label,
         string $signedAmount,
-        int $currencyId,
-        ?string $date,
+        Model $document,
         AccountRole $partyRole,
         string $partyType,
         string $partyId,
+        string $date,
         ?string $userId,
     ): void {
-        if (JournalMath::isZero($signedAmount) || ! $this->shouldPost($type, $id)) {
+        if (JournalMath::isZero($signedAmount)) {
             return;
         }
 
-        $rate = ExchangeRateSnapshot::resolve($this->exchangeRateService, $currencyId, null, 'ACCOUNTING');
-        $label = 'Opening balance';
+        $currencyId = (int) $document->getAttribute('currency_id');
+        $rate = (string) $document->getAttribute('exchange_rate');
         $builder = $this->builder()
             ->foreign($this->account($partyRole), $signedAmount, $currencyId, $rate, $partyType, $partyId, $label)
             ->foreign($this->account(AccountRole::OpeningBalanceEquity), JournalMath::neg($signedAmount), $currencyId, $rate, null, null, $label);
 
-        $this->create($type, $id, $date ?? Carbon::today()->toDateString(), $label, null, $builder, $userId);
+        $this->create($type, $id, $date, $label, $this->documentBranch($document), $builder, $userId);
     }
 
     private function rateApplication(
@@ -742,6 +988,7 @@ class JournalPostingService
         ?string $userId,
         ?string $date,
         string $kind = 'Credit application',
+        ?int $branchId = null,
     ): void {
         if (! $this->enabled() || $this->sameRate($noteRate, $invoiceRate)) {
             return;
@@ -752,7 +999,7 @@ class JournalPostingService
             ->foreign($this->account($partyRole), $amount, $currencyId, $noteRate, $partyType, $partyId, $label)
             ->foreign($this->account($partyRole), JournalMath::neg($amount), $currencyId, $invoiceRate, $partyType, $partyId, $label);
         $this->exchangeDifference($builder, $label);
-        $this->create($sourceType, $noteId.':'.(string) Str::ulid(), $date ?? Carbon::today()->toDateString(), $label, null, $builder, $userId);
+        $this->create($sourceType, $noteId.':'.(string) Str::ulid(), $date ?? Carbon::today()->toDateString(), $label, $branchId, $builder, $userId);
     }
 
     private function reverseApplications(string $sourceType, string $noteId, ?string $userId): void
@@ -777,17 +1024,28 @@ class JournalPostingService
         }
     }
 
-    private function documentWarehouseBranch(SalesCreditNote|PurchaseDebitNote $note): ?int
+    /**
+     * The branch stored on the document when it was issued (docs/printing-plan.md D3). Never looked up
+     * from the warehouse, so moving a warehouse to another branch does not move posted entries.
+     */
+    /**
+     * Opening balances have no document branch. Branch-filtered reports skip entries without one,
+     * so fall back to the company's default branch (or the first branch).
+     */
+    private function branchOrDefault(mixed $branchId): ?int
     {
-        $warehouseId = $note->lines()->whereNotNull('warehouse_id')->value('warehouse_id');
-        if ($warehouseId === null) {
-            $invoice = $note instanceof SalesCreditNote
-                ? SalesInvoice::query()->find($note->sales_invoice_id)
-                : PurchaseInvoice::query()->find($note->purchase_invoice_id);
-            $warehouseId = $invoice?->warehouse_id;
+        if ($branchId !== null && $branchId !== '') {
+            return (int) $branchId;
         }
 
-        return $this->warehouseBranch($warehouseId);
+        return Branch::defaultId();
+    }
+
+    private function documentBranch(Model $document): ?int
+    {
+        $branchId = $document->getAttribute('branch_id');
+
+        return $branchId !== null ? (int) $branchId : null;
     }
 
     private function sameRate(mixed $left, mixed $right): bool
@@ -810,7 +1068,7 @@ class JournalPostingService
         return $this->enabled() && ! $this->hasEntry($sourceType, $sourceId);
     }
 
-    private function create(string $sourceType, string $sourceId, string $date, string $description, ?int $branchId, JournalBuilder $builder, ?string $userId): void
+    private function create(string $sourceType, string $sourceId, string $date, string $description, ?int $branchId, JournalBuilder $builder, ?string $userId, string $event = JournalEntry::EVENT_POST): void
     {
         $lines = $builder->lines($this->account(AccountRole::Rounding));
         if ($lines === []) {
@@ -821,7 +1079,7 @@ class JournalPostingService
             'entry_date' => $date,
             'source_type' => $sourceType,
             'source_id' => $sourceId,
-            'source_event' => JournalEntry::EVENT_POST,
+            'source_event' => $event,
             'branch_id' => $branchId,
             'description' => $description,
         ], $lines, $userId);
@@ -842,28 +1100,17 @@ class JournalPostingService
         return $this->accountMappingService->accountFor($role);
     }
 
-    private function paymentAccount(int $paymentMethodId): Account
+    /**
+     * Ledger account of the cash box / bank account the money moved through.
+     */
+    private function cashBankLedger(?int $cashBankAccountId): Account
     {
-        $method = PaymentMethod::withTrashed()->with('account')->find($paymentMethodId);
-        if ($method?->account !== null) {
-            return $method->account;
+        $account = $cashBankAccountId !== null ? CashBankAccount::query()->with('account')->find($cashBankAccountId)?->account : null;
+        if (! $account instanceof Account) {
+            abort(422, 'Choose the cash box or bank account for this payment.', ['X-Error-Code' => 'PAYMENT_CASH_BANK_ACCOUNT_REQUIRED']);
         }
 
-        return $this->account(match ($method?->type) {
-            PaymentMethodType::Cash => AccountRole::Cash,
-            PaymentMethodType::Cheque => AccountRole::ChequesToCollect,
-            default => AccountRole::Bank,
-        });
-    }
-
-    private function warehouseBranch(mixed $warehouseId): ?int
-    {
-        if ($warehouseId === null) {
-            return null;
-        }
-        $branchId = Warehouse::query()->whereKey((int) $warehouseId)->value('branch_id');
-
-        return $branchId !== null ? (int) $branchId : null;
+        return $account;
     }
 
     /**

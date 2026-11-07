@@ -11,6 +11,7 @@ use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Modules\Inventory\Purchasing\Enums\PurchaseOrderStatus;
+use App\Modules\Inventory\Purchasing\LandedCost\Services\LandedCostService;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
@@ -30,11 +31,13 @@ use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierItemService;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\DocumentNumberService;
 use App\Support\DocumentTaxContext;
 use App\Support\DocumentTaxMath;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
+use App\Support\OpeningDocumentService;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -85,7 +88,7 @@ class PurchaseInvoiceService
             ])
             ->findOrFail($id);
 
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
 
         return $invoice;
     }
@@ -125,7 +128,6 @@ class PurchaseInvoiceService
             ]);
 
             $invoice->update([
-                'invoice_number' => SequentialCodeGenerator::next(PurchaseInvoice::class, 'invoice_number', 'PI-'),
             ]);
 
             if (! empty($data['lines'])) {
@@ -215,7 +217,7 @@ class PurchaseInvoiceService
     public function delete(PurchaseInvoice $invoice): void
     {
         PurchaseInvoiceRules::assertDraft($invoice);
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
         $invoice->delete();
     }
 
@@ -223,8 +225,9 @@ class PurchaseInvoiceService
     {
         return DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
             $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'invoice_number', DocumentType::PurchaseInvoice, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->invoice_date);
             PurchaseInvoiceRules::assertPostable($locked);
-            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($locked);
 
             $this->recalculateTotals($locked);
             $locked->refresh();
@@ -309,11 +312,13 @@ class PurchaseInvoiceService
     {
         return DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
             $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            OpeningDocumentService::assertNotOpening($locked);
             if ($locked->status !== PurchaseInvoiceStatus::Posted) {
                 abort(422, 'Only a posted purchase invoice can be reversed.', [
                     'X-Error-Code' => 'PURCHASE_INVOICE_NOT_POSTED',
                 ]);
             }
+            LandedCostService::assertNotUsed('purchase_invoice', (string) $locked->id);
             if (bccomp((string) $locked->paid_total, '0', 4) > 0) {
                 abort(422, 'This invoice has payments and cannot be reversed.', [
                     'X-Error-Code' => 'PURCHASE_INVOICE_HAS_PAYMENTS',
@@ -324,7 +329,7 @@ class PurchaseInvoiceService
                     'X-Error-Code' => 'PURCHASE_INVOICE_HAS_DEBIT_NOTES',
                 ]);
             }
-            $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($locked);
 
             if ($locked->goods_receipt_id === null) {
                 $this->stockMovementService->reverseReference(PurchaseInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
@@ -401,7 +406,7 @@ class PurchaseInvoiceService
     {
         $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
         PurchaseInvoiceRules::assertDraft($locked);
-        $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($locked);
 
         return $locked;
     }
@@ -414,7 +419,7 @@ class PurchaseInvoiceService
     {
         $currencyId = isset($data['currency_id']) && $data['currency_id'] !== '' && $data['currency_id'] !== null
             ? (int) $data['currency_id']
-            : (int) ($existing?->currency_id ?? Currency::getPrimary()?->id);
+            : (int) ($existing?->currency_id ?? $order?->currency_id ?? $receipt?->currency_id ?? Currency::getPrimary()?->id);
 
         if ($currencyId <= 0) {
             abort(422, 'A primary currency is required.', ['X-Error-Code' => 'PURCHASE_INVOICE_PRIMARY_CURRENCY_REQUIRED']);
@@ -493,7 +498,7 @@ class PurchaseInvoiceService
         $order = $invoice->purchase_order_id
             ? PurchaseOrder::query()->find($invoice->purchase_order_id)
             : null;
-        $exempt = $this->supplierIsExempt($supplier, $date);
+        $exempt = DocumentTaxContext::supplierIsExemptOnDate($supplier, $date);
 
         PurchaseInvoiceLine::query()->where('purchase_invoice_id', $invoice->id)->delete();
 
@@ -532,7 +537,7 @@ class PurchaseInvoiceService
             $linkedUomId = $grnLine?->item_uom_id ?? $poLine?->item_uom_id;
             $qty = PurchaseInvoiceLineQuantity::resolve(
                 $item,
-                (float) $row['quantity'],
+                $row['quantity'],
                 isset($row['item_uom_id']) && $row['item_uom_id'] !== null && $row['item_uom_id'] !== ''
                     ? (int) $row['item_uom_id']
                     : ($linkedUomId !== null ? (int) $linkedUomId : null),
@@ -673,23 +678,6 @@ class PurchaseInvoiceService
         );
     }
 
-    private function supplierIsExempt(?Supplier $supplier, string $documentDate): bool
-    {
-        if ($supplier === null || ! $supplier->is_exempted) {
-            return false;
-        }
-
-        $date = Carbon::parse($documentDate)->startOfDay();
-        if ($supplier->exempted_from !== null && $date->lt(Carbon::parse($supplier->exempted_from)->startOfDay())) {
-            return false;
-        }
-        if ($supplier->exempted_to !== null && $date->gt(Carbon::parse($supplier->exempted_to)->startOfDay())) {
-            return false;
-        }
-
-        return true;
-    }
-
     /**
      * Cost per base unit in the primary currency (stock and supplier prices are primary-only).
      */
@@ -706,7 +694,7 @@ class PurchaseInvoiceService
             ExchangeRateSnapshot::SCALE,
         );
 
-        return bcdiv($primaryUnitPrice, $conversionFactor, 4);
+        return InventoryCostingMath::unitCost(bcdiv($primaryUnitPrice, $conversionFactor, ExchangeRateSnapshot::SCALE));
     }
 
     private function nullableString(mixed $value): ?string

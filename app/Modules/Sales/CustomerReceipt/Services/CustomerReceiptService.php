@@ -12,19 +12,23 @@ use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Services\CustomerLedgerService;
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\Sales\CustomerCheque\Models\CustomerCheque;
 use App\Modules\Sales\CustomerReceipt\DTOs\CustomerReceiptResponseData;
 use App\Modules\Sales\CustomerReceipt\Enums\CustomerReceiptStatus;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoicePayment;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
+use App\Modules\Treasury\Support\PaymentCashBankAccount;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\CurrencyCashRound;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -122,7 +126,7 @@ class CustomerReceiptService
             ->orderBy('invoice_date')
             ->orderBy('invoice_number');
 
-        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+        $this->warehouseService->applyVisibleDocumentConstraint($query);
 
         return $query->get()
             ->map(fn (SalesInvoice $invoice): array => CustomerReceiptResponseData::openInvoice($invoice))
@@ -140,8 +144,10 @@ class CustomerReceiptService
         return DB::transaction(function () use ($data, $userId, $customer): CustomerReceipt {
             $receipt = CustomerReceipt::query()->create([
                 ...$this->headerAttributes($data, null),
+                // Set only for receipts made by a sales invoice's payments (not accepted from the API).
+                ...(isset($data['branch_id']) ? ['branch_id' => (int) $data['branch_id']] : []),
+                ...(isset($data['sales_invoice_id']) ? ['sales_invoice_id' => (string) $data['sales_invoice_id']] : []),
                 'customer_id' => $customer->id,
-                'receipt_number' => SequentialCodeGenerator::next(CustomerReceipt::class, 'receipt_number', 'CR-'),
                 'status' => CustomerReceiptStatus::Draft,
                 'created_by' => $userId,
             ]);
@@ -207,6 +213,7 @@ class CustomerReceiptService
     {
         return DB::transaction(function () use ($receipt, $userId): CustomerReceipt {
             $locked = CustomerReceipt::query()->whereKey($receipt->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'receipt_number', DocumentType::CustomerReceipt, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->payment_date);
             if ($locked->status !== CustomerReceiptStatus::Draft) {
                 $this->fail('Only a draft customer receipt can be posted.', 'CUSTOMER_RECEIPT_NOT_DRAFT');
             }
@@ -215,8 +222,10 @@ class CustomerReceiptService
                 $this->fail('Receipt amount must be greater than zero.', 'CUSTOMER_RECEIPT_AMOUNT_INVALID');
             }
 
-            $this->applyCashRounding($locked);
-            $locked->refresh();
+            if ($locked->sales_invoice_id === null) {
+                $this->applyCashRounding($locked);
+                $locked->refresh();
+            }
             $this->refreshAppliedAmounts($locked);
 
             $allocations = CustomerReceiptAllocation::query()
@@ -224,12 +233,38 @@ class CustomerReceiptService
                 ->orderBy('id')
                 ->get();
 
-            if ($allocations->isEmpty() || ! PaymentAllocation::same($locked->amount, PaymentAllocation::sum($allocations->pluck('amount')->all()))) {
-                $this->fail('Allocations must add up to the receipt amount.', 'CUSTOMER_RECEIPT_ALLOCATION_MISMATCH');
+            // Allocations may be less than the amount: the rest stays on the customer's account as credit.
+            $allocatedSum = PaymentAllocation::sum($allocations->pluck('amount')->all());
+            if (PaymentAllocation::exceeds($allocatedSum, $locked->amount)) {
+                $this->fail('Allocations are more than the receipt amount.', 'CUSTOMER_RECEIPT_ALLOCATION_MISMATCH');
             }
+            $unapplied = PaymentAllocation::subtract($locked->amount, $allocatedSum) ?? '0';
 
-            $this->assertPaymentMethod((int) $locked->payment_method_id, $locked->reference);
+            $method = $this->assertPaymentMethod((int) $locked->payment_method_id, $locked->reference);
+            $isCheque = $method->type === PaymentMethodType::Cheque;
+            if ($isCheque) {
+                if ($this->nullableString($locked->cheque_number) === null || $locked->cheque_due_date === null) {
+                    $this->fail('Enter the cheque number and due date.', 'CUSTOMER_RECEIPT_CHEQUE_DETAILS_REQUIRED');
+                }
+                // The money waits in "Cheques to collect" until the cheque clears into a bank account.
+                $locked->cash_bank_account_id = null;
+            } else {
+                $locked->cheque_number = null;
+                $locked->cheque_bank = null;
+                $locked->cheque_due_date = null;
+                $locked->cash_bank_account_id = PaymentCashBankAccount::resolve(
+                    $locked->cash_bank_account_id,
+                    (int) $locked->payment_method_id,
+                    $locked->branch_id !== null ? (int) $locked->branch_id : null,
+                    (int) $locked->currency_id,
+                    true,
+                );
+            }
+            $locked->save();
             $customer = SalesInvoiceRules::assertCustomer((string) $locked->customer_id);
+            if (PaymentAllocation::isPositive($unapplied) && $customer->is_system) {
+                $this->fail('A walk-in customer cannot keep credit. Allocate the whole amount.', 'CUSTOMER_RECEIPT_WALK_IN_NO_CREDIT');
+            }
 
             $invoiceIds = $allocations->pluck('sales_invoice_id')->map(fn ($id): string => (string) $id)->all();
             $invoices = SalesInvoice::query()
@@ -249,7 +284,7 @@ class CustomerReceiptService
                     $this->fail('An allocated invoice does not match this receipt.', 'CUSTOMER_RECEIPT_INVOICE_MISMATCH');
                 }
 
-                $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+                $this->warehouseService->assertDocumentVisible($invoice);
                 $this->assertInvoiceOpenFor($locked, $invoice, (string) $allocation->applied_amount);
 
                 $paid = PaymentAllocation::add($invoice->paid_total, $allocation->applied_amount);
@@ -270,6 +305,17 @@ class CustomerReceiptService
                     $locked->payment_date->toDateString(),
                 );
             }
+            if (PaymentAllocation::isPositive($unapplied)) {
+                $this->customerLedgerService->postEntry(
+                    $customer,
+                    (int) $locked->currency_id,
+                    '0',
+                    $unapplied,
+                    LedgerReferenceType::Payment,
+                    (string) $locked->id,
+                    $locked->payment_date->toDateString(),
+                );
+            }
 
             $this->journalPostingService->customerReceipt($locked, $userId);
 
@@ -279,16 +325,46 @@ class CustomerReceiptService
                 'posted_at' => now(),
             ]);
 
+            if ($isCheque) {
+                CustomerCheque::query()->create([
+                    'customer_receipt_id' => $locked->id,
+                    'customer_id' => $locked->customer_id,
+                    'branch_id' => $locked->branch_id,
+                    'cheque_number' => (string) $locked->cheque_number,
+                    'bank_name' => $locked->cheque_bank,
+                    'due_date' => $locked->cheque_due_date,
+                    'amount' => $locked->amount,
+                    'currency_id' => $locked->currency_id,
+                    'exchange_rate' => $locked->exchange_rate,
+                    'status' => CustomerCheque::STATUS_IN_HAND,
+                    'updated_by' => $userId,
+                ]);
+            }
+
             return $this->find($locked->id);
         });
     }
 
-    public function reverse(CustomerReceipt $receipt, ?string $userId = null): CustomerReceipt
+    /**
+     * @param  bool  $fromInvoice  true when the sales invoice that made this receipt is being reversed
+     */
+    /**
+     * @param  bool  $fromInvoice  true when the sales invoice that made this receipt is being reversed
+     * @param  bool  $fromCheque  true when the receipt's cheque bounced (allowed for invoice receipts too)
+     */
+    public function reverse(CustomerReceipt $receipt, ?string $userId = null, bool $fromInvoice = false, bool $fromCheque = false): CustomerReceipt
     {
-        return DB::transaction(function () use ($receipt, $userId): CustomerReceipt {
+        return DB::transaction(function () use ($receipt, $userId, $fromInvoice, $fromCheque): CustomerReceipt {
             $locked = CustomerReceipt::query()->whereKey($receipt->id)->lockForUpdate()->firstOrFail();
+            if ($locked->sales_invoice_id !== null && ! $fromInvoice && ! $fromCheque) {
+                $this->fail('This receipt was taken with its sales invoice. Reverse the invoice instead.', 'CUSTOMER_RECEIPT_MANAGED_BY_INVOICE');
+            }
             if ($locked->status !== CustomerReceiptStatus::Posted) {
                 $this->fail('Only a posted customer receipt can be reversed.', 'CUSTOMER_RECEIPT_NOT_POSTED');
+            }
+            $cheque = CustomerCheque::query()->where('customer_receipt_id', $locked->id)->lockForUpdate()->first();
+            if ($cheque !== null && $cheque->status === CustomerCheque::STATUS_CLEARED && ! $fromCheque) {
+                $this->fail('This cheque has cleared. Mark it bounced instead.', 'CUSTOMER_RECEIPT_CHEQUE_CLEARED');
             }
 
             $allocations = CustomerReceiptAllocation::query()
@@ -310,7 +386,7 @@ class CustomerReceiptService
                     $this->fail('An allocated invoice is no longer open.', 'CUSTOMER_RECEIPT_INVOICE_NOT_OPEN');
                 }
 
-                $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+                $this->warehouseService->assertDocumentVisible($invoice);
                 $paid = PaymentAllocation::subtract($invoice->paid_total, $allocation->applied_amount);
                 if ($paid === null) {
                     $this->fail(
@@ -337,13 +413,219 @@ class CustomerReceiptService
                     now()->toDateString(),
                 );
             }
+            // Credit still on the receipt goes back off the customer's account.
+            $unapplied = PaymentAllocation::subtract($locked->amount, PaymentAllocation::sum($allocations->pluck('amount')->all())) ?? '0';
+            if (PaymentAllocation::isPositive($unapplied)) {
+                $this->customerLedgerService->postEntry(
+                    $customer,
+                    (int) $locked->currency_id,
+                    $unapplied,
+                    '0',
+                    LedgerReferenceType::Payment,
+                    (string) $locked->id,
+                    now()->toDateString(),
+                );
+            }
 
+            foreach ($allocations->where('applied_later', true) as $later) {
+                $this->journalPostingService->reverse(JournalPostingService::CUSTOMER_CREDIT_APPLICATION, (string) $later->id, $userId);
+            }
             $this->journalPostingService->reverse(CustomerReceipt::REFERENCE_TYPE, (string) $locked->id, $userId);
 
             $locked->update(['status' => CustomerReceiptStatus::Reversed]);
+            if ($cheque !== null && $cheque->status === CustomerCheque::STATUS_IN_HAND && ! $fromCheque) {
+                // Reversed before it cleared (e.g. the invoice was reversed): the cheque is given back.
+                $cheque->update(['status' => CustomerCheque::STATUS_CANCELLED, 'updated_by' => $userId]);
+            }
 
             return $this->find($locked->id);
         });
+    }
+
+    /**
+     * Applies credit left on a posted receipt to open invoices of the same customer.
+     * Each row: sales_invoice_id, amount (receipt currency).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    public function applyCredit(CustomerReceipt $receipt, array $rows, ?string $userId, ?string $date = null): CustomerReceipt
+    {
+        return DB::transaction(function () use ($receipt, $rows, $userId, $date): CustomerReceipt {
+            $locked = CustomerReceipt::query()->whereKey($receipt->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== CustomerReceiptStatus::Posted) {
+                $this->fail('Only a posted receipt has credit to apply.', 'CUSTOMER_RECEIPT_NOT_POSTED');
+            }
+            $unapplied = $locked->unappliedAmount();
+            $total = PaymentAllocation::sum(array_map(fn (array $r): string => PaymentAllocation::normalize($r['amount'] ?? 0), $rows));
+            if ($rows === [] || ! PaymentAllocation::isPositive($total)) {
+                $this->fail('Choose at least one invoice and an amount.', 'CUSTOMER_RECEIPT_INVOICE_NOT_OPEN');
+            }
+            if (PaymentAllocation::exceeds($total, $unapplied)) {
+                $this->fail('That is more than the credit left on this receipt.', 'CUSTOMER_RECEIPT_CREDIT_EXCEEDED');
+            }
+
+            $customer = Customer::query()->findOrFail($locked->customer_id);
+            $day = $date ?? now()->toDateString();
+            foreach ($rows as $row) {
+                $amount = PaymentAllocation::normalize($row['amount'] ?? 0);
+                if (! PaymentAllocation::isPositive($amount)) {
+                    continue;
+                }
+                $invoice = SalesInvoice::query()->whereKey((string) ($row['sales_invoice_id'] ?? ''))->lockForUpdate()->first();
+                if (! $invoice instanceof SalesInvoice) {
+                    $this->fail('An allocated invoice does not match this receipt.', 'CUSTOMER_RECEIPT_INVOICE_MISMATCH');
+                }
+                $this->warehouseService->assertDocumentVisible($invoice);
+                $settlement = $this->appliedSettlement($locked, $invoice, $amount);
+                $this->assertInvoiceOpenFor($locked, $invoice, $settlement['applied_amount']);
+
+                $allocation = CustomerReceiptAllocation::query()->create([
+                    'customer_receipt_id' => $locked->id,
+                    'sales_invoice_id' => $invoice->id,
+                    'amount' => $amount,
+                    ...$settlement,
+                    'applied_later' => true,
+                    'applied_at' => now(),
+                ]);
+
+                $paid = PaymentAllocation::add($invoice->paid_total, $settlement['applied_amount']);
+                $invoice->update([
+                    'paid_total' => $paid,
+                    'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid, $invoice->credited_total),
+                ]);
+
+                // The customer's balance moves from the receipt currency to the invoice currency.
+                if ((int) $invoice->currency_id !== (int) $locked->currency_id || ! PaymentAllocation::same($amount, $settlement['applied_amount'])) {
+                    $this->customerLedgerService->postEntry($customer, (int) $locked->currency_id, $amount, '0', LedgerReferenceType::Payment, (string) $locked->id, $day);
+                    $this->customerLedgerService->postEntry($customer, (int) $invoice->currency_id, '0', $settlement['applied_amount'], LedgerReferenceType::Payment, (string) $locked->id, $day);
+                }
+
+                $this->journalPostingService->customerCreditApplication($allocation, $locked, $invoice, $userId, $day);
+            }
+
+            return $this->find($locked->id);
+        });
+    }
+
+    /**
+     * Takes back customer credit that was applied to an invoice (the invoice is being reversed): the amount
+     * returns to the receipt as credit and the invoice is open again by that much.
+     */
+    public function unapplyCredit(CustomerReceiptAllocation $allocation, ?string $userId): void
+    {
+        DB::transaction(function () use ($allocation, $userId): void {
+            $locked = CustomerReceiptAllocation::query()->whereKey($allocation->id)->lockForUpdate()->firstOrFail();
+            if (! $locked->applied_later) {
+                $this->fail('Only credit applied later can be taken back.', 'CUSTOMER_RECEIPT_ALLOCATION_MISMATCH');
+            }
+            $receipt = CustomerReceipt::query()->findOrFail($locked->customer_receipt_id);
+            $invoice = SalesInvoice::query()->whereKey($locked->sales_invoice_id)->lockForUpdate()->firstOrFail();
+            $day = now()->toDateString();
+
+            $this->journalPostingService->reverse(JournalPostingService::CUSTOMER_CREDIT_APPLICATION, (string) $locked->id, $userId, $day);
+            if ((int) $invoice->currency_id !== (int) $receipt->currency_id || ! PaymentAllocation::same($locked->amount, $locked->applied_amount)) {
+                $customer = Customer::query()->findOrFail($receipt->customer_id);
+                $this->customerLedgerService->postEntry($customer, (int) $invoice->currency_id, (string) $locked->applied_amount, '0', LedgerReferenceType::Payment, (string) $receipt->id, $day);
+                $this->customerLedgerService->postEntry($customer, (int) $receipt->currency_id, '0', (string) $locked->amount, LedgerReferenceType::Payment, (string) $receipt->id, $day);
+            }
+
+            $paid = PaymentAllocation::subtract($invoice->paid_total, $locked->applied_amount) ?? '0';
+            $invoice->update([
+                'paid_total' => $paid,
+                'net_to_pay' => PaymentAllocation::netToPay($invoice->grand_total, $paid, $invoice->credited_total),
+            ]);
+            $locked->delete();
+        });
+    }
+
+    /**
+     * Posted receipts of a customer with credit left, oldest first. `in_invoice_currency` is the credit's
+     * value in `$currencyId` at today's rate (null when no currency is given).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function availableCredit(string $customerId, ?int $currencyId = null): array
+    {
+        $receipts = CustomerReceipt::query()
+            ->with('currency:id,code,symbol')
+            ->where('customer_id', $customerId)
+            ->where('status', CustomerReceiptStatus::Posted->value)
+            ->orderBy('payment_date')
+            ->orderBy('id')
+            ->get();
+
+        $rows = [];
+        foreach ($receipts as $receipt) {
+            $unapplied = $receipt->unappliedAmount();
+            if (! PaymentAllocation::isPositive($unapplied)) {
+                continue;
+            }
+            $rows[] = [
+                'receipt_id' => (string) $receipt->id,
+                'receipt_number' => $receipt->receipt_number,
+                'payment_date' => $receipt->payment_date?->toDateString(),
+                'currency_id' => (int) $receipt->currency_id,
+                'currency_code' => $receipt->currency?->code,
+                'unapplied_amount' => $unapplied,
+                'in_invoice_currency' => $currencyId !== null ? $this->toCurrency($receipt, $unapplied, $currencyId) : null,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Applies the customer's credit to an invoice, oldest receipts first, up to `$invoiceAmount` (invoice currency).
+     * Returns what was applied, in the invoice currency.
+     */
+    public function applyCreditToInvoice(SalesInvoice $invoice, string $invoiceAmount, ?string $userId, ?string $date = null): string
+    {
+        $left = PaymentAllocation::normalize($invoiceAmount);
+        $applied = '0';
+        foreach ($this->availableCredit((string) $invoice->customer_id, (int) $invoice->currency_id) as $credit) {
+            if (! PaymentAllocation::isPositive($left)) {
+                break;
+            }
+            $receipt = CustomerReceipt::query()->findOrFail($credit['receipt_id']);
+            $worth = (string) $credit['in_invoice_currency'];
+            $take = PaymentAllocation::exceeds($worth, $left) ? $left : $worth;
+            // Receipt-currency amount worth `$take` in the invoice currency (all of it when it covers the rest).
+            $receiptAmount = PaymentAllocation::same($take, $worth)
+                ? (string) $credit['unapplied_amount']
+                : $this->fromCurrency($receipt, $take, (int) $invoice->currency_id);
+            if (PaymentAllocation::exceeds($receiptAmount, (string) $credit['unapplied_amount'])) {
+                $receiptAmount = (string) $credit['unapplied_amount'];
+            }
+            $this->applyCredit($receipt, [['sales_invoice_id' => (string) $invoice->id, 'amount' => $receiptAmount]], $userId, $date);
+            $allocation = CustomerReceiptAllocation::query()->where('customer_receipt_id', $receipt->id)->where('sales_invoice_id', $invoice->id)->orderByDesc('id')->first();
+            $done = (string) ($allocation?->applied_amount ?? $take);
+            $applied = PaymentAllocation::add($applied, $done);
+            $left = PaymentAllocation::subtract($left, $done) ?? '0';
+        }
+
+        return $applied;
+    }
+
+    /**
+     * Receipt-currency amount in another currency (today's rate for that currency, receipt rate for its own).
+     */
+    private function toCurrency(CustomerReceipt $receipt, string $amount, int $currencyId): string
+    {
+        $same = $currencyId === (int) $receipt->currency_id;
+        $targetRate = $same ? (string) $receipt->exchange_rate : ExchangeRateSnapshot::resolve($this->exchangeRateService, $currencyId, null, 'CUSTOMER_RECEIPT');
+
+        return PaymentAllocation::toInvoiceCurrency($amount, (string) $receipt->exchange_rate, $targetRate, $same);
+    }
+
+    /**
+     * Amount in `$currencyId` expressed in the receipt currency (inverse of toCurrency).
+     */
+    private function fromCurrency(CustomerReceipt $receipt, string $amount, int $currencyId): string
+    {
+        $same = $currencyId === (int) $receipt->currency_id;
+        $sourceRate = $same ? (string) $receipt->exchange_rate : ExchangeRateSnapshot::resolve($this->exchangeRateService, $currencyId, null, 'CUSTOMER_RECEIPT');
+
+        return PaymentAllocation::toInvoiceCurrency($amount, $sourceRate, (string) $receipt->exchange_rate, $same);
     }
 
     /**
@@ -367,8 +649,49 @@ class CustomerReceiptService
             'payment_date' => Carbon::parse((string) $data['payment_date'])->toDateString(),
             'amount' => PaymentAllocation::normalize($data['amount']),
             'reference' => $this->nullableString($data['reference'] ?? null),
+            'cash_bank_account_id' => array_key_exists('cash_bank_account_id', $data)
+                ? ($data['cash_bank_account_id'] !== null && $data['cash_bank_account_id'] !== '' ? (int) $data['cash_bank_account_id'] : null)
+                : $existing?->cash_bank_account_id,
             'notes' => $this->nullableString($data['notes'] ?? null),
+            'cheque_number' => $this->nullableString($data['cheque_number'] ?? null),
+            'cheque_bank' => $this->nullableString($data['cheque_bank'] ?? null),
+            'cheque_due_date' => isset($data['cheque_due_date']) && $data['cheque_due_date'] !== ''
+                ? Carbon::parse((string) $data['cheque_due_date'])->toDateString()
+                : null,
         ];
+    }
+
+    /**
+     * A payment taken when a sales invoice is posted becomes a posted receipt allocated to that invoice,
+     * in the invoice's branch, currency and rate.
+     */
+    public function postForInvoicePayment(SalesInvoice $invoice, SalesInvoicePayment $payment, ?string $userId, ?string $paymentDate = null, ?string $allocate = null): CustomerReceipt
+    {
+        // `$allocate` (payment currency) is how much goes to the invoice; the rest stays as customer credit.
+        $allocation = $allocate ?? (string) $payment->amount;
+        $receipt = $this->create([
+            'customer_id' => (string) $invoice->customer_id,
+            // The receipt is in the currency the money came in; allocation converts it to the invoice currency.
+            'currency_id' => $payment->currency_id !== null ? (int) $payment->currency_id : (int) $invoice->currency_id,
+            'exchange_rate' => $payment->currency_id !== null && $payment->exchange_rate !== null
+                ? (string) $payment->exchange_rate
+                : (string) $invoice->exchange_rate,
+            'payment_method_id' => (int) $payment->payment_method_id,
+            'cash_bank_account_id' => $payment->cash_bank_account_id,
+            'payment_date' => $paymentDate ?? $invoice->invoice_date->toDateString(),
+            'amount' => (string) $payment->amount,
+            'reference' => $payment->reference,
+            'cheque_number' => $payment->cheque_number,
+            'cheque_bank' => $payment->cheque_bank,
+            'cheque_due_date' => $payment->cheque_due_date?->toDateString(),
+            'branch_id' => (int) $invoice->branch_id,
+            'sales_invoice_id' => (string) $invoice->id,
+            'allocations' => PaymentAllocation::isPositive($allocation)
+                ? [['sales_invoice_id' => (string) $invoice->id, 'amount' => $allocation]]
+                : [],
+        ], $userId);
+
+        return $this->post($receipt, $userId);
     }
 
     /**
@@ -402,7 +725,7 @@ class CustomerReceiptService
                 $this->fail('An allocated invoice does not match this receipt.', 'CUSTOMER_RECEIPT_INVOICE_MISMATCH');
             }
             $this->assertInvoiceBelongs($receipt, $invoice);
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
             $payload[$index] += $this->appliedSettlement($receipt, $invoice, $row['amount']);
         }
 
@@ -457,6 +780,16 @@ class CustomerReceiptService
             ->where('customer_receipt_id', $receipt->id)
             ->orderBy('id')
             ->get();
+        // Part of the receipt stays as customer credit: only the header moves, as long as it still covers the allocations.
+        $allocatedSum = PaymentAllocation::sum($allocations->pluck('amount')->all());
+        if (! PaymentAllocation::same($allocatedSum, $receipt->amount)) {
+            if (PaymentAllocation::exceeds($allocatedSum, $rounded)) {
+                $this->fail('Cash rounding cannot be applied to these allocations.', 'CUSTOMER_RECEIPT_ALLOCATION_MISMATCH');
+            }
+            $receipt->update(['amount' => $rounded]);
+
+            return;
+        }
         $nextAmounts = PaymentAllocation::amountsForRoundedHeader(
             $allocations->map(fn (CustomerReceiptAllocation $row): string => (string) $row->amount)->all(),
             $rounded,
@@ -541,7 +874,7 @@ class CustomerReceiptService
         }
     }
 
-    private function assertPaymentMethod(int $paymentMethodId, mixed $reference): void
+    private function assertPaymentMethod(int $paymentMethodId, mixed $reference): PaymentMethod
     {
         $method = PaymentMethod::query()->find($paymentMethodId);
         if (! $method instanceof PaymentMethod || ! $method->is_active || $method->type === PaymentMethodType::Credit) {
@@ -551,6 +884,8 @@ class CustomerReceiptService
         if ($method->requires_reference && $this->nullableString($reference) === null) {
             $this->fail('A reference is required for this payment method.', 'PAYMENT_REFERENCE_REQUIRED');
         }
+
+        return $method;
     }
 
     private function lockDraft(CustomerReceipt $receipt): CustomerReceipt

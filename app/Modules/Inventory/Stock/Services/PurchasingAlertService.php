@@ -11,6 +11,7 @@ use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Support\ReplenishmentAlertRules;
 use App\Modules\Supplier\Models\SupplierItem;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -294,6 +295,15 @@ class PurchasingAlertService
                         ->on('in_transit_in.to_warehouse_id', '=', 'item_warehouse_replenishments.warehouse_id');
                 }
             )
+            ->leftJoinSub(
+                app(StockReservationService::class)->reservedQuery(),
+                'reserved',
+                function ($join): void {
+                    $join->on('reserved.item_id', '=', 'item_warehouse_replenishments.item_id')
+                        ->on('reserved.warehouse_id', '=', 'item_warehouse_replenishments.warehouse_id');
+                }
+            )
+            ->addSelect(DB::raw('COALESCE(reserved.reserved_qty, 0) as reserved_quantity'))
             ->addSelect(DB::raw('COALESCE(stock_balances.quantity, 0) as on_hand_quantity'))
             ->addSelect(DB::raw('COALESCE(open_pos.quantity, 0) as on_order_quantity'))
             ->addSelect(DB::raw('COALESCE(in_transit_in.quantity, 0) as in_transit_in_quantity'))
@@ -319,11 +329,14 @@ class PurchasingAlertService
         $onHand = (float) $row->on_hand_quantity;
         $onOrder = (float) ($row->on_order_quantity ?? 0);
         $inTransitIn = (float) ($row->in_transit_in_quantity ?? 0);
-        $projected = $onHand + $onOrder + $inTransitIn;
+        $projected = Decimal::sub(
+            Decimal::add(Decimal::add($row->on_hand_quantity, $row->on_order_quantity ?? 0), $row->in_transit_in_quantity ?? 0),
+            $row->reserved_quantity ?? 0,
+        );
         $status = ReplenishmentAlertRules::status(
             $projected,
-            (float) $row->reorder_point_qty,
-            (float) $row->safety_stock_qty,
+            $row->reorder_point_qty,
+            $row->safety_stock_qty,
         );
 
         return PurchasingAlertResponseData::fromRow(
@@ -338,7 +351,7 @@ class PurchasingAlertService
 
     private static function availableSql(): string
     {
-        return '(COALESCE(stock_balances.quantity, 0) + COALESCE(open_pos.quantity, 0) + COALESCE(in_transit_in.quantity, 0))';
+        return '(COALESCE(stock_balances.quantity, 0) + COALESCE(open_pos.quantity, 0) + COALESCE(in_transit_in.quantity, 0) - COALESCE(reserved.reserved_qty, 0))';
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockAdjustmentReason;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
 
 final class StockAdjustmentRules
 {
@@ -55,9 +56,9 @@ final class StockAdjustmentRules
         }
     }
 
-    public static function assertQuantityMatchesReason(StockAdjustmentReason $reason, float $quantity): void
+    public static function assertQuantityMatchesReason(StockAdjustmentReason $reason, mixed $quantity): void
     {
-        if ($quantity == 0.0) {
+        if (Decimal::isZero($quantity)) {
             abort(422, 'Adjustment quantity cannot be zero.', [
                 'X-Error-Code' => 'STOCK_ADJUSTMENT_LINE_INVALID_QUANTITY',
             ]);

@@ -21,6 +21,8 @@ readonly class BranchData
         public ?string $managerId,
         public bool $isActive,
         public bool $isDefault,
+        public ?int $priceListId = null,
+        public bool $priceListProvided = false,
     ) {}
 
     public static function fromStoreRequest(StoreBranchRequest $request): self
@@ -52,6 +54,8 @@ readonly class BranchData
                 : null,
             isActive: (bool) $data['is_active'],
             isDefault: (bool) $data['is_default'],
+            priceListId: isset($data['price_list_id']) ? (int) $data['price_list_id'] : null,
+            priceListProvided: array_key_exists('price_list_id', $data),
         );
     }
 
@@ -82,23 +86,11 @@ readonly class BranchData
     }
 
     /**
-     * @return array{
-     *     name:string,
-     *     shortcut_name:string,
-     *     address:?string,
-     *     phone:?string,
-     *     email:?string,
-     *     timezone:?string,
-     *     opening_time:?string,
-     *     closing_time:?string,
-     *     manager_id:?string,
-     *     is_active:bool,
-     *     is_default:bool
-     * }
+     * @return array<string, mixed>
      */
     public function toArray(): array
     {
-        return [
+        $out = [
             'name' => $this->name,
             'shortcut_name' => $this->shortcutName,
             'address' => $this->address,
@@ -111,5 +103,10 @@ readonly class BranchData
             'is_active' => $this->isActive,
             'is_default' => $this->isDefault,
         ];
+        if ($this->priceListProvided) {
+            $out['price_list_id'] = $this->priceListId;
+        }
+
+        return $out;
     }
 }

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->decimal('theoretical_quantity', 14, 6);
             $table->decimal('counted_quantity', 14, 6);
             $table->decimal('variance_quantity', 14, 6);
-            $table->decimal('unit_cost', 14, 4)->nullable();
+            $table->decimal('unit_cost', 20, 6)->nullable();
             $table->foreignId('lot_id')->nullable()->constrained('inventory_lots')->restrictOnDelete();
             $table->text('notes')->nullable();
             $table->timestamps();

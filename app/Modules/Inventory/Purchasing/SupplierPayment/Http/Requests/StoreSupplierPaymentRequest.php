@@ -30,6 +30,8 @@ class StoreSupplierPaymentRequest extends FormRequest
             'currency_id' => ['required', 'integer', 'exists:currencies,id'],
             'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'payment_method_id' => ['required', 'integer', 'exists:payment_methods,id'],
+            // Empty: the payment method's linked account for this currency and branch, filled at post.
+            'cash_bank_account_id' => ['nullable', 'integer', 'exists:cash_bank_accounts,id'],
             'payment_date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'reference' => ['nullable', 'string', 'max:128'],

@@ -18,7 +18,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::query()->firstOrCreate(
+        $admin = User::query()->firstOrCreate(
             ['email' => 'test@example.com'],
             [
                 'name' => 'Test User',
@@ -26,6 +26,8 @@ class DatabaseSeeder extends Seeder
                 'is_active' => true,
             ]
         );
+        // Platform administrator for the central API (not mass-assignable on purpose).
+        $admin->forceFill(['is_super_admin' => true])->save();
 
         $this->call([
             ModuleSeeder::class,

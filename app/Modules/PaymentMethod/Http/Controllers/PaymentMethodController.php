@@ -51,6 +51,9 @@ class PaymentMethodController extends Controller
         $paymentMethod = $this->paymentMethodService->create(
             PaymentMethodData::fromStoreRequest($request)
         );
+        if ($request->has('cash_bank_account_ids')) {
+            $paymentMethod = $this->paymentMethodService->syncCashBankAccounts($paymentMethod, $request->validated('cash_bank_account_ids') ?? []);
+        }
 
         return ApiResponse::created(
             PaymentMethodResponseData::fromModel($paymentMethod)->toArray(),
@@ -60,7 +63,7 @@ class PaymentMethodController extends Controller
 
     public function show(PaymentMethod $paymentMethod): JsonResponse
     {
-        $paymentMethod->loadMissing(['currency:id,code,name', 'account:id,code,name']);
+        $paymentMethod->loadMissing(PaymentMethodService::RELATIONS);
 
         return ApiResponse::success(
             PaymentMethodResponseData::fromModel($paymentMethod)->toArray(),
@@ -74,6 +77,9 @@ class PaymentMethodController extends Controller
             $paymentMethod,
             PaymentMethodData::fromUpdateRequest($request)
         );
+        if ($request->has('cash_bank_account_ids')) {
+            $updated = $this->paymentMethodService->syncCashBankAccounts($updated, $request->validated('cash_bank_account_ids') ?? []);
+        }
 
         return ApiResponse::success(
             PaymentMethodResponseData::fromModel($updated)->toArray(),

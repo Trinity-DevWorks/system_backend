@@ -31,12 +31,12 @@ final class ExchangeRateSnapshot
         }
 
         if ($currencyId === (int) $primary->id) {
-            return self::format(1.0);
+            return self::format('1');
         }
 
         if ($provided !== null && $provided !== '') {
-            $rate = (float) $provided;
-            if ($rate <= 0) {
+            $rate = Decimal::of($provided);
+            if (! Decimal::isPositive($rate)) {
                 abort(422, 'Exchange rate must be greater than zero.', ['X-Error-Code' => $codePrefix.'_EXCHANGE_RATE_INVALID']);
             }
 
@@ -49,7 +49,7 @@ final class ExchangeRateSnapshot
             abort(422, 'Enter an exchange rate for this currency.', ['X-Error-Code' => $codePrefix.'_EXCHANGE_RATE_REQUIRED']);
         }
 
-        if ($rate <= 0) {
+        if (! Decimal::isPositive($rate)) {
             abort(422, 'Exchange rate must be greater than zero.', ['X-Error-Code' => $codePrefix.'_EXCHANGE_RATE_INVALID']);
         }
 
@@ -68,8 +68,8 @@ final class ExchangeRateSnapshot
         return bcdiv($amount, $rate, $scale);
     }
 
-    private static function format(float $rate): string
+    private static function format(string $rate): string
     {
-        return number_format($rate, self::SCALE, '.', '');
+        return Decimal::round($rate, self::SCALE);
     }
 }

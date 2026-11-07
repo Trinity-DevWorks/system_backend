@@ -71,6 +71,7 @@ class BootstrapTenantRbac implements ShouldQueue
                 'can_export' => true,
                 'can_reverse' => true,
                 'can_reopen' => true,
+                'can_print' => true,
             ];
 
             $permissions = Permission::query()->get();

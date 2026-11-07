@@ -12,15 +12,18 @@ use App\Modules\Inventory\Purchasing\Http\Requests\StorePurchaseInvoiceRequest;
 use App\Modules\Inventory\Purchasing\Http\Requests\SyncPurchaseInvoiceLinesRequest;
 use App\Modules\Inventory\Purchasing\Http\Requests\UpdatePurchaseInvoiceRequest;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
+use App\Modules\Inventory\Purchasing\Services\PurchaseInvoicePdfService;
 use App\Modules\Inventory\Purchasing\Services\PurchaseInvoiceService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class PurchaseInvoiceController extends Controller
 {
     public function __construct(
         private readonly PurchaseInvoiceService $purchaseInvoiceService,
+        private readonly PurchaseInvoicePdfService $purchaseInvoicePdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -119,5 +122,15 @@ class PurchaseInvoiceController extends Controller
             PurchaseInvoiceResponseData::fromModel($invoice),
             'Purchase invoice reversed successfully.'
         );
+    }
+
+    public function pdf(Request $request, PurchaseInvoice $purchaseInvoice): Response
+    {
+        $pdf = $this->purchaseInvoicePdfService->render(
+            $purchaseInvoice,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->purchaseInvoicePdfService->downloadFilename($purchaseInvoice));
     }
 }

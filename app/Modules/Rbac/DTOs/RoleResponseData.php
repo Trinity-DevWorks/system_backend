@@ -16,6 +16,7 @@ readonly class RoleResponseData
         public string $name,
         public ?string $description,
         public bool $isActive,
+        public ?string $maxDiscountPercent,
         public ?array $permissions,
         public string $createdAt,
         public string $updatedAt,
@@ -39,6 +40,7 @@ readonly class RoleResponseData
                     'can_export' => (bool) $p->pivot->can_export,
                     'can_reverse' => (bool) $p->pivot->can_reverse,
                     'can_reopen' => (bool) $p->pivot->can_reopen,
+                    'can_print' => (bool) $p->pivot->can_print,
                 ];
             })->values()->all();
         }
@@ -48,6 +50,7 @@ readonly class RoleResponseData
             name: $role->name,
             description: $role->description,
             isActive: (bool) $role->is_active,
+            maxDiscountPercent: $role->max_discount_percent !== null ? (string) $role->max_discount_percent : null,
             permissions: $perms,
             createdAt: (string) $role->created_at,
             updatedAt: (string) $role->updated_at,
@@ -76,6 +79,7 @@ readonly class RoleResponseData
             'name' => $this->name,
             'description' => $this->description,
             'is_active' => $this->isActive,
+            'max_discount_percent' => $this->maxDiscountPercent,
             'permissions' => $this->permissions,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,

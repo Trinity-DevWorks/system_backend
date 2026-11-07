@@ -11,6 +11,8 @@ enum SalesOrderStatus: string
     case PartiallyInvoiced = 'partially_invoiced';
     case Invoiced = 'invoiced';
     case Cancelled = 'cancelled';
+    /** Confirmed order stopped early: the not-yet-invoiced remainder is no longer reserved. */
+    case Closed = 'closed';
 
     /**
      * @return list<string>

@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Purchasing\Services;
 use App\Modules\Inventory\Purchasing\DTOs\PurchaseOrderResponseData;
 use App\Modules\Inventory\Stock\Services\PurchasingAlertService;
 use App\Modules\Supplier\Models\Supplier;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderFromAlertsService
@@ -56,8 +57,8 @@ class PurchaseOrderFromAlertsService
                 continue;
             }
 
-            $quantity = (float) ($alert['suggested_order_qty'] ?? 0);
-            if ($quantity <= 0) {
+            $quantity = Decimal::round($alert['suggested_order_qty'] ?? 0, 6);
+            if (! Decimal::isPositive($quantity)) {
                 $skipped[] = $this->skippedRow($alert, 'zero_quantity');
 
                 continue;
@@ -183,18 +184,13 @@ class PurchaseOrderFromAlertsService
                 'item_id' => $itemId,
                 'item_code' => $alert['item']['item_code'] ?? null,
                 'item_name' => $alert['item']['name'] ?? null,
-                'quantity' => number_format($row['quantity'], 6, '.', ''),
+                'quantity' => Decimal::round($row['quantity'], 6),
                 'unit_price' => $unitPrice,
             ];
 
             if ($lineIndex !== null) {
-                $existingQty = (float) $grouped[$groupKey]['lines'][$lineIndex]['quantity'];
-                $grouped[$groupKey]['lines'][$lineIndex]['quantity'] = number_format(
-                    $existingQty + $row['quantity'],
-                    6,
-                    '.',
-                    '',
-                );
+                $existingQty = $grouped[$groupKey]['lines'][$lineIndex]['quantity'];
+                $grouped[$groupKey]['lines'][$lineIndex]['quantity'] = Decimal::round(Decimal::add($existingQty, $row['quantity']), 6);
             } else {
                 $grouped[$groupKey]['lines'][] = $linePayload;
             }

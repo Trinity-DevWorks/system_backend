@@ -14,10 +14,8 @@ return new class extends Migration
             $table->id();
             $table->foreignUuid('supplier_id')->constrained('suppliers')->cascadeOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
-            /** Snapshot / policy; live AP balance for the currency comes from the ledger */
-            $table->decimal('opening_balance', 20, 4)->default(0);
-            /** As-of date for the opening balance posting (ledger transaction_date) */
-            $table->date('opening_date')->nullable();
+            // Credit policy per currency. The live balance comes from the ledger; old open balances
+            // are opening invoices / opening credits.
             $table->decimal('credit_limit', 20, 4)->default(0);
             $table->timestamps();
 

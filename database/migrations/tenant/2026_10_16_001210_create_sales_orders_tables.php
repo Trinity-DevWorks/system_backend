@@ -12,6 +12,8 @@ return new class extends Migration
     {
         Schema::create('sales_orders', function (Blueprint $table) {
             $table->uuid('id')->primary();
+            // Issuing branch, frozen once the document leaves draft (see docs/printing-plan.md D3).
+            $table->foreignId('branch_id')->index()->constrained('branches')->restrictOnDelete();
             $table->string('order_number', 32)->nullable()->unique();
             $table->foreignUuid('customer_id')->constrained('customers')->restrictOnDelete();
             $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
@@ -25,6 +27,12 @@ return new class extends Migration
             $table->decimal('exchange_rate', 24, 12)->default(1);
             $table->decimal('subtotal', 20, 4)->default(0);
             $table->decimal('discount_total', 20, 4)->default(0);
+            // Whole-bill discount (percent or amount), spread over the lines before tax.
+            $table->string('header_discount_type', 8)->nullable();
+            $table->decimal('header_discount_value', 20, 4)->default(0);
+            // Who approved a discount above the poster's limit (manager login at the counter).
+            $table->foreignUuid('discount_approved_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('discount_approved_at')->nullable();
             $table->decimal('tax_total', 20, 4)->default(0);
             $table->decimal('grand_total', 20, 4)->default(0);
             $table->text('notes')->nullable();
@@ -50,10 +58,13 @@ return new class extends Migration
             $table->decimal('quantity', 14, 6);
             $table->decimal('base_quantity', 14, 6);
             $table->decimal('invoiced_base_quantity', 14, 6)->default(0);
+            $table->decimal('delivered_base_quantity', 14, 6)->default(0);
             $table->decimal('conversion_factor', 14, 6)->default(1);
-            $table->decimal('unit_price', 14, 4)->default(0);
+            $table->decimal('unit_price', 20, 6)->default(0);
             $table->decimal('discount_percent', 8, 4)->default(0);
             $table->decimal('discount_amount', 20, 4)->default(0);
+            // This line's share of the whole-bill discount (already inside discount_amount).
+            $table->decimal('header_discount_amount', 20, 4)->default(0);
             $table->decimal('tax_rate', 8, 4)->default(0);
             $table->decimal('line_subtotal', 20, 4)->default(0);
             $table->decimal('tax_amount', 20, 4)->default(0);
@@ -69,10 +80,26 @@ return new class extends Migration
         Schema::table('sales_quotations', function (Blueprint $table) {
             $table->foreignUuid('sales_order_id')->nullable()->after('created_by')->constrained('sales_orders')->restrictOnDelete();
         });
+
+        Schema::table('sales_invoices', function (Blueprint $table) {
+            $table->foreignUuid('sales_order_id')->nullable()->after('customer_id')->constrained('sales_orders')->restrictOnDelete();
+            $table->index('sales_order_id');
+        });
+
+        Schema::table('sales_invoice_lines', function (Blueprint $table) {
+            $table->foreignId('sales_order_line_id')->nullable()->after('sales_invoice_id')->constrained('sales_order_lines')->restrictOnDelete();
+            $table->index('sales_order_line_id');
+        });
     }
 
     public function down(): void
     {
+        Schema::table('sales_invoice_lines', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('sales_order_line_id');
+        });
+        Schema::table('sales_invoices', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('sales_order_id');
+        });
         Schema::table('sales_quotations', function (Blueprint $table) {
             $table->dropConstrainedForeignId('sales_order_id');
         });

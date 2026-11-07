@@ -12,15 +12,18 @@ use App\Modules\Inventory\Purchasing\Http\Requests\StoreGoodsReceiptRequest;
 use App\Modules\Inventory\Purchasing\Http\Requests\SyncGoodsReceiptLinesRequest;
 use App\Modules\Inventory\Purchasing\Http\Requests\UpdateGoodsReceiptRequest;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
+use App\Modules\Inventory\Purchasing\Services\GoodsReceiptPdfService;
 use App\Modules\Inventory\Purchasing\Services\GoodsReceiptService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class GoodsReceiptController extends Controller
 {
     public function __construct(
         private readonly GoodsReceiptService $goodsReceiptService,
+        private readonly GoodsReceiptPdfService $goodsReceiptPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -125,5 +128,15 @@ class GoodsReceiptController extends Controller
             GoodsReceiptResponseData::fromModel($receipt),
             'Goods receipt reversed successfully.'
         );
+    }
+
+    public function pdf(Request $request, GoodsReceipt $goodsReceipt): Response
+    {
+        $pdf = $this->goodsReceiptPdfService->render(
+            $goodsReceipt,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->goodsReceiptPdfService->downloadFilename($goodsReceipt));
     }
 }

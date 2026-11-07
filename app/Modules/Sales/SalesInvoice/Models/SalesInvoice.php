@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesInvoice\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
@@ -26,12 +27,16 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
+ * @property bool $is_opening
  * @property SalesInvoiceStatus $status
  * @property Carbon|null $invoice_date
  * @property Carbon|null $due_on
  * @property Carbon|null $posted_at
+ * @property Carbon|null $discount_approved_at
  */
 #[Fillable([
+    'branch_id',
     'invoice_number',
     'customer_id',
     'sales_order_id',
@@ -41,6 +46,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'payment_method_id',
     'payment_terms_id',
     'status',
+    'is_opening',
+    'original_number',
     'invoice_date',
     'due_on',
     'exchange_rate',
@@ -49,12 +56,17 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'shipping_address',
     'subtotal',
     'discount_total',
+    'header_discount_type',
+    'header_discount_value',
+    'discount_approved_by',
+    'discount_approved_at',
     'tax_total',
     'adjustment',
     'grand_total',
     'paid_total',
     'credited_total',
     'net_to_pay',
+    'keep_extra_as_credit',
     'notes',
     'created_by',
     'posted_by',
@@ -63,7 +75,16 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class SalesInvoice extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * Order → invoice keeps the order's branch when the warehouse does not decide it.
+     */
+    public function documentBranchFromParent(): ?int
+    {
+        return $this->branchOfDocument(SalesOrder::class, $this->sales_order_id);
+    }
 
     public const REFERENCE_TYPE = 'sales_invoice';
 
@@ -74,6 +95,7 @@ class SalesInvoice extends Model implements AuditableContract
     {
         return [
             'status' => SalesInvoiceStatus::class,
+            'is_opening' => 'boolean',
             'invoice_date' => 'date',
             'due_on' => 'date',
             'exchange_rate' => 'decimal:12',
@@ -81,12 +103,15 @@ class SalesInvoice extends Model implements AuditableContract
             'shipping_address' => 'array',
             'subtotal' => 'decimal:4',
             'discount_total' => 'decimal:4',
+            'header_discount_value' => 'decimal:4',
+            'discount_approved_at' => 'datetime',
             'tax_total' => 'decimal:4',
             'adjustment' => 'decimal:4',
             'grand_total' => 'decimal:4',
             'paid_total' => 'decimal:4',
             'credited_total' => 'decimal:4',
             'net_to_pay' => 'decimal:4',
+            'keep_extra_as_credit' => 'boolean',
             'posted_at' => 'datetime',
         ];
     }
@@ -169,6 +194,16 @@ class SalesInvoice extends Model implements AuditableContract
     public function lines(): HasMany
     {
         return $this->hasMany(SalesInvoiceLine::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /**
+     * Payments taken at the moment of sale (split payment).
+     *
+     * @return HasMany<SalesInvoicePayment, $this>
+     */
+    public function payments(): HasMany
+    {
+        return $this->hasMany(SalesInvoicePayment::class)->orderBy('sort_order')->orderBy('id');
     }
 
     /**

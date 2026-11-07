@@ -13,7 +13,7 @@ namespace App\Modules\Rbac;
 final class RbacResourceCatalog
 {
     /** @var list<string> */
-    public const ACTIONS = ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse', 'reopen'];
+    public const ACTIONS = ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse', 'reopen', 'print'];
 
     /** @var array<string, string> */
     public const ACTION_FLAGS = [
@@ -25,6 +25,7 @@ final class RbacResourceCatalog
         'export' => 'can_export',
         'reverse' => 'can_reverse',
         'reopen' => 'can_reopen',
+        'print' => 'can_print',
     ];
 
     public static function label(string $resourceKey): string
@@ -74,9 +75,10 @@ final class RbacResourceCatalog
 
     /**
      * Force flags that are not in the resource catalog to false.
+     * `print` also needs `view`: printing a document you cannot see is never granted.
      *
      * @param  array<string, mixed>  $row
-     * @return array{can_view: bool, can_add: bool, can_edit: bool, can_delete: bool, can_import: bool, can_export: bool, can_reverse: bool, can_reopen: bool}
+     * @return array{can_view: bool, can_add: bool, can_edit: bool, can_delete: bool, can_import: bool, can_export: bool, can_reverse: bool, can_reopen: bool, can_print: bool}
      */
     public static function clampFlags(string $resourceKey, array $row): array
     {
@@ -84,6 +86,9 @@ final class RbacResourceCatalog
         $out = [];
         foreach (self::ACTION_FLAGS as $action => $flag) {
             $out[$flag] = isset($allowed[$action]) && (bool) ($row[$flag] ?? false);
+        }
+        if (! $out['can_view']) {
+            $out['can_print'] = false;
         }
 
         return $out;

@@ -7,6 +7,8 @@ namespace App\Providers;
 use App\Contracts\VirusScanner;
 use App\Models\Attachment;
 use App\Models\Audit;
+use App\Models\DocumentNumberSetting;
+use App\Models\PrintSetting;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Accounting\Models\Account;
@@ -28,6 +30,9 @@ use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
+use App\Modules\Inventory\ItemVariant\Models\ItemAttribute;
+use App\Modules\Inventory\ItemVariant\Models\ItemAttributeValue;
+use App\Modules\Inventory\Purchasing\LandedCost\Models\LandedCost;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
@@ -49,6 +54,8 @@ use App\Modules\Inventory\Stock\Models\StockAdjustmentLine;
 use App\Modules\Inventory\Stock\Models\StockAdjustmentReason;
 use App\Modules\Inventory\Stock\Models\StockCount;
 use App\Modules\Inventory\Stock\Models\StockCountLine;
+use App\Modules\Inventory\Stock\Models\StockRevaluation;
+use App\Modules\Inventory\Stock\Models\StockRevaluationLine;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferClosure;
 use App\Modules\Inventory\Stock\Models\StockTransferClosureLine;
@@ -63,6 +70,8 @@ use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
+use App\Modules\Sales\DeliveryNote\Models\DeliveryNote;
+use App\Modules\Sales\PriceList\Models\PriceList;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
@@ -77,6 +86,9 @@ use App\Modules\Supplier\Models\SupplierBalance;
 use App\Modules\Supplier\Models\SupplierContact;
 use App\Modules\Supplier\Models\SupplierGroup;
 use App\Modules\Supplier\Models\SupplierItem;
+use App\Modules\Treasury\Models\CashBankAccount;
+use App\Modules\Treasury\Models\ExpenseVoucher;
+use App\Modules\Treasury\Models\TreasuryTransfer;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\VirusScanning\ClamAvVirusScanner;
@@ -125,12 +137,18 @@ class AppServiceProvider extends ServiceProvider
             'company_profile' => CompanyProfile::class,
             'customer' => Customer::class,
             'customer_group' => CustomerGroup::class,
+            'price_list' => PriceList::class,
+            'cash_bank_account' => CashBankAccount::class,
+            'treasury_transfer' => TreasuryTransfer::class,
+            'expense_voucher' => ExpenseVoucher::class,
             'customer_address' => CustomerAddress::class,
             'customer_balance' => CustomerBalance::class,
             'salesman' => Salesman::class,
             'sales_quotation' => SalesQuotation::class,
             'sales_quotation_line' => SalesQuotationLine::class,
             'sales_order' => SalesOrder::class,
+            'delivery_note' => DeliveryNote::class,
+            'landed_cost' => LandedCost::class,
             'sales_order_line' => SalesOrderLine::class,
             'sales_invoice' => SalesInvoice::class,
             'sales_credit_note' => SalesCreditNote::class,
@@ -173,6 +191,8 @@ class AppServiceProvider extends ServiceProvider
             'stock_adjustment' => StockAdjustment::class,
             'stock_adjustment_line' => StockAdjustmentLine::class,
             'stock_adjustment_reason' => StockAdjustmentReason::class,
+            'stock_revaluation' => StockRevaluation::class,
+            'stock_revaluation_line' => StockRevaluationLine::class,
             'production' => Production::class,
             'production_line' => ProductionLine::class,
             'bundle_explosion' => BundleExplosion::class,
@@ -185,6 +205,10 @@ class AppServiceProvider extends ServiceProvider
             'supplier_balance' => SupplierBalance::class,
             'supplier_item' => SupplierItem::class,
             'company_setting' => CompanySetting::class,
+            'document_number_setting' => DocumentNumberSetting::class,
+            'print_setting' => PrintSetting::class,
+            'item_attribute' => ItemAttribute::class,
+            'item_attribute_value' => ItemAttributeValue::class,
         ]);
     }
 
@@ -199,6 +223,13 @@ class AppServiceProvider extends ServiceProvider
 
     private function configurePasswordResetRateLimiting(): void
     {
+        // Called server-side by the Next.js proxy (cached there), so most traffic shares one IP: keep it generous.
+        RateLimiter::for('tenant-lookup', function (Request $request) {
+            $perMinute = (int) config('security.tenant_lookup_rate_limit_per_minute', 600);
+
+            return Limit::perMinute(max(1, $perMinute))->by($request->ip());
+        });
+
         RateLimiter::for('password-reset', function (Request $request) {
             $perMinute = (int) config('security.password_reset_rate_limit_per_minute', 5);
             $email = strtolower((string) $request->input('email', ''));

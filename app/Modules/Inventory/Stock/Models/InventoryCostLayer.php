@@ -27,7 +27,7 @@ class InventoryCostLayer extends Model
     {
         return [
             'quantity_remaining' => 'decimal:6',
-            'unit_cost' => 'decimal:4',
+            'unit_cost' => 'decimal:6',
         ];
     }
 

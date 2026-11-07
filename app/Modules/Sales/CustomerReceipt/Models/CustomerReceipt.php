@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Sales\CustomerReceipt\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Sales\CustomerReceipt\Enums\CustomerReceiptStatus;
+use App\Modules\Treasury\Models\CashBankAccount;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -19,11 +21,13 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property CustomerReceiptStatus $status
  * @property Carbon|null $payment_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'receipt_number',
     'customer_id',
     'currency_id',
@@ -32,6 +36,11 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'payment_date',
     'amount',
     'reference',
+    'cash_bank_account_id',
+    'sales_invoice_id',
+    'cheque_number',
+    'cheque_bank',
+    'cheque_due_date',
     'notes',
     'status',
     'created_by',
@@ -41,7 +50,18 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class CustomerReceipt extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * No warehouse: the branch comes from the user's active branch.
+     *
+     * @return array<string, string|null>
+     */
+    public function documentBranchColumns(): array
+    {
+        return ['branch_id' => null];
+    }
 
     public const REFERENCE_TYPE = 'customer_receipt';
 
@@ -56,7 +76,22 @@ class CustomerReceipt extends Model implements AuditableContract
             'exchange_rate' => 'decimal:12',
             'amount' => 'decimal:4',
             'posted_at' => 'datetime',
+            'cheque_due_date' => 'date',
         ];
+    }
+
+    /**
+     * Part of the amount not allocated to any invoice (customer credit), in the receipt currency.
+     */
+    public function unappliedAmount(): string
+    {
+        $allocated = '0';
+        foreach ($this->allocations()->get(['amount']) as $allocation) {
+            $allocated = bcadd($allocated, (string) $allocation->amount, 4);
+        }
+        $open = bcsub((string) $this->amount, $allocated, 4);
+
+        return bccomp($open, '0', 4) > 0 ? $open : '0.0000';
     }
 
     /**
@@ -81,6 +116,16 @@ class CustomerReceipt extends Model implements AuditableContract
     public function paymentMethod(): BelongsTo
     {
         return $this->belongsTo(PaymentMethod::class);
+    }
+
+    /**
+     * Cash box / bank account the money went into (when chosen).
+     *
+     * @return BelongsTo<CashBankAccount, $this>
+     */
+    public function cashBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(CashBankAccount::class);
     }
 
     /**

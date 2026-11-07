@@ -54,7 +54,7 @@ class ItemBarcodeService
             $item = $extra->item;
             $itemUom = $extra->itemUom;
 
-            if (! $item || ! $item->is_active) {
+            if (! $item || ! $item->is_active || $item->is_variant_parent) {
                 return null;
             }
 
@@ -81,7 +81,7 @@ class ItemBarcodeService
             ])
             ->first();
 
-        if (! $itemUom || ! $itemUom->item || ! $itemUom->item->is_active) {
+        if (! $itemUom || ! $itemUom->item || ! $itemUom->item->is_active || $itemUom->item->is_variant_parent) {
             return null;
         }
 

@@ -13,8 +13,9 @@ use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
 use App\Modules\Sales\SalesQuotation\Models\SalesQuotationLine;
 use App\Modules\Sales\SalesQuotation\Support\SalesQuotationRules;
 use App\Modules\Sales\Support\CommercialLineBuilder;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -69,8 +70,8 @@ class SalesQuotationService
                 ...$this->normalizeHeader($data, $customer, null),
                 'status' => SalesQuotationStatus::Draft,
                 'created_by' => $userId,
-                'quotation_number' => SequentialCodeGenerator::next(SalesQuotation::class, 'quotation_number', 'QT-'),
             ]);
+            app(DocumentNumberService::class)->assign($quotation, 'quotation_number', DocumentType::SalesQuotation, $quotation->branch_id !== null ? (int) $quotation->branch_id : null, $quotation->quotation_date);
 
             $this->replaceLines($quotation, $data['lines'] ?? []);
 
@@ -97,6 +98,8 @@ class SalesQuotationService
                 'quotation_date',
                 'valid_until',
                 'exchange_rate',
+                'header_discount_type',
+                'header_discount_value',
                 'notes',
             ]), $data);
             $quotation->update($this->normalizeHeader($merged, $customer, $quotation));
@@ -285,6 +288,7 @@ class SalesQuotationService
             'quotation_date' => $quotationDate,
             'valid_until' => $validUntil,
             'exchange_rate' => $exchangeRate,
+            ...CommercialLineBuilder::headerDiscount($data, $existing),
             'notes' => CommercialLineBuilder::nullableString($data['notes'] ?? $existing?->notes),
         ];
     }
@@ -311,7 +315,8 @@ class SalesQuotationService
 
     private function recalculateTotals(SalesQuotation $quotation): void
     {
-        $rows = SalesQuotationLine::query()->where('sales_quotation_id', $quotation->id)->get();
+        $rows = SalesQuotationLine::query()->where('sales_quotation_id', $quotation->id)->orderBy('sort_order')->orderBy('id')->get();
+        CommercialLineBuilder::applyHeaderDiscount($rows, $quotation->header_discount_type, $quotation->header_discount_value);
         $quotation->update(CommercialLineBuilder::totals($rows));
     }
 }

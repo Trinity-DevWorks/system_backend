@@ -14,6 +14,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * @property string|null $invoiced_base_quantity
+ * @property string|null $delivered_base_quantity
  */
 #[Fillable([
     'sales_order_id',
@@ -23,10 +24,12 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'quantity',
     'base_quantity',
     'invoiced_base_quantity',
+    'delivered_base_quantity',
     'conversion_factor',
     'unit_price',
     'discount_percent',
     'discount_amount',
+    'header_discount_amount',
     'tax_rate',
     'line_subtotal',
     'tax_amount',
@@ -47,10 +50,12 @@ class SalesOrderLine extends Model implements AuditableContract
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',
             'invoiced_base_quantity' => 'decimal:6',
+            'delivered_base_quantity' => 'decimal:6',
             'conversion_factor' => 'decimal:6',
-            'unit_price' => 'decimal:4',
+            'unit_price' => 'decimal:6',
             'discount_percent' => 'decimal:4',
             'discount_amount' => 'decimal:4',
+            'header_discount_amount' => 'decimal:4',
             'tax_rate' => 'decimal:4',
             'line_subtotal' => 'decimal:4',
             'tax_amount' => 'decimal:4',
@@ -98,5 +103,25 @@ class SalesOrderLine extends Model implements AuditableContract
         }
 
         return bcdiv($this->remainingBaseQuantity(), $factor, 6);
+    }
+
+    /**
+     * Ordered quantity that has not left the warehouse yet (delivery notes and stock-moving direct invoices).
+     */
+    public function undeliveredBaseQuantity(): string
+    {
+        $remaining = bcsub((string) $this->base_quantity, (string) ($this->delivered_base_quantity ?? '0'), 6);
+
+        return bccomp($remaining, '0', 6) < 0 ? '0.000000' : $remaining;
+    }
+
+    public function undeliveredQuantity(): string
+    {
+        $factor = (string) $this->conversion_factor;
+        if (bccomp($factor, '0', 6) <= 0) {
+            $factor = '1';
+        }
+
+        return bcdiv($this->undeliveredBaseQuantity(), $factor, 6);
     }
 }

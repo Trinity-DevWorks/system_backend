@@ -12,7 +12,9 @@ return new class extends Migration
     {
         Schema::create('customer_receipts', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('receipt_number', 32)->unique();
+            // Issuing branch, frozen once the document leaves draft (see docs/printing-plan.md D3).
+            $table->foreignId('branch_id')->index()->constrained('branches')->restrictOnDelete();
+            $table->string('receipt_number', 32)->nullable()->unique(); // assigned at posting
             $table->foreignUuid('customer_id')->constrained('customers')->restrictOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             $table->decimal('exchange_rate', 24, 12)->default(1);
@@ -40,7 +42,8 @@ return new class extends Migration
             $table->decimal('applied_amount', 20, 4);
             $table->decimal('applied_exchange_rate', 24, 12);
             $table->decimal('exchange_difference', 20, 4)->default(0);
-            $table->unique(['customer_receipt_id', 'sales_invoice_id']);
+            // Not unique: customer credit left on a receipt can be applied to the same invoice more than once.
+            $table->index(['customer_receipt_id', 'sales_invoice_id']);
         });
     }
 

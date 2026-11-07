@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
+use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Purchasing\Enums\GoodsReceiptStatus;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Warehouse\Models\Warehouse;
@@ -18,15 +20,21 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
+ * @property int|null $currency_id
+ * @property string|null $exchange_rate
  * @property GoodsReceiptStatus $status
  * @property Carbon|null $received_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'grn_number',
     'purchase_order_id',
     'supplier_id',
     'warehouse_id',
+    'currency_id',
+    'exchange_rate',
     'status',
     'received_date',
     'notes',
@@ -37,7 +45,16 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class GoodsReceipt extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * PO → GRN keeps the order's branch when the warehouse does not decide it.
+     */
+    public function documentBranchFromParent(): ?int
+    {
+        return $this->branchOfDocument(PurchaseOrder::class, $this->purchase_order_id);
+    }
 
     public const REFERENCE_TYPE = 'goods_receipt';
 
@@ -75,6 +92,16 @@ class GoodsReceipt extends Model implements AuditableContract
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    /**
+     * Currency of the purchase order this receipt was taken from (reference only; costs are primary).
+     *
+     * @return BelongsTo<Currency, $this>
+     */
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
     }
 
     /**

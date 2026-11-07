@@ -45,14 +45,14 @@ final class InstantLowStockNotifier
         }
 
         $previousStatus = ReplenishmentAlertRules::status(
-            (float) $previousQuantity,
-            (float) $rule->reorder_point_qty,
-            (float) $rule->safety_stock_qty,
+            $previousQuantity,
+            $rule->reorder_point_qty,
+            $rule->safety_stock_qty,
         );
         $newStatus = ReplenishmentAlertRules::status(
-            (float) $newQuantity,
-            (float) $rule->reorder_point_qty,
-            (float) $rule->safety_stock_qty,
+            $newQuantity,
+            $rule->reorder_point_qty,
+            $rule->safety_stock_qty,
         );
 
         if ($newStatus === ReplenishmentAlertStatus::Ok) {
@@ -96,7 +96,7 @@ final class InstantLowStockNotifier
                         'item_code' => $itemLabel,
                         'item_name' => (string) $item->name,
                         'warehouse_name' => (string) $warehouse->name,
-                        'on_hand_qty' => ReplenishmentAlertRules::formatQty((float) $newQuantity),
+                        'on_hand_qty' => ReplenishmentAlertRules::formatQty($newQuantity),
                         'status' => $newStatus->value,
                     ],
                     'mail_lines' => [

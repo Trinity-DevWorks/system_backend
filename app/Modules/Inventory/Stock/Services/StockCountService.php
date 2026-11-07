@@ -5,16 +5,19 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Services;
 
 use App\Modules\Accounting\Services\JournalPostingService;
-use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Enums\StockCountStatus;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Models\StockCount;
 use App\Modules\Inventory\Stock\Models\StockCountLine;
+use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Inventory\Stock\Support\StockCountRules;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -85,8 +88,6 @@ class StockCountService
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
             ]);
-
-            $document->update(['cnt_number' => $this->formatCntNumber()]);
 
             if (! empty($data['load_balances'])) {
                 $this->replaceLines($document, $this->snapshotBalanceLines($warehouseId));
@@ -176,6 +177,7 @@ class StockCountService
     {
         return DB::transaction(function () use ($document, $userId): StockCount {
             $locked = StockCount::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'cnt_number', DocumentType::StockCount, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->count_date);
             StockCountRules::assertPostable($locked);
             StockCountRules::assertWarehouse((int) $locked->warehouse_id);
 
@@ -274,7 +276,7 @@ class StockCountService
                 ]);
             }
 
-            $counted = number_format((float) $row['counted_quantity'], 6, '.', '');
+            $counted = Decimal::round($row['counted_quantity'], 6);
             if (bccomp($counted, '0', 6) < 0) {
                 abort(422, 'Counted quantity cannot be negative.', [
                     'X-Error-Code' => 'STOCK_COUNT_LINE_INVALID_QUANTITY',
@@ -293,9 +295,9 @@ class StockCountService
                 && InventoryLotService::normalizeLotNumber($lotNumberInput) !== null;
 
             $theoretical = isset($row['theoretical_quantity']) && $row['theoretical_quantity'] !== null && $row['theoretical_quantity'] !== ''
-                ? number_format((float) $row['theoretical_quantity'], 6, '.', '')
+                ? Decimal::round($row['theoretical_quantity'], 6)
                 : ($hasNewLotNumber
-                    ? number_format(0.0, 6, '.', '')
+                    ? '0.000000'
                     : $this->onHandSnapshot($itemId, (int) $document->warehouse_id, $lotIdPreview));
 
             $variance = bcsub($counted, $theoretical, 6);
@@ -351,7 +353,7 @@ class StockCountService
             $itemId = (string) $balance->item_id;
             $lotId = $balance->lot_id ? (int) $balance->lot_id : null;
             $key = $itemId.'|'.($lotId ?? '');
-            $theoretical = number_format((float) $balance->quantity, 6, '.', '');
+            $theoretical = Decimal::round($balance->quantity, 6);
 
             $lines[] = [
                 'item_id' => $itemId,
@@ -376,7 +378,7 @@ class StockCountService
 
         foreach ($rows as $row) {
             $key = (string) $row->item_id.'|'.($row->lot_id ? (int) $row->lot_id : '');
-            $map[$key] = number_format((float) $row->counted_quantity, 6, '.', '');
+            $map[$key] = Decimal::round($row->counted_quantity, 6);
         }
 
         return $map;
@@ -396,7 +398,7 @@ class StockCountService
 
         $qty = $query->sum('quantity');
 
-        return number_format((float) $qty, 6, '.', '');
+        return Decimal::round($qty, 6);
     }
 
     /**
@@ -438,13 +440,6 @@ class StockCountService
         return $locked;
     }
 
-    private function formatCntNumber(): string
-    {
-        $seq = StockCount::query()->count();
-
-        return 'CNT-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
-    }
-
     private function normalizeNotes(mixed $value): ?string
     {
         if ($value === null) {
@@ -462,8 +457,8 @@ class StockCountService
             return null;
         }
 
-        $cost = PriceMath::normalize($value);
-        if (bccomp($cost, '0', PriceMath::scale()) < 0) {
+        $cost = InventoryCostingMath::unitCost($value);
+        if (bccomp($cost, '0', InventoryCostingMath::UNIT_COST_SCALE) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 

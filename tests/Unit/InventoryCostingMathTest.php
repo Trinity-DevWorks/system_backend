@@ -31,13 +31,13 @@ class InventoryCostingMathTest extends TestCase
             '30.0000',
         );
 
-        $this->assertSame('20.0000', $avg);
+        $this->assertSame('20.000000', $avg);
     }
 
     public function test_unit_cost_from_value(): void
     {
-        $this->assertSame('12.5000', InventoryCostingMath::unitCostFromValue('2.000000', '25.0000'));
-        $this->assertSame('0.0000', InventoryCostingMath::unitCostFromValue('0.000000', '25.0000'));
+        $this->assertSame('12.500000', InventoryCostingMath::unitCostFromValue('2.000000', '25.0000'));
+        $this->assertSame('0.000000', InventoryCostingMath::unitCostFromValue('0.000000', '25.0000'));
     }
 
     public function test_inbound_after_negative_on_hand_values_only_the_remainder(): void

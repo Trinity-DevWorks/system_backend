@@ -29,6 +29,8 @@ class StorePurchaseOrderRequest extends FormRequest
         return [
             'supplier_id' => ['required', 'uuid', 'exists:suppliers,id'],
             'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+            'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
+            'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'order_date' => ['sometimes', 'date'],
             'expected_date' => ['nullable', 'date', 'after_or_equal:order_date'],
             'notes' => ['nullable', 'string', 'max:2000'],
@@ -37,6 +39,7 @@ class StorePurchaseOrderRequest extends FormRequest
             'lines.*.quantity' => ['required', 'numeric', 'min:0.000001', 'max:999999.999999'],
             'lines.*.item_uom_id' => ['nullable', 'integer', Rule::exists('item_uoms', 'id')],
             'lines.*.unit_price' => ['nullable', 'numeric', 'min:0', 'max:9999999999.9999'],
+            'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
         ];
     }

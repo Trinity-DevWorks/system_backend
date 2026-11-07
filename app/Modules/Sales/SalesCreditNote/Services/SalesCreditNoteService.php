@@ -14,6 +14,8 @@ use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
+use App\Modules\Sales\DeliveryNote\Models\DeliveryNote;
+use App\Modules\Sales\DeliveryNote\Models\DeliveryNoteLine;
 use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteStatus;
 use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteType;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
@@ -24,10 +26,12 @@ use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ListPagination;
+use App\Support\OpeningDocumentService;
 use App\Support\PaymentAllocation;
 use App\Support\ProportionalCredit;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -111,7 +115,8 @@ class SalesCreditNoteService
     public function invoiceLines(string $invoiceId): array
     {
         $invoice = $this->postedInvoice($invoiceId);
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        OpeningDocumentService::assertCanReturnAgainst($invoice);
+        $this->warehouseService->assertDocumentVisible($invoice);
         $usage = $this->postedUsage($invoiceId);
         $invoice->load(['lines.item', 'lines.itemUom.uom', 'lines.warehouse']);
 
@@ -185,11 +190,13 @@ class SalesCreditNoteService
             ->where('net_to_pay', '>', 0)
             ->orderBy('invoice_date')
             ->orderBy('invoice_number');
-        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+        $this->warehouseService->applyVisibleDocumentConstraint($query);
 
         return $query->get()->map(fn (SalesInvoice $invoice): array => [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
+            'is_opening' => (bool) $invoice->is_opening,
+            'original_number' => $invoice->original_number,
             'invoice_date' => $invoice->invoice_date?->toDateString(),
             'grand_total' => (string) $invoice->grand_total,
             'paid_total' => (string) $invoice->paid_total,
@@ -210,12 +217,12 @@ class SalesCreditNoteService
     public function create(array $data, ?string $userId): SalesCreditNote
     {
         $invoice = $this->postedInvoice((string) $data['sales_invoice_id']);
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        OpeningDocumentService::assertCanReturnAgainst($invoice);
+        $this->warehouseService->assertDocumentVisible($invoice);
         $this->assertDate($invoice, (string) $data['credit_date']);
 
         return DB::transaction(function () use ($data, $userId, $invoice): SalesCreditNote {
             $note = SalesCreditNote::query()->create([
-                'credit_note_number' => SequentialCodeGenerator::next(SalesCreditNote::class, 'credit_note_number', 'SCN-'),
                 'sales_invoice_id' => $invoice->id,
                 'customer_id' => $invoice->customer_id,
                 'currency_id' => $invoice->currency_id,
@@ -245,7 +252,7 @@ class SalesCreditNoteService
         return DB::transaction(function () use ($note, $data): SalesCreditNote {
             $locked = $this->lockDraft($note);
             $invoice = $this->postedInvoice((string) $locked->sales_invoice_id);
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
             $this->assertDate($invoice, (string) $data['credit_date']);
             $type = $this->type($data['type']);
             $typeChanged = $type !== $locked->type;
@@ -289,7 +296,7 @@ class SalesCreditNoteService
         DB::transaction(function () use ($note): void {
             $locked = $this->lockDraft($note);
             $invoice = SalesInvoice::query()->findOrFail($locked->sales_invoice_id);
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
             $locked->delete();
         });
     }
@@ -298,6 +305,7 @@ class SalesCreditNoteService
     {
         return DB::transaction(function () use ($note, $userId): SalesCreditNote {
             $locked = SalesCreditNote::query()->whereKey($note->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'credit_note_number', DocumentType::SalesCreditNote, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->credit_date);
             if ($locked->status !== SalesCreditNoteStatus::Draft) {
                 $this->fail('Only a draft credit note can be posted.', 'SALES_CREDIT_NOTE_NOT_DRAFT');
             }
@@ -306,7 +314,7 @@ class SalesCreditNoteService
             if ($invoice->status !== SalesInvoiceStatus::Posted) {
                 $this->fail('Credit notes can only be posted against a posted invoice.', 'SALES_CREDIT_NOTE_INVOICE_NOT_POSTED');
             }
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
             $this->assertDate($invoice, $locked->credit_date->toDateString());
 
             SalesInvoiceLine::query()
@@ -421,6 +429,7 @@ class SalesCreditNoteService
     {
         return DB::transaction(function () use ($note, $userId): SalesCreditNote {
             $locked = SalesCreditNote::query()->whereKey($note->id)->lockForUpdate()->firstOrFail();
+            OpeningDocumentService::assertNotOpening($locked);
             if ($locked->status !== SalesCreditNoteStatus::Posted) {
                 $this->fail('Only a posted credit note can be reversed.', 'SALES_CREDIT_NOTE_NOT_POSTED');
             }
@@ -429,7 +438,7 @@ class SalesCreditNoteService
             }
 
             $invoice = SalesInvoice::query()->findOrFail($locked->sales_invoice_id);
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
 
             $allocations = $locked->allocations()->orderBy('id')->get();
             $invoiceIds = $allocations->pluck('sales_invoice_id')->map(fn ($id): string => (string) $id)->all();
@@ -479,7 +488,7 @@ class SalesCreditNoteService
     private function replaceLines(SalesCreditNote $note, array $rows): void
     {
         $invoice = $this->postedInvoice((string) $note->sales_invoice_id);
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
         $invoice->load('lines');
         $usage = $this->postedUsage((string) $invoice->id);
         $sources = $invoice->lines->keyBy('id');
@@ -739,7 +748,7 @@ class SalesCreditNoteService
         if ((string) $invoice->customer_id !== (string) $note->customer_id || (int) $invoice->currency_id !== (int) $note->currency_id) {
             $this->fail('Invoice customer or currency does not match this credit note.', 'SALES_CREDIT_NOTE_INVOICE_MISMATCH');
         }
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
         if (! PaymentAllocation::isPositive($amount) || PaymentAllocation::exceeds($amount, $invoice->net_to_pay)) {
             $this->fail('Allocation exceeds the invoice open amount.', 'SALES_CREDIT_NOTE_INVOICE_NOT_OPEN');
         }
@@ -846,6 +855,16 @@ class SalesCreditNoteService
         string $returnQty,
     ): array {
         $sold = $this->movementTotals(SalesInvoice::REFERENCE_TYPE, [$invoiceId], $itemId, $warehouseId, $lotId, $type, null);
+        if (bccomp(InventoryCostingMath::absQty($sold['qty']), '0', 6) === 0) {
+            // Lines invoiced from a delivery note: the stock (and its cost) left on the delivery note.
+            $noteIds = DeliveryNoteLine::query()
+                ->whereIn('id', SalesInvoiceLine::query()->where('sales_invoice_id', $invoiceId)->whereNotNull('delivery_note_line_id')->select('delivery_note_line_id'))
+                ->distinct()
+                ->pluck('delivery_note_id')
+                ->map(fn ($id): string => (string) $id)
+                ->all();
+            $sold = $this->movementTotals(DeliveryNote::REFERENCE_TYPE, $noteIds, $itemId, $warehouseId, $lotId, $type, null);
+        }
         $soldQty = InventoryCostingMath::absQty($sold['qty']);
         $soldValue = InventoryCostingMath::moneyRound(
             bccomp($sold['value'], '0', 4) < 0 ? bcmul($sold['value'], '-1', 8) : $sold['value'],

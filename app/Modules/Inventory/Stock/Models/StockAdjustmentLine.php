@@ -34,7 +34,7 @@ class StockAdjustmentLine extends Model implements AuditableContract
         return [
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',
-            'unit_cost' => 'decimal:4',
+            'unit_cost' => 'decimal:6',
         ];
     }
 

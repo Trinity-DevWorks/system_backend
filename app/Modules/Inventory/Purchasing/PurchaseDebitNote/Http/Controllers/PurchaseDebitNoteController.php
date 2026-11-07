@@ -12,15 +12,18 @@ use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Http\Requests\StorePurcha
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Http\Requests\SyncPurchaseDebitNoteLinesRequest;
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Http\Requests\UpdatePurchaseDebitNoteRequest;
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNote;
+use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Services\PurchaseDebitNotePdfService;
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Services\PurchaseDebitNoteService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class PurchaseDebitNoteController extends Controller
 {
     public function __construct(
         private readonly PurchaseDebitNoteService $purchaseDebitNoteService,
+        private readonly PurchaseDebitNotePdfService $purchaseDebitNotePdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -138,5 +141,15 @@ class PurchaseDebitNoteController extends Controller
             PurchaseDebitNoteResponseData::fromModel($note),
             'Purchase debit note reversed successfully.'
         );
+    }
+
+    public function pdf(Request $request, PurchaseDebitNote $purchaseDebitNote): Response
+    {
+        $pdf = $this->purchaseDebitNotePdfService->render(
+            $purchaseDebitNote,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->purchaseDebitNotePdfService->downloadFilename($purchaseDebitNote));
     }
 }

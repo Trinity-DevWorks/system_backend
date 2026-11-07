@@ -164,9 +164,9 @@ class SuggestedUnitCostService
     private function toLineCost(string $baseCost, string $factor): string
     {
         if (bccomp($factor, '1', 6) === 0) {
-            return Math::money($baseCost);
+            return Math::unitCost($baseCost);
         }
 
-        return Math::money(bcmul($baseCost, $factor, Math::MONEY_SCALE));
+        return Math::unitCost(bcmul($baseCost, $factor, Math::UNIT_COST_SCALE + 6));
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesOrder\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
@@ -32,6 +33,7 @@ readonly class SalesOrderResponseData
 
         $payload = [
             'id' => $order->id,
+            ...DocumentBranchPayload::of($order),
             'order_number' => $order->order_number,
             'customer_id' => $order->customer_id,
             'warehouse_id' => $order->warehouse_id,
@@ -45,6 +47,10 @@ readonly class SalesOrderResponseData
             'exchange_rate' => (string) $order->exchange_rate,
             'subtotal' => (string) $order->subtotal,
             'discount_total' => (string) $order->discount_total,
+            'header_discount_type' => $order->header_discount_type,
+            'header_discount_value' => (string) $order->header_discount_value,
+            'discount_approved_by' => $order->discount_approved_by,
+            'discount_approved_at' => $order->discount_approved_at?->toIso8601String(),
             'tax_total' => (string) $order->tax_total,
             'grand_total' => (string) $order->grand_total,
             'notes' => $order->notes,

@@ -6,13 +6,16 @@ namespace Tests\Feature\Sales;
 
 use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantUnitCatalog;
+use App\Modules\Branch\Models\Branch;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Models\CurrencyPairRate;
 use App\Modules\Customer\Enums\LedgerReferenceType;
 use App\Modules\Customer\Models\Customer;
+use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerLedgerEntry;
+use App\Modules\Customer\Services\CreditLimitGuard;
 use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
@@ -24,11 +27,17 @@ use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
+use App\Modules\Rbac\Models\Permission;
+use App\Modules\Rbac\Models\RolePermission;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Enums\WarehouseType;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Services\PermissionService;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Concerns\InteractsWithTenant;
 use Tests\TestCase;
@@ -84,7 +93,8 @@ class SalesInvoiceApiTest extends TestCase
 
         $id = $create->json('data.id');
         $this->assertNotEmpty($id);
-        $this->assertMatchesRegularExpression('/^SI-\d+$/', (string) $create->json('data.invoice_number'));
+        // Drafts get their number only when posted (gapless legal numbering).
+        $this->assertNull($create->json('data.invoice_number'));
         $this->assertEqualsWithDelta(18.0, (float) $create->json('data.lines.0.line_subtotal'), 0.001);
         $this->assertEqualsWithDelta(10.0, (float) $create->json('data.lines.0.tax_rate'), 0.001);
         $this->assertEqualsWithDelta(1.8, (float) $create->json('data.lines.0.tax_amount'), 0.001);
@@ -94,6 +104,129 @@ class SalesInvoiceApiTest extends TestCase
         $this->assertEqualsWithDelta(1.8, (float) $create->json('data.tax_total'), 0.001);
         $this->assertEqualsWithDelta(19.8, (float) $create->json('data.grand_total'), 0.001);
         $this->assertEqualsWithDelta(19.8, (float) $create->json('data.net_to_pay'), 0.001);
+    }
+
+    public function test_number_is_assigned_at_post_per_branch_and_year_without_gaps(): void
+    {
+        $line = ['item_id' => $this->catalog['service_item_id'], 'quantity' => 1, 'unit_price' => 5];
+        $create = fn (): string => (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices'), $this->baseInvoicePayload(['lines' => [$line]]))
+            ->assertCreated()
+            ->json('data.id');
+
+        $first = $create();
+        $deleted = $create();
+        $second = $create();
+
+        $this->asTenantRequest($this->token)->deleteJson($this->tenantUrl("/sales-invoices/{$deleted}"))->assertOk();
+
+        $n1 = (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$first}/post"))->assertOk()->json('data.invoice_number');
+        $n2 = (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$second}/post"))->assertOk()->json('data.invoice_number');
+
+        $this->assertMatchesRegularExpression('/^SI-[A-Z0-9]+-2026-000001$/', $n1);
+        $this->assertMatchesRegularExpression('/^SI-[A-Z0-9]+-2026-000002$/', $n2);
+
+        // Posting again (already posted) never renumbers.
+        $this->asTenantRequest($this->token)->postJson($this->tenantUrl("/sales-invoices/{$first}/post"))->assertStatus(422);
+        $this->assertSame($n1, $this->tenant->run(fn () => SalesInvoice::query()->findOrFail($first)->invoice_number));
+    }
+
+    public function test_document_number_series_are_separate_per_branch_type_and_year(): void
+    {
+        $numbers = $this->tenant->run(function (): array {
+            $east = Branch::query()->create(['name' => 'East', 'shortcut_name' => 'e-st', 'is_active' => true, 'is_default' => false]);
+            $service = app(DocumentNumberService::class);
+
+            return DB::transaction(fn (): array => [
+                $service->next(DocumentType::SalesInvoice, (int) $east->id, '2026-03-01'),
+                $service->next(DocumentType::SalesInvoice, (int) $east->id, '2026-12-31'),
+                $service->next(DocumentType::SalesInvoice, (int) $east->id, '2027-01-01'),
+                $service->next(DocumentType::CustomerReceipt, (int) $east->id, '2026-03-01'),
+            ]);
+        });
+
+        $this->assertSame(['SI-EST-2026-000001', 'SI-EST-2026-000002', 'SI-EST-2027-000001', 'CR-EST-2026-000001'], $numbers);
+    }
+
+    public function test_document_numbers_require_a_transaction(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->tenant->run(fn () => app(DocumentNumberService::class)->next(DocumentType::SalesInvoice, null, '2026-01-01'));
+    }
+
+    public function test_credit_limit_blocks_post_unless_user_can_override(): void
+    {
+        $this->setCreditLimit('100');
+        $this->setCreditOverride(false);
+
+        $id = $this->createServiceInvoice('150');
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/post"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CUSTOMER_CREDIT_LIMIT_EXCEEDED');
+
+        $this->assertSame('draft', $this->tenant->run(fn () => SalesInvoice::query()->findOrFail($id)->status->value));
+
+        $this->setCreditOverride(true);
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/sales-invoices/{$id}/post"))
+            ->assertOk();
+    }
+
+    public function test_credit_limit_allows_post_within_limit_and_zero_means_no_limit(): void
+    {
+        $this->setCreditOverride(false);
+
+        $this->setCreditLimit('1000');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices/'.$this->createServiceInvoice('150').'/post'))
+            ->assertOk();
+
+        // Balance is now above 100, but a limit of 0 means "no limit".
+        $this->setCreditLimit('0');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices/'.$this->createServiceInvoice('5000').'/post'))
+            ->assertOk();
+
+        // Existing balance counts: a small invoice is blocked once the customer is already over the limit.
+        $this->setCreditLimit('100');
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices/'.$this->createServiceInvoice('1').'/post'))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CUSTOMER_CREDIT_LIMIT_EXCEEDED');
+    }
+
+    private function createServiceInvoice(string $price): string
+    {
+        return (string) $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/sales-invoices'), $this->baseInvoicePayload([
+                'lines' => [['item_id' => $this->catalog['service_item_id'], 'quantity' => 1, 'unit_price' => $price]],
+            ]))
+            ->assertCreated()
+            ->json('data.id');
+    }
+
+    private function setCreditLimit(string $limit): void
+    {
+        $this->tenant->run(function () use ($limit): void {
+            CustomerBalance::query()->updateOrCreate(
+                ['customer_id' => $this->catalog['customer_id'], 'currency_id' => $this->catalog['usd_id']],
+                ['credit_limit' => $limit],
+            );
+        });
+    }
+
+    private function setCreditOverride(bool $allowed): void
+    {
+        $this->tenant->run(function () use ($allowed): void {
+            $permission = Permission::query()->where('resource_key', CreditLimitGuard::OVERRIDE_RESOURCE)->firstOrFail();
+            RolePermission::query()->where('permission_id', $permission->id)->update(['can_edit' => $allowed]);
+            app(PermissionService::class)->invalidateCacheForUser($this->tenantUser);
+        });
     }
 
     public function test_exchange_rate_is_one_for_primary_and_pair_snapshot_otherwise(): void

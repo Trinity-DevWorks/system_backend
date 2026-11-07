@@ -47,7 +47,7 @@ class SalesCreditNoteLine extends Model
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',
             'conversion_factor' => 'decimal:6',
-            'unit_price' => 'decimal:4',
+            'unit_price' => 'decimal:6',
             'discount_percent' => 'decimal:4',
             'tax_rate' => 'decimal:4',
             'line_subtotal' => 'decimal:4',

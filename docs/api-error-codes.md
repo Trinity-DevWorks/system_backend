@@ -38,7 +38,8 @@ Core/global:
 
 Auth:
 
-- `INVALID_CREDENTIALS` (HTTP 422)
+- `INVALID_CREDENTIALS` (HTTP 422) — also returned by central `/login` for non–super-admin accounts
+- `CENTRAL_FORBIDDEN` (HTTP 403) — central admin API called by a user who is not a super admin (`ensure.super_admin`)
 - `ACCOUNT_INACTIVE` (HTTP 403) — login rejected, or authenticated request by a deactivated user (`ensure.active`)
 - `PASSWORD_RESET_FAILED` (HTTP 422)
 - `PASSWORD_UNCHANGED` (HTTP 422) — new password matches the current password
@@ -84,6 +85,12 @@ Branches:
 - `BRANCH_DEFAULT_UNSET_FORBIDDEN` (HTTP 422)
 - `BRANCH_DEFAULT_DEACTIVATE_OWNER_ONLY` (HTTP 403)
 - `BRANCH_DELETE_HAS_WAREHOUSES` (HTTP 409)
+- `DOCUMENT_BRANCH_REQUIRED` (HTTP 422) — no branch exists to number a document (`DocumentNumberService`)
+- `DOCUMENT_NUMBER_START_TOO_LOW` (HTTP 422) — numbering settings: the first number must be above the last number already issued for that document type
+
+Document numbers: posted documents get `{PREFIX}-{BRANCH}-{YYYY}-{000001}` by default when posted (drafts have no number);
+the prefix, branch/year parts, padding and first number are configurable per type (`GET/PUT document-number-settings`);
+quotations, sales orders and purchase orders get theirs at create. Series are per document type, branch and year.
 
 Inventory:
 
@@ -133,6 +140,10 @@ Inventory:
 - `SUPPLIER_ITEM_SCOPE_MISMATCH` (HTTP 404)
 
 Stock:
+
+- `STOCK_INSUFFICIENT_TO_RESERVE` (HTTP 422) — confirming a sales order needs more than on hand minus what other confirmed orders reserve
+- `STOCK_RESERVED` (HTTP 422) — an outbound movement (sale, transfer, production, ...) would use stock reserved by confirmed sales orders; counts and adjustments are exempt
+- `SALES_ORDER_NOT_CLOSABLE` (HTTP 422) — only confirmed / partially invoiced orders can be closed (closing releases the remaining reservation)
 
 - `STOCK_BALANCE_PARAMS_REQUIRED` (HTTP 422)
 - `STOCK_MOVEMENT_ZERO_QUANTITY` (HTTP 422)
@@ -194,6 +205,16 @@ Stock adjustment:
 - `STOCK_ADJUSTMENT_REASON_DIRECTION` (HTTP 422)
 - `STOCK_ADJUSTMENT_REASON_SYSTEM` (HTTP 422)
 - `STOCK_ADJUSTMENT_REASON_IN_USE` (HTTP 422)
+
+Stock revaluation:
+
+- `STOCK_REVALUATION_NOT_DRAFT` (HTTP 422)
+- `STOCK_REVALUATION_NO_LINES` (HTTP 422)
+- `STOCK_REVALUATION_ITEM_REQUIRED` (HTTP 422)
+- `STOCK_REVALUATION_DUPLICATE_LINE` (HTTP 422)
+- `STOCK_REVALUATION_NO_QTY` (HTTP 422)
+- `STOCK_REVALUATION_NO_CHANGE` (HTTP 422)
+- `STOCK_REVALUATION_NOT_POSTED` (HTTP 422)
 
 Production:
 
@@ -262,6 +283,15 @@ Sales credit notes:
 - `SALES_CREDIT_NOTE_BUNDLE_LOT_NOT_SUPPORTED` (HTTP 422)
 - `SALES_CREDIT_NOTE_TYPE_INVALID` (HTTP 422)
 - `SALES_INVOICE_HAS_CREDIT_NOTES` (HTTP 422)
+- `CUSTOMER_CREDIT_LIMIT_EXCEEDED` (HTTP 422) — posting an invoice / confirming an order would put the customer's balance (per currency) above the credit limit; needs `credit_limit_override,edit`. A limit of 0 means no limit.
+
+Price lists:
+
+- `PRICE_LIST_ITEM_UOM_MISMATCH` (HTTP 422) — a price row's unit does not belong to its item
+- `PRICE_LIST_ITEM_INVALID` (HTTP 422) — negative price or minimum quantity
+- `PRICE_LIST_DUPLICATE_ITEM` (HTTP 422) — same item, unit and minimum quantity twice in one list
+- `PRICE_LIST_DATES_INVALID` (HTTP 422) — end date before start date
+
 
 Customer refunds:
 
@@ -288,3 +318,98 @@ Supplier refunds use the same set as customer refunds with the `SUPPLIER_REFUND_
    - add backend usage in response envelope
    - add frontend translations under `ApiErrors.codes.<CODE>` in `messages/en.json` and `messages/ar.json`
 
+Treasury (cash/bank accounts, transfers, expense vouchers):
+
+- `TREASURY_LEDGER_ACCOUNT_INVALID` (HTTP 422) — a cash/bank account must use an active, non-group asset account
+- `TREASURY_ACCOUNT_IN_USE` (HTTP 409/422) — account used by documents: cannot delete or change its ledger account / currency
+- `TREASURY_ACCOUNT_INACTIVE` (HTTP 422) — cash/bank account missing or inactive
+- `TREASURY_ACCOUNT_REQUIRED` (HTTP 422) — cash/bank account has no ledger account at posting
+- `TREASURY_SAME_ACCOUNT` (HTTP 422) — transfer from and to the same account
+- `TREASURY_AMOUNT_INVALID` (HTTP 422) — amount must be greater than zero
+- `TREASURY_DOCUMENT_NOT_DRAFT` / `TREASURY_DOCUMENT_NOT_POSTED` (HTTP 422) — wrong status for edit/post or reverse
+- `EXPENSE_VOUCHER_ACCOUNT_INVALID` (HTTP 422) — expense lines must use an active, non-group expense account
+- `EXPENSE_VOUCHER_NO_LINES` (HTTP 422) — post needs at least one line with a positive total
+
+Delivery notes (optional step: sales order -> delivery note -> invoice):
+
+- `DELIVERY_NOTE_NOT_DRAFT` / `DELIVERY_NOTE_NOT_POSTED` (HTTP 422) — wrong status for edit/post, reverse or invoice
+- `DELIVERY_NOTE_NO_LINES` (HTTP 422) — post needs at least one line
+- `DELIVERY_NOTE_HAS_INVOICES` (HTTP 422) — reverse the invoices made from it first
+- `DELIVERY_NOTE_NOTHING_TO_INVOICE` (HTTP 422) — every delivered quantity is already invoiced
+- `DELIVERY_NOTE_ORDER_LINE_MISMATCH` (HTTP 422) — line does not match its sales order line (item/unit)
+- `DELIVERY_NOTE_LOT_ITEM_MISMATCH` (HTTP 422) — lot belongs to another item
+- `DELIVERY_NOTE_PDF_NOT_ALLOWED` (HTTP 422) — only posted/reversed delivery notes print
+- `DELIVERY_NOTE_ORDER_CUSTOMER_MISMATCH` (HTTP 422) — the chosen sales order belongs to another customer
+- `SALES_ORDER_NOTHING_TO_DELIVER` (HTTP 422) — everything on the order already shipped
+- `SALES_ORDER_DELIVERY_EXCEEDED` (HTTP 422) — shipping more than the order line (delivery note or direct invoice)
+- `SALES_ORDER_HAS_DELIVERIES` (HTTP 422) — an order with posted deliveries cannot be cancelled (close it)
+- `SALES_INVOICE_DELIVERY_LINE_INVALID` / `SALES_INVOICE_DELIVERY_LINE_MISMATCH` (HTTP 422) — invoice line must come from a posted delivery note of the same customer, item and unit
+- `SALES_INVOICE_DELIVERY_QTY_EXCEEDED` (HTTP 422) — invoicing more than the delivery note delivered
+
+## Item variants
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `ITEM_ATTRIBUTE_IN_USE` | 409 | The attribute is used by item variants. |
+| `ITEM_ATTRIBUTE_VALUE_IN_USE` | 409 | A removed attribute value is used by item variants. |
+| `ITEM_VARIANT_NESTED` | 422 | A variant cannot have its own variants. |
+| `ITEM_VARIANT_PARENT_HAS_STOCK` | 422 | An item with stock history cannot become a variant template. |
+| `ITEM_VARIANT_ATTRIBUTES_LOCKED` | 422 | Attributes are fixed once variants exist; only values can be added. |
+| `ITEM_VARIANT_DUPLICATE_ATTRIBUTE` | 422 | The same attribute was chosen twice. |
+| `ITEM_VARIANT_VALUE_MISMATCH` | 422 | A chosen value does not belong to its attribute. |
+| `ITEM_VARIANT_TOO_MANY` | 422 | More than 200 combinations. |
+| `ITEM_VARIANT_PARENT_NOT_STOCKABLE` | 422 | Stock cannot move for a variant template. |
+| `ITEM_DELETE_HAS_VARIANTS` | 409 | Delete the variants before the template item. |
+
+
+## Opening invoices and opening credits
+
+Old open balances of customers/suppliers are opening documents (`is_opening = true` on sales/purchase invoices and credit/debit notes), managed from the customer/supplier (`opening_documents` on save, `GET customers|suppliers/{id}/opening-documents`).
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `OPENING_DOCUMENT_AMOUNT_INVALID` | 422 | An opening amount cannot be zero. |
+| `OPENING_DOCUMENT_DUE_DATE_INVALID` | 422 | The due date is before the document date. |
+| `OPENING_DOCUMENT_NOT_FOUND` | 404 | The row's id is not an opening document of this customer/supplier. |
+| `OPENING_DOCUMENT_IN_USE` | 422 | A payment, credit or refund already uses it: amount, currency, date and branch can no longer change, and it cannot be removed. |
+| `OPENING_DOCUMENT_MANAGED_BY_PARTY` | 422 | Opening documents cannot be reversed or printed as normal documents. |
+| `OPENING_INVOICE_NO_RETURN` | 422 | A credit/debit note (return) cannot be made against an opening invoice; apply an existing credit instead. |
+
+## Bill discount, discount limits, payments at sale
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `SALES_HEADER_DISCOUNT_TOO_LARGE` | 422 | The bill discount is above 100% or larger than the document total. |
+| `DISCOUNT_APPROVAL_REQUIRED` | 422 | The discount is above the user's role limit; send `discount_approval: {email, password}` of a manager. |
+| `DISCOUNT_APPROVAL_INVALID` | 422 | The approval login is wrong, inactive, has no access to the branch, or cannot approve this discount. |
+| `DISCOUNT_APPROVAL_THROTTLED` | 429 | Too many approval attempts; try again in a minute. |
+| `SALES_INVOICE_PAYMENT_METHOD_INVALID` | 422 | Payment at sale needs an active method that takes money now (not "credit"). |
+| `SALES_INVOICE_PAYMENT_AMOUNT_INVALID` | 422 | A payment at sale must be greater than zero. |
+| `SALES_INVOICE_TENDERED_TOO_LOW` | 422 | Cash given is less than the amount paid. |
+| `SALES_INVOICE_PAYMENTS_EXCEED_TOTAL` | 422 | Payments at sale are more than the invoice total (checked at post). |
+| `SALES_INVOICE_PAYMENT_CURRENCY_MISMATCH` | 422 | The payment's cash/bank account is not in the invoice currency. |
+| `SALES_INVOICE_WALK_IN_MUST_PAY` | 422 | A walk-in customer must pay the whole invoice at posting. |
+| `CUSTOMER_RECEIPT_MANAGED_BY_INVOICE` | 422 | A receipt taken with its sales invoice is reversed only with that invoice. |
+| `PAYMENT_METHOD_ACCOUNT_DUPLICATE_BRANCH` | 422 | A payment method has one default cash/bank account per branch. |
+
+## Landed costs
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `LANDED_COST_NOT_DRAFT` | 422 | Only a draft landed cost can be changed, deleted or posted. |
+| `LANDED_COST_NOT_POSTED` | 422 | Only a posted landed cost can be reversed. |
+| `LANDED_COST_NO_RECEIPTS` | 422 | Choose at least one receipt. |
+| `LANDED_COST_NO_RECEIPT_LINES` | 422 | The chosen receipts have no stock lines. |
+| `LANDED_COST_NO_CHARGES` | 422 | Add at least one charge. |
+| `LANDED_COST_RECEIPT_NOT_POSTED` | 422 | Only posted goods receipts and direct purchase invoices can take landed costs. |
+| `LANDED_COST_CHARGE_NOT_ELIGIBLE` | 422 | The bill line is not a posted landed-cost line (landed-cost item or clearing account). |
+| `LANDED_COST_CHARGE_EXCEEDS_OPEN` | 422 | The charge is more than what is left of the bill line. |
+| `LANDED_COST_CHARGE_AMOUNT_INVALID` | 422 | A charge amount must be greater than zero. |
+| `LANDED_COST_DUPLICATE_CHARGE` | 422 | The same bill line is added twice. |
+| `LANDED_COST_WEIGHT_MISSING` | 422 | Spreading by weight needs a weight on every item (names listed). |
+| `LANDED_COST_VOLUME_MISSING` | 422 | Spreading by volume needs a volume on every item (names listed). |
+| `LANDED_COST_BASIS_ZERO` | 422 | The receipt lines have nothing to spread by (all zero). |
+| `LANDED_COST_MANUAL_MISMATCH` | 422 | Manual shares must add up to the charge. |
+| `LANDED_COST_PDF_NOT_ALLOWED` | 422 | Only posted or reversed landed costs print. |
+| `DOCUMENT_HAS_LANDED_COST` | 422 | A posted landed cost uses this receipt or bill; reverse the landed cost first. |
+| `ITEM_LANDED_COST_MUST_BE_SERVICE` | 422 | Only items that do not track stock can be landed-cost items. |

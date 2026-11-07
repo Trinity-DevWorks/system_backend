@@ -8,6 +8,7 @@ use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierLedgerEntry;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -120,46 +121,14 @@ class SupplierLedgerService
     }
 
     /**
-     * @param  list<int>  $supplierIds
-     * @return array<int, string> supplier_id => balance (sum across currencies — legacy list helper)
+     * Remove a document's ledger rows. Only for opening documents edited or deleted before anything used them.
      */
-    public function balancesForSupplierIds(array $supplierIds): array
+    public function deleteDocumentEntries(LedgerReferenceType $referenceType, string $referenceId): void
     {
-        if ($supplierIds === []) {
-            return [];
-        }
-
-        $grouped = $this->balancesGroupedBySupplierAndCurrency($supplierIds);
-        $out = [];
-        foreach ($supplierIds as $id) {
-            $rows = $grouped[$id] ?? [];
-            $sum = array_sum(array_map(static fn (string $v): float => (float) $v, $rows));
-            $out[$id] = $this->formatMoney($sum);
-        }
-
-        return $out;
-    }
-
-    public function postOpeningBalance(Supplier $supplier, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
-    {
-        $amount = (float) $openingBalance;
-        if (abs($amount) < 0.0000001) {
-            return;
-        }
-
-        $date = $transactionDate ?? now()->toDateString();
-
-        if ($amount > 0) {
-            $this->insertEntry($supplier, $currencyId, '0', (string) $amount, LedgerReferenceType::OpeningBalance, null, $date);
-        } else {
-            $this->insertEntry($supplier, $currencyId, (string) abs($amount), '0', LedgerReferenceType::OpeningBalance, null, $date);
-        }
-    }
-
-    public function replaceOpeningBalancePosting(Supplier $supplier, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
-    {
-        $this->deleteOpeningEntries($supplier, $currencyId);
-        $this->postOpeningBalance($supplier, $currencyId, $openingBalance, $transactionDate);
+        SupplierLedgerEntry::query()
+            ->where('reference_type', $referenceType)
+            ->where('reference_id', $referenceId)
+            ->delete();
     }
 
     /**
@@ -174,9 +143,7 @@ class SupplierLedgerService
         ?string $referenceId,
         string $transactionDate
     ): SupplierLedgerEntry {
-        $d = (float) $debit;
-        $c = (float) $credit;
-        if ($d <= 0 && $c <= 0) {
+        if (! Decimal::isPositive($debit) && ! Decimal::isPositive($credit)) {
             throw new \InvalidArgumentException('Ledger entry must have a positive debit or credit.');
         }
 
@@ -274,15 +241,6 @@ class SupplierLedgerService
             ->with('currency:id,code,symbol')
             ->orderBy('transaction_date')
             ->orderBy('id');
-    }
-
-    private function deleteOpeningEntries(Supplier $supplier, int $currencyId): void
-    {
-        SupplierLedgerEntry::query()
-            ->where('supplier_id', $supplier->id)
-            ->where('currency_id', $currencyId)
-            ->where('reference_type', LedgerReferenceType::OpeningBalance)
-            ->delete();
     }
 
     private function insertEntry(

@@ -8,19 +8,24 @@ use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Sales\SalesInvoice\DTOs\SalesInvoiceLineResponseData;
 use App\Modules\Sales\SalesInvoice\DTOs\SalesInvoiceResponseData;
+use App\Modules\Sales\SalesInvoice\Http\Requests\RecordSalesInvoicePaymentsRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\StoreSalesInvoiceRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\SyncSalesInvoiceLinesRequest;
+use App\Modules\Sales\SalesInvoice\Http\Requests\SyncSalesInvoicePaymentsRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\UpdateSalesInvoiceRequest;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\SalesInvoice\Services\SalesInvoicePdfService;
 use App\Modules\Sales\SalesInvoice\Services\SalesInvoiceService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class SalesInvoiceController extends Controller
 {
     public function __construct(
         private readonly SalesInvoiceService $salesInvoiceService,
+        private readonly SalesInvoicePdfService $salesInvoicePdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -82,6 +87,35 @@ class SalesInvoiceController extends Controller
         return ApiResponse::success(null, 'Sales invoice deleted successfully.');
     }
 
+    public function syncPayments(SyncSalesInvoicePaymentsRequest $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        return ApiResponse::success(
+            SalesInvoiceResponseData::fromModel($this->salesInvoiceService->syncPayments(
+                $salesInvoice,
+                $request->validated('payments') ?? [],
+                (bool) $request->validated('keep_extra_as_credit', false),
+            )),
+            'Sales invoice payments saved successfully.'
+        );
+    }
+
+    public function recordPayments(RecordSalesInvoicePaymentsRequest $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        $date = $request->validated('payment_date');
+        $userId = $request->user()?->id;
+
+        return ApiResponse::success(
+            SalesInvoiceResponseData::fromModel($this->salesInvoiceService->recordPayments(
+                $salesInvoice,
+                $request->validated('payments'),
+                $date !== null ? (string) $date : null,
+                $userId !== null ? (string) $userId : null,
+                (bool) $request->validated('keep_extra_as_credit', false),
+            )),
+            'Payment recorded successfully.'
+        );
+    }
+
     public function syncLines(SyncSalesInvoiceLinesRequest $request, SalesInvoice $salesInvoice): JsonResponse
     {
         $lines = $this->salesInvoiceService->syncLines(
@@ -105,7 +139,8 @@ class SalesInvoiceController extends Controller
         $userId = $request->user()?->id;
         $invoice = $this->salesInvoiceService->post(
             $salesInvoice,
-            $userId !== null ? (string) $userId : null
+            $userId !== null ? (string) $userId : null,
+            is_array($request->input('discount_approval')) ? $request->input('discount_approval') : null,
         );
 
         return ApiResponse::success(
@@ -139,5 +174,16 @@ class SalesInvoiceController extends Controller
             $this->salesInvoiceService->itemAvailability($itemId),
             'Item availability fetched successfully.'
         );
+    }
+
+    public function pdf(Request $request, SalesInvoice $salesInvoice): Response
+    {
+        $pdf = $this->salesInvoicePdfService->render(
+            $salesInvoice,
+            $request->query('locale'),
+            is_string($request->query('template')) ? $request->query('template') : null,
+        );
+
+        return $pdf->download($this->salesInvoicePdfService->downloadFilename($salesInvoice));
     }
 }

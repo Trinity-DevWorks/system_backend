@@ -10,6 +10,9 @@ return new class extends Migration
     {
         Schema::create('items', function (Blueprint $table) {
             $table->uuid('id')->primary();
+            // A variant parent is a template; its children are real, sellable items.
+            $table->uuid('parent_item_id')->nullable();
+            $table->boolean('is_variant_parent')->default(false);
             $table->string('name');
             $table->string('sku', 100)->nullable()->unique();
             $table->string('item_code', 100)->nullable()->unique();
@@ -39,10 +42,16 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
 
+            $table->index('parent_item_id');
             $table->index('item_type_id');
             $table->index('category_id');
             $table->index('brand_id');
             $table->index('vat_group_id');
+        });
+
+        // Self-reference: the uuid primary key must exist before the foreign key is added.
+        Schema::table('items', function (Blueprint $table) {
+            $table->foreign('parent_item_id')->references('id')->on('items')->restrictOnDelete();
         });
     }
 

@@ -17,6 +17,8 @@ readonly class ItemResponseData
 {
     public function __construct(
         public string $id,
+        public ?string $parentItemId,
+        public bool $isVariantParent,
         public string $name,
         public ?string $sku,
         public ?string $itemCode,
@@ -44,6 +46,9 @@ readonly class ItemResponseData
         public bool $allowSale,
         public bool $allowPurchase,
         public bool $allowReturn,
+        public bool $isLandedCost,
+        public ?string $weight,
+        public ?string $volume,
         public bool $isActive,
         public ?array $primaryImage,
         public string $createdAt,
@@ -63,6 +68,8 @@ readonly class ItemResponseData
 
         return new self(
             id: $item->id,
+            parentItemId: $item->parent_item_id,
+            isVariantParent: (bool) $item->is_variant_parent,
             name: $item->name,
             sku: $item->sku,
             itemCode: $item->item_code,
@@ -90,6 +97,9 @@ readonly class ItemResponseData
             allowSale: (bool) $item->allow_sale,
             allowPurchase: (bool) $item->allow_purchase,
             allowReturn: (bool) $item->allow_return,
+            isLandedCost: (bool) $item->is_landed_cost,
+            weight: $item->weight !== null ? (string) $item->weight : null,
+            volume: $item->volume !== null ? (string) $item->volume : null,
             isActive: (bool) $item->is_active,
             primaryImage: self::primaryImageBrief($item),
             createdAt: (string) $item->created_at,
@@ -122,6 +132,8 @@ readonly class ItemResponseData
     {
         return [
             'id' => $this->id,
+            'parent_item_id' => $this->parentItemId,
+            'is_variant_parent' => $this->isVariantParent,
             'name' => $this->name,
             'sku' => $this->sku,
             'item_code' => $this->itemCode,
@@ -149,6 +161,9 @@ readonly class ItemResponseData
             'allow_sale' => $this->allowSale,
             'allow_purchase' => $this->allowPurchase,
             'allow_return' => $this->allowReturn,
+            'is_landed_cost' => $this->isLandedCost,
+            'weight' => $this->weight,
+            'volume' => $this->volume,
             'is_active' => $this->isActive,
             'primary_image' => $this->primaryImage,
             'created_at' => $this->createdAt,

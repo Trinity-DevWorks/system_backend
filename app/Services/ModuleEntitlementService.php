@@ -17,9 +17,6 @@ final class ModuleEntitlementService
 {
     public const CACHE_KEY = 'modules.assigned';
 
-    /** @var array<string, list<string>> */
-    private array $codesByTenant = [];
-
     /**
      * Sync catalog rows from config/modules.php into the modules table.
      */
@@ -43,11 +40,7 @@ final class ModuleEntitlementService
      */
     public function codesForTenant(string $tenantId): array
     {
-        if (isset($this->codesByTenant[$tenantId])) {
-            return $this->codesByTenant[$tenantId];
-        }
-
-        return $this->codesByTenant[$tenantId] = $this->rememberCodesForTenant($tenantId);
+        return $this->rememberCodesForTenant($tenantId);
     }
 
     /**
@@ -142,7 +135,6 @@ final class ModuleEntitlementService
             TenantModule::query()->insert($rows);
         });
 
-        unset($this->codesByTenant[$tenant->id]);
         TenantReferenceCache::forgetForTenant((string) $tenant->id, self::CACHE_KEY);
 
         return $this->codesForTenant($tenant->id);

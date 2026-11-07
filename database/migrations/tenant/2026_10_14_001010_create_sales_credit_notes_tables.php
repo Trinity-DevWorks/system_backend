@@ -12,8 +12,11 @@ return new class extends Migration
     {
         Schema::create('sales_credit_notes', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('credit_note_number', 32)->unique();
-            $table->foreignUuid('sales_invoice_id')->constrained('sales_invoices')->restrictOnDelete();
+            // Issuing branch, frozen once the document leaves draft (see docs/printing-plan.md D3).
+            $table->foreignId('branch_id')->index()->constrained('branches')->restrictOnDelete();
+            $table->string('credit_note_number', 32)->nullable()->unique(); // assigned at posting
+            // Null only on opening credits.
+            $table->foreignUuid('sales_invoice_id')->nullable()->constrained('sales_invoices')->restrictOnDelete();
             $table->foreignUuid('customer_id')->constrained('customers')->restrictOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
             $table->decimal('exchange_rate', 24, 12);
@@ -30,6 +33,10 @@ return new class extends Migration
             $table->decimal('refunded_total', 20, 4)->default(0);
             $table->decimal('open_credit', 20, 4)->default(0);
             $table->string('status', 24)->default('draft');
+            // Opening documents bring a customer's/supplier's old open balance into the system:
+            // no lines, no stock, posted against Opening Balance Equity. original_number = number in the old system.
+            $table->boolean('is_opening')->default(false)->index();
+            $table->string('original_number', 64)->nullable();
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('posted_at')->nullable();
@@ -52,7 +59,7 @@ return new class extends Migration
             $table->decimal('quantity', 14, 6)->default(0);
             $table->decimal('base_quantity', 14, 6)->default(0);
             $table->decimal('conversion_factor', 14, 6)->default(1);
-            $table->decimal('unit_price', 20, 4)->default(0);
+            $table->decimal('unit_price', 20, 6)->default(0);
             $table->decimal('discount_percent', 20, 4)->default(0);
             $table->decimal('tax_rate', 20, 4)->default(0);
             $table->decimal('line_subtotal', 20, 4)->default(0);

@@ -4,20 +4,35 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Support;
 
+use App\Support\Decimal;
+
+/**
+ * Exact (bcmath) inventory math. Values (money) are kept at 4 decimals, quantities at 6,
+ * and unit costs at 6 so items costed per gram or per piece keep their precision.
+ * Results are rounded half-up, never truncated.
+ */
 final class InventoryCostingMath
 {
     public const MONEY_SCALE = 4;
 
     public const QTY_SCALE = 6;
 
+    public const UNIT_COST_SCALE = 6;
+
     public static function money(mixed $value): string
     {
-        return number_format((float) $value, self::MONEY_SCALE, '.', '');
+        return Decimal::round($value, self::MONEY_SCALE);
     }
 
     public static function qty(mixed $value): string
     {
-        return number_format((float) $value, self::QTY_SCALE, '.', '');
+        return Decimal::round($value, self::QTY_SCALE);
+    }
+
+    /** Cost of one base unit (6 decimals). */
+    public static function unitCost(mixed $value): string
+    {
+        return Decimal::round($value, self::UNIT_COST_SCALE);
     }
 
     public static function absQty(string $signedQty): string
@@ -31,7 +46,7 @@ final class InventoryCostingMath
 
     public static function value(string $qty, string $unitCost): string
     {
-        return bcmul($qty, $unitCost, self::MONEY_SCALE);
+        return self::money(Decimal::mul($qty, $unitCost, Decimal::WORK_SCALE));
     }
 
     /**
@@ -40,44 +55,27 @@ final class InventoryCostingMath
      */
     public static function extended(mixed $quantity, mixed $unitCost): string
     {
-        $qty = self::qty(is_numeric($quantity) ? abs((float) $quantity) : 0);
-        $cost = self::moneyRound($unitCost);
-        $raw = bcmul($qty, $cost, 8);
-        $half = '0.00005';
-        $shifted = bccomp($raw, '0', 8) < 0
-            ? bcsub($raw, $half, 8)
-            : bcadd($raw, $half, 8);
+        $qty = self::qty(Decimal::abs($quantity));
+        $cost = self::unitCost($unitCost);
 
-        return bcadd($shifted, '0', self::MONEY_SCALE);
+        return self::money(Decimal::mul($qty, $cost, Decimal::WORK_SCALE));
     }
 
     /**
-     * Keep unit cost at the stock storage scale (4). Currency decimals apply to totals, not to one piece.
+     * Half-up money value at the storage scale (4). Use unitCost() for the cost of one unit.
      */
     public static function moneyRound(mixed $value): string
     {
-        if ($value === null || $value === '') {
-            return self::money(0);
-        }
-        if (is_float($value) || is_int($value)) {
-            $value = number_format((float) $value, 8, '.', '');
-        }
-        $raw = is_numeric(trim((string) $value)) ? bcadd(trim((string) $value), '0', 8) : '0';
-        $half = '0.00005';
-        $shifted = bccomp($raw, '0', 8) < 0
-            ? bcsub($raw, $half, 8)
-            : bcadd($raw, $half, 8);
-
-        return bcadd($shifted, '0', self::MONEY_SCALE);
+        return self::money($value);
     }
 
     public static function unitCostFromValue(string $qty, string $value): string
     {
-        if (bccomp($qty, '0', self::QTY_SCALE) === 0) {
-            return self::money(0);
+        if (Decimal::isZero($qty, self::QTY_SCALE)) {
+            return self::unitCost(0);
         }
 
-        return bcdiv($value, $qty, self::MONEY_SCALE);
+        return self::unitCost(Decimal::div($value, $qty, Decimal::WORK_SCALE));
     }
 
     /**
@@ -95,7 +93,7 @@ final class InventoryCostingMath
             return self::moneyRound($remainingValue);
         }
 
-        $raw = bcdiv(bcmul(self::moneyRound($remainingValue), $sliceQty, 12), $remainingQty, 12);
+        $raw = Decimal::div(Decimal::mul(self::moneyRound($remainingValue), $sliceQty, Decimal::WORK_SCALE), $remainingQty, Decimal::WORK_SCALE);
 
         return self::moneyRound($raw);
     }
@@ -113,7 +111,7 @@ final class InventoryCostingMath
         $newValue = bcadd($oldValue, self::value($inQty, $inUnitCost), self::MONEY_SCALE);
 
         if (bccomp($newQty, '0', self::QTY_SCALE) === 0) {
-            return self::money(0);
+            return self::unitCost(0);
         }
 
         return self::unitCostFromValue($newQty, $newValue);

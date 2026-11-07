@@ -26,6 +26,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property string|null $parent_item_id variant child: the template item
+ * @property bool $is_variant_parent template item; has no stock and is not sold itself
+ * @property bool $is_landed_cost service item whose purchase cost is spread over received goods
+ * @property string|null $weight kg per base unit
+ * @property string|null $volume m3 per base unit
+ */
 #[Fillable([
     'name',
     'sku',
@@ -51,6 +58,9 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'allow_sale',
     'allow_purchase',
     'allow_return',
+    'is_landed_cost',
+    'weight',
+    'volume',
     'is_active',
 ])]
 class Item extends Model implements AuditableContract
@@ -66,6 +76,8 @@ class Item extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
+            'is_variant_parent' => 'boolean',
+            'is_landed_cost' => 'boolean',
             'send_to_kitchen' => 'boolean',
             'qr_enabled' => 'boolean',
             'track_inventory' => 'boolean',

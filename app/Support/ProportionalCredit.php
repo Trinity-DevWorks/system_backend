@@ -106,6 +106,6 @@ final class ProportionalCredit
 
     public static function qty(mixed $value): string
     {
-        return number_format((float) $value, 6, '.', '');
+        return Decimal::round($value, 6);
     }
 }

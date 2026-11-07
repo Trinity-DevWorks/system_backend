@@ -8,11 +8,13 @@ use App\Jobs\BootstrapTenantRbac;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Accounting\Models\Account;
+use App\Modules\Branch\Models\Branch;
 use App\Modules\Branch\Services\BranchService;
 use App\Modules\Category\Models\Category;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\CompanySetting\Services\CompanySettingService;
 use App\Modules\Currency\Models\Currency;
+use App\Modules\Currency\Services\ExchangeRateService;
 use App\Modules\Customer\Enums\CustomerStatus;
 use App\Modules\Customer\Enums\CustomerType;
 use App\Modules\Customer\Models\Customer;
@@ -25,14 +27,19 @@ use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\PaymentMethod\Models\PaymentMethodCashBankAccount;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Supplier\Models\Supplier;
+use App\Modules\Treasury\Enums\CashBankAccountType;
+use App\Modules\Treasury\Models\CashBankAccount;
 use App\Modules\Warehouse\Enums\WarehouseType;
 use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\ModuleEntitlementService;
 use App\Services\PermissionService;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Stancl\Tenancy\Database\Models\Domain;
 
 /**
@@ -203,6 +210,7 @@ class TenantSeeder extends Seeder
             }
 
             $this->seedPrimaryCurrency();
+            $this->seedSecondaryCurrency();
             app(WalkInCustomerService::class)->ensure();
         });
 
@@ -216,6 +224,10 @@ class TenantSeeder extends Seeder
         $tenant->run(function (): void {
             $this->seedDemoData();
         });
+
+        // A rebuilt tenant reuses the same id, so cached lists (payment methods, currencies, ...) from the
+        // old database would still be served. Start with an empty app cache (sessions are stored separately).
+        Cache::flush();
 
         $this->command?->info('Tenant ['.self::TENANT_NAME.'] created. Domain: '.self::TENANT_DOMAIN.'.');
         $this->printDemoCredentials();
@@ -356,25 +368,56 @@ class TenantSeeder extends Seeder
 
     private function seedDemoPaymentMethod(): void
     {
-        $accountId = Account::query()->where('code', '5310')->value('id');
-        $hasDefault = PaymentMethod::query()->where('is_default', true)->exists();
-
         $method = PaymentMethod::query()->firstOrCreate(
             ['code' => 'CASH'],
             [
                 'name' => 'Cash',
                 'type' => PaymentMethodType::Cash,
-                'account_id' => $accountId,
                 'requires_reference' => false,
                 'supports_change' => true,
-                'is_default' => ! $hasDefault,
                 'is_active' => true,
             ]
         );
 
-        if ($method->account_id === null && $accountId !== null) {
-            $method->update(['account_id' => $accountId]);
+        // Shared cash boxes, linked to the Cash method: USD on ledger 5310, LBP on ledger 5311.
+        $this->seedCashBox($method, '5310', CompanySetting::singleton()->primary_currency_id, 'CASH', 'Cash');
+        $this->seedCashBox($method, '5311', Currency::query()->where('code', 'LBP')->value('id'), 'CASH-LBP', 'cash(LBP)');
+
+        // Cash is the default method of each branch that has none yet.
+        $withDefault = DB::table('branch_default_payment_methods')->pluck('branch_id')->all();
+        foreach (Branch::query()->whereNotIn('id', $withDefault)->pluck('id') as $branchId) {
+            DB::table('branch_default_payment_methods')->insert([
+                'branch_id' => $branchId,
+                'payment_method_id' => $method->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
         }
+    }
+
+    private function seedCashBox(PaymentMethod $method, string $ledgerCode, mixed $currencyId, string $code, string $name): void
+    {
+        $ledgerId = Account::query()->where('code', $ledgerCode)->value('id');
+        if ($ledgerId === null || $currencyId === null) {
+            return;
+        }
+
+        $cashBox = CashBankAccount::query()->firstOrCreate(
+            ['account_id' => $ledgerId],
+            [
+                'code' => $code,
+                'name' => $name,
+                'type' => CashBankAccountType::Cash,
+                'currency_id' => (int) $currencyId,
+                'branch_id' => null,
+                'opening_balance' => 0,
+                'is_active' => true,
+            ]
+        );
+        PaymentMethodCashBankAccount::query()->firstOrCreate([
+            'payment_method_id' => $method->id,
+            'cash_bank_account_id' => $cashBox->id,
+        ]);
     }
 
     private function seedDemoItems(): void
@@ -560,5 +603,28 @@ class TenantSeeder extends Seeder
 
         CompanySetting::singleton()->update(['primary_currency_id' => $currency->id]);
         TenantReferenceCache::forget(CompanySettingService::CACHE_KEY);
+    }
+
+    /**
+     * Lebanese pound as the second currency: cash rounded to 5,000 (up from 2,500), 1 USD = 90,000 LBP.
+     */
+    private function seedSecondaryCurrency(): void
+    {
+        $lbp = Currency::query()->firstOrCreate(
+            ['code' => 'LBP'],
+            [
+                'name' => 'Lebanese Pound',
+                'iso_code' => 'LBP',
+                'symbol' => 'LBP',
+                'smallest_unit' => 5000,
+                'round_limit' => 2500,
+                'is_active' => true,
+            ]
+        );
+
+        $usdId = CompanySetting::singleton()->primary_currency_id;
+        if ($usdId !== null) {
+            app(ExchangeRateService::class)->setPairRate((int) $usdId, (int) $lbp->id, 90000);
+        }
     }
 }

@@ -10,6 +10,7 @@ use App\Modules\Inventory\Stock\Models\OpeningStock;
 use App\Modules\Inventory\Stock\Models\Production;
 use App\Modules\Inventory\Stock\Models\StockAdjustment;
 use App\Modules\Inventory\Stock\Models\StockCount;
+use App\Modules\Inventory\Stock\Models\StockRevaluation;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 
 readonly class StockMovementData
@@ -256,13 +257,14 @@ readonly class StockMovementData
         ?string $notes,
         ?string $userId,
         ?int $lotId = null,
+        string $referenceType = 'sales_invoice',
     ): self {
         return new self(
             itemId: $itemId,
             warehouseId: $warehouseId,
             quantityDelta: self::formatDelta($quantityDelta),
             type: StockMovementType::Sale,
-            referenceType: 'sales_invoice',
+            referenceType: $referenceType,
             referenceId: $salesInvoiceId,
             itemUomId: $itemUomId,
             notes: self::normalizeNotes($notes),
@@ -280,13 +282,14 @@ readonly class StockMovementData
         ?string $notes,
         ?string $userId,
         ?int $lotId = null,
+        string $referenceType = 'sales_invoice',
     ): self {
         return new self(
             itemId: $itemId,
             warehouseId: $warehouseId,
             quantityDelta: self::formatDelta($quantityDelta),
             type: StockMovementType::BundleSale,
-            referenceType: 'sales_invoice',
+            referenceType: $referenceType,
             referenceId: $salesInvoiceId,
             itemUomId: null,
             notes: self::normalizeNotes($notes),
@@ -349,6 +352,30 @@ readonly class StockMovementData
         );
     }
 
+    public static function forRevaluation(
+        string $itemId,
+        int $warehouseId,
+        string $newUnitCost,
+        ?string $notes,
+        ?string $userId,
+        ?int $lotId = null,
+        ?string $stockRevaluationId = null,
+    ): self {
+        return new self(
+            itemId: $itemId,
+            warehouseId: $warehouseId,
+            quantityDelta: self::formatDelta(0),
+            type: StockMovementType::Revaluation,
+            referenceType: $stockRevaluationId !== null ? StockRevaluation::REFERENCE_TYPE : null,
+            referenceId: $stockRevaluationId,
+            itemUomId: null,
+            notes: self::normalizeNotes($notes),
+            userId: $userId,
+            unitCost: self::normalizeUnitCost($newUnitCost),
+            lotId: $lotId,
+        );
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -390,8 +417,8 @@ readonly class StockMovementData
             return null;
         }
 
-        $cost = InventoryCostingMath::moneyRound($value);
-        if (bccomp($cost, '0', InventoryCostingMath::MONEY_SCALE) < 0) {
+        $cost = InventoryCostingMath::unitCost($value);
+        if (bccomp($cost, '0', InventoryCostingMath::UNIT_COST_SCALE) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 

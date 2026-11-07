@@ -22,6 +22,9 @@ use App\Modules\Inventory\Stock\Models\StockTransferReceiptLine;
 use App\Modules\Inventory\Stock\Support\StockTransferLineQuantity;
 use App\Modules\Inventory\Stock\Support\StockTransferRules;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
+use App\Support\Decimal;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -106,8 +109,6 @@ class StockTransferService
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
             ]);
-
-            $transfer->update(['transfer_number' => $this->formatTransferNumber()]);
 
             if (! empty($data['lines'])) {
                 $this->replaceLines($transfer, $data['lines']);
@@ -196,6 +197,7 @@ class StockTransferService
             $locked = $this->lockTransfer($transfer);
             StockTransferRules::assertDispatchable($locked);
             StockTransferRules::assertWarehouses($locked->from_warehouse_id, $locked->to_warehouse_id);
+            app(DocumentNumberService::class)->assign($locked, 'transfer_number', DocumentType::StockTransfer, (int) $locked->from_branch_id, now());
 
             $lines = $this->lockTransferLines($locked);
             $referenceNote = 'Transfer '.$locked->transfer_number;
@@ -263,7 +265,7 @@ class StockTransferService
                 'posted_by' => $userId,
                 'posted_at' => now(),
             ]);
-            $receipt->update(['receipt_number' => $this->formatReceiptNumber()]);
+            app(DocumentNumberService::class)->assign($receipt, 'receipt_number', DocumentType::StockTransferReceipt, (int) $receipt->branch_id, $receivedDate);
 
             foreach ($posted as $row) {
                 /** @var StockTransferLine $line */
@@ -340,7 +342,7 @@ class StockTransferService
                 'created_by' => $userId,
                 'closed_at' => now(),
             ]);
-            $closure->update(['closure_number' => $this->formatClosureNumber()]);
+            app(DocumentNumberService::class)->assign($closure, 'closure_number', DocumentType::StockTransferClosure, (int) $closure->branch_id, now());
 
             foreach ($posted as $row) {
                 /** @var StockTransferLine $line */
@@ -424,7 +426,7 @@ class StockTransferService
 
             $resolved = StockTransferLineQuantity::resolve(
                 $item,
-                (float) $row['quantity'],
+                $row['quantity'],
                 isset($row['item_uom_id']) ? (int) $row['item_uom_id'] : null
             );
 
@@ -491,7 +493,7 @@ class StockTransferService
                 ]);
             }
 
-            $qty = number_format((float) ($row['quantity'] ?? 0), 6, '.', '');
+            $qty = Decimal::round($row['quantity'] ?? 0, 6);
             if (bccomp($qty, '0', 6) <= 0) {
                 continue;
             }
@@ -558,7 +560,7 @@ class StockTransferService
                 ]);
             }
 
-            $qty = number_format((float) ($row['quantity'] ?? 0), 6, '.', '');
+            $qty = Decimal::round($row['quantity'] ?? 0, 6);
             if (bccomp($qty, '0', 6) <= 0) {
                 continue;
             }
@@ -618,20 +620,6 @@ class StockTransferService
         }
 
         return now()->toDateString();
-    }
-
-    private function formatReceiptNumber(): string
-    {
-        $seq = StockTransferReceipt::query()->count();
-
-        return 'STR-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
-    }
-
-    private function formatClosureNumber(): string
-    {
-        $seq = StockTransferClosure::query()->count();
-
-        return 'STC-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
     }
 
     private function restoreSourceStock(StockTransfer $transfer, ?string $userId): void
@@ -715,13 +703,6 @@ class StockTransferService
         StockTransferRules::assertTransferVisible($locked);
 
         return $locked;
-    }
-
-    private function formatTransferNumber(): string
-    {
-        $seq = StockTransfer::query()->count();
-
-        return 'ST-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
     }
 
     private function normalizeNotes(mixed $value): ?string

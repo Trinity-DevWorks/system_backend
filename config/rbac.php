@@ -21,8 +21,11 @@ use App\Modules\Rbac\RbacResourceCatalog;
 $crud = ['view', 'add', 'edit', 'delete'];
 $viewEdit = ['view', 'edit'];
 
+// `print` (document PDFs) is separate from `view` and only works together with it.
+// See docs/printing-plan.md, Permissions.
+
 return [
-    'actions' => ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse', 'reopen'],
+    'actions' => ['view', 'add', 'edit', 'delete', 'import', 'export', 'reverse', 'reopen', 'print'],
 
     'resources' => [
         'notifications' => [
@@ -49,6 +52,14 @@ return [
             'label' => 'Company Profile Management',
             'actions' => $viewEdit,
         ],
+        'document_numbering' => [
+            'label' => 'Document Numbering',
+            'actions' => $viewEdit,
+        ],
+        'print_settings' => [
+            'label' => 'Print Settings',
+            'actions' => $viewEdit,
+        ],
         'company_settings' => [
             'label' => 'Company Settings Management',
             'actions' => $viewEdit,
@@ -60,6 +71,10 @@ return [
 
         'brands' => [
             'label' => 'Brand Management',
+            'actions' => $crud,
+        ],
+        'item_attributes' => [
+            'label' => 'Item Attributes (Variants)',
             'actions' => $crud,
         ],
         'categories' => [
@@ -88,7 +103,7 @@ return [
         ],
         'stock' => [
             'label' => 'Stock Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'salesmen' => [
             'label' => 'Salesman Management',
@@ -114,31 +129,69 @@ return [
         ],
         'customers' => [
             'label' => 'Customer Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'print'],
         ],
         'sales_quotations' => [
             'label' => 'Sales Quotation Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'print'],
         ],
         'sales_orders' => [
             'label' => 'Sales Order Management',
+            'actions' => [...$crud, 'print'],
+        ],
+        'cash_bank_accounts' => [
+            'label' => 'Cash & Bank Account Management',
             'actions' => $crud,
+        ],
+        'treasury_transfers' => [
+            'label' => 'Cash/Bank Transfer Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'expense_vouchers' => [
+            'label' => 'Expense Voucher Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'price_lists' => [
+            'label' => 'Price List Management',
+            'actions' => $crud,
+        ],
+        'delivery_notes' => [
+            'label' => 'Delivery Note Management',
+            'actions' => [...$crud, 'reverse', 'print'],
+        ],
+        'landed_costs' => [
+            'label' => 'Landed Cost Management',
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'sales_invoices' => [
             'label' => 'Sales Invoice Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
+        ],
+        // Lets a role post invoices / confirm orders above the customer's credit limit.
+        'credit_limit_override' => [
+            'label' => 'Override Customer Credit Limit',
+            'actions' => ['edit'],
+        ],
+        // Lets a role give any discount, and approve a cashier's discount above their role's limit.
+        'discount_override' => [
+            'label' => 'Approve Discounts Above Limit',
+            'actions' => ['edit'],
         ],
         'customer_receipts' => [
             'label' => 'Customer Receipt Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
+        ],
+        'customer_cheques' => [
+            'label' => 'Customer Cheques',
+            'actions' => ['view', 'edit'],
         ],
         'sales_credit_notes' => [
             'label' => 'Sales Credit Note Management',
-            'actions' => [...$crud, 'reverse', 'export'],
+            'actions' => [...$crud, 'reverse', 'export', 'print'],
         ],
         'customer_refunds' => [
             'label' => 'Customer Refund Management',
-            'actions' => [...$crud, 'reverse', 'export'],
+            'actions' => [...$crud, 'reverse', 'export', 'print'],
         ],
 
         'supplier_groups' => [
@@ -147,23 +200,23 @@ return [
         ],
         'suppliers' => [
             'label' => 'Supplier Management',
-            'actions' => $crud,
+            'actions' => [...$crud, 'print'],
         ],
         'purchase_invoices' => [
             'label' => 'Purchase Invoice Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'supplier_payments' => [
             'label' => 'Supplier Payment Management',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'purchase_debit_notes' => [
             'label' => 'Purchase Debit Note Management',
-            'actions' => [...$crud, 'reverse', 'export'],
+            'actions' => [...$crud, 'reverse', 'export', 'print'],
         ],
         'supplier_refunds' => [
             'label' => 'Supplier Refund Management',
-            'actions' => [...$crud, 'reverse', 'export'],
+            'actions' => [...$crud, 'reverse', 'export', 'print'],
         ],
         'accounts' => [
             'label' => 'Chart of Accounts',
@@ -175,19 +228,27 @@ return [
         ],
         'journal_entries' => [
             'label' => 'Journal Entries',
-            'actions' => [...$crud, 'reverse'],
+            'actions' => [...$crud, 'reverse', 'print'],
         ],
         'accounting_reports' => [
             'label' => 'Accounting Reports',
-            'actions' => ['view', 'export'],
+            'actions' => ['view', 'export', 'print'],
         ],
         'vat_settlements' => [
             'label' => 'VAT Settlements',
             'actions' => ['view', 'add', 'reverse'],
         ],
+        'currency_revaluations' => [
+            'label' => 'Currency Revaluations',
+            'actions' => ['view', 'add', 'reverse'],
+        ],
         'accounting_periods' => [
             'label' => 'Accounting Periods',
             'actions' => ['view', 'edit', 'reopen'],
+        ],
+        'business_reports' => [
+            'label' => 'Business Reports',
+            'actions' => ['view', 'export'],
         ],
     ],
 ];

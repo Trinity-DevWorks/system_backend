@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Stock\Models;
 
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,7 +19,7 @@ class StockBalance extends Model
     {
         return [
             'quantity' => 'decimal:6',
-            'unit_cost' => 'decimal:4',
+            'unit_cost' => 'decimal:6',
             'inventory_value' => 'decimal:4',
         ];
     }
@@ -54,7 +55,7 @@ class StockBalance extends Model
             ->where('warehouse_id', $warehouseId)
             ->sum('quantity');
 
-        return number_format((float) $sum, 6, '.', '');
+        return Decimal::round($sum, 6);
     }
 
     public static function lockRow(string $itemId, int $warehouseId, ?int $lotId): self

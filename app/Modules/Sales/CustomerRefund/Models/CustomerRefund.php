@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Sales\CustomerRefund\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Sales\CustomerRefund\Enums\CustomerRefundStatus;
+use App\Modules\Treasury\Models\CashBankAccount;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -19,16 +21,20 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
+ * @property int|null $cash_bank_account_id
  * @property CustomerRefundStatus $status
  * @property Carbon|null $refund_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'refund_number',
     'customer_id',
     'currency_id',
     'exchange_rate',
     'payment_method_id',
+    'cash_bank_account_id',
     'refund_date',
     'amount',
     'reference',
@@ -41,7 +47,18 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class CustomerRefund extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * No warehouse: the branch comes from the user's active branch.
+     *
+     * @return array<string, string|null>
+     */
+    public function documentBranchColumns(): array
+    {
+        return ['branch_id' => null];
+    }
 
     public const REFERENCE_TYPE = 'customer_refund';
 
@@ -81,6 +98,16 @@ class CustomerRefund extends Model implements AuditableContract
     public function paymentMethod(): BelongsTo
     {
         return $this->belongsTo(PaymentMethod::class);
+    }
+
+    /**
+     * Cash box / bank account the refund is paid from.
+     *
+     * @return BelongsTo<CashBankAccount, $this>
+     */
+    public function cashBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(CashBankAccount::class);
     }
 
     /**

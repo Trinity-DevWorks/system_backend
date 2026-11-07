@@ -12,15 +12,18 @@ use App\Modules\Sales\SalesCreditNote\Http\Requests\StoreSalesCreditNoteRequest;
 use App\Modules\Sales\SalesCreditNote\Http\Requests\SyncSalesCreditNoteLinesRequest;
 use App\Modules\Sales\SalesCreditNote\Http\Requests\UpdateSalesCreditNoteRequest;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
+use App\Modules\Sales\SalesCreditNote\Services\SalesCreditNotePdfService;
 use App\Modules\Sales\SalesCreditNote\Services\SalesCreditNoteService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class SalesCreditNoteController extends Controller
 {
     public function __construct(
         private readonly SalesCreditNoteService $salesCreditNoteService,
+        private readonly SalesCreditNotePdfService $salesCreditNotePdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -138,5 +141,15 @@ class SalesCreditNoteController extends Controller
             SalesCreditNoteResponseData::fromModel($note),
             'Sales credit note reversed successfully.'
         );
+    }
+
+    public function pdf(Request $request, SalesCreditNote $salesCreditNote): Response
+    {
+        $pdf = $this->salesCreditNotePdfService->render(
+            $salesCreditNote,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->salesCreditNotePdfService->downloadFilename($salesCreditNote));
     }
 }

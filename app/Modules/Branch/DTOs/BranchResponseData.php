@@ -23,6 +23,7 @@ readonly class BranchResponseData
         public ?string $managerName,
         public bool $isActive,
         public bool $isDefault,
+        public ?int $priceListId,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -46,6 +47,7 @@ readonly class BranchResponseData
             managerName: $manager?->name,
             isActive: (bool) $branch->is_active,
             isDefault: (bool) $branch->is_default,
+            priceListId: $branch->price_list_id !== null ? (int) $branch->price_list_id : null,
             createdAt: (string) $branch->created_at,
             updatedAt: (string) $branch->updated_at,
         );
@@ -97,6 +99,7 @@ readonly class BranchResponseData
             'manager_name' => $this->managerName,
             'is_active' => $this->isActive,
             'is_default' => $this->isDefault,
+            'price_list_id' => $this->priceListId,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];

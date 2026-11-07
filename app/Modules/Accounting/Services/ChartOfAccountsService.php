@@ -11,7 +11,7 @@ use App\Modules\Accounting\Models\AccountMapping;
 use App\Modules\Accounting\Models\JournalEntryLine;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\CompanySetting\Services\CompanySettingService;
-use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\Treasury\Models\CashBankAccount;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -224,7 +224,7 @@ class ChartOfAccountsService
             if ($this->hasLines($account)
                 || $account->children()->exists()
                 || $this->isMapped($account)
-                || PaymentMethod::withTrashed()->where('account_id', $account->id)->exists()) {
+                || CashBankAccount::query()->where('account_id', $account->id)->exists()) {
                 abort(422, 'This account is in use and cannot be deleted.', ['X-Error-Code' => 'ACCOUNT_IN_USE']);
             }
 

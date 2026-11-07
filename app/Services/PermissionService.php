@@ -131,6 +131,7 @@ class PermissionService
                 'role_permissions.can_export',
                 'role_permissions.can_reverse',
                 'role_permissions.can_reopen',
+                'role_permissions.can_print',
             ])
             ->get();
 
@@ -149,6 +150,7 @@ class PermissionService
                 'can_export' => $row->can_export,
                 'can_reverse' => $row->can_reverse,
                 'can_reopen' => $row->can_reopen,
+                'can_print' => $row->can_print,
             ]);
             foreach ($clamped as $flag => $on) {
                 if ($on) {

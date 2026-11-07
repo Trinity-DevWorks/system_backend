@@ -29,6 +29,7 @@ readonly class StockBalanceResponseData
             $pipeline['on_order_qty'] ?? '0',
             $pipeline['in_transit_in_qty'] ?? '0',
             $pipeline['in_transit_out_qty'] ?? '0',
+            $pipeline['reserved_qty'] ?? '0',
         );
 
         return [
@@ -46,6 +47,9 @@ readonly class StockBalanceResponseData
             'on_order_qty' => $pipelineFields['on_order_qty'],
             'in_transit_in_qty' => $pipelineFields['in_transit_in_qty'],
             'in_transit_out_qty' => $pipelineFields['in_transit_out_qty'],
+            // Reserved / available are warehouse-level (sales orders reserve per item and warehouse, not per lot).
+            'reserved_qty' => $pipelineFields['reserved_qty'],
+            'available_qty' => $pipelineFields['available_qty'],
             'projected_qty' => $pipelineFields['projected_qty'],
             'unit_cost' => (string) $balance->unit_cost,
             'inventory_value' => (string) $balance->inventory_value,

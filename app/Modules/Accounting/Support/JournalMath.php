@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Accounting\Support;
 
 use App\Modules\CompanySetting\Support\PriceMath;
+use App\Support\Decimal;
 
 /**
  * String money math for journal lines. Rounds half-up with bcmath so large
@@ -36,15 +37,7 @@ final class JournalMath
 
     public static function of(mixed $value): string
     {
-        if ($value === null || $value === '') {
-            return '0';
-        }
-        if (is_float($value) || is_int($value)) {
-            $value = number_format((float) $value, self::WORK_SCALE, '.', '');
-        }
-        $value = trim((string) $value);
-
-        return is_numeric($value) ? bcadd($value, '0', self::WORK_SCALE) : '0';
+        return bcadd(Decimal::of($value), '0', self::WORK_SCALE);
     }
 
     public static function add(mixed $left, mixed $right): string

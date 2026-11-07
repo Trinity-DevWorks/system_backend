@@ -108,12 +108,13 @@ class SupplierPaymentApiTest extends TestCase
                 ],
             ])
             ->assertCreated()
-            ->assertJsonPath('data.payment_number', 'SP-000001')
+            ->assertJsonPath('data.payment_number', null)
             ->json('data.id');
 
         $this->asTenantRequest($this->token)
             ->postJson($this->tenantUrl("/supplier-payments/{$id}/post"))
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonPath('data.payment_number', fn ($n): bool => is_string($n) && preg_match('/^SP-[A-Z0-9]+-\d{4}-\d{6}$/', $n) === 1);
 
         $openInvoice = $this->postPurchaseInvoice(100);
         $this->createAndPostPayment($this->paymentPayload($openInvoice, '40'));
@@ -407,7 +408,7 @@ class SupplierPaymentApiTest extends TestCase
             ->postJson($this->tenantUrl('/supplier-payments'), $payload)
             ->assertCreated();
 
-        $this->assertMatchesRegularExpression('/^SP-\d{6}$/', (string) $created->json('data.payment_number'));
+        $this->assertNull($created->json('data.payment_number'), 'Number is assigned at posting.');
         $id = (string) $created->json('data.id');
 
         $this->asTenantRequest($this->token)
@@ -523,6 +524,10 @@ class SupplierPaymentApiTest extends TestCase
             'requires_reference' => true,
             'is_active' => true,
         ]);
+
+        $this->linkCashBank((int) $cash->id, (int) $usd->id, '5310');
+        $this->linkCashBank((int) $cash->id, (int) $eur->id, '2812');
+        $this->linkCashBank((int) $cheque->id, (int) $usd->id, '5110', 'bank');
 
         return [
             'usd_id' => (int) $usd->id,

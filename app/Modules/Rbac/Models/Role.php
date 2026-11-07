@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-#[Fillable(['name', 'description', 'is_active', 'created_by'])]
+#[Fillable(['name', 'description', 'is_active', 'max_discount_percent', 'created_by'])]
 class Role extends Model implements AuditableContract
 {
     use Auditable;
@@ -25,6 +25,7 @@ class Role extends Model implements AuditableContract
     {
         return [
             'is_active' => 'boolean',
+            'max_discount_percent' => 'decimal:4',
         ];
     }
 
@@ -47,7 +48,7 @@ class Role extends Model implements AuditableContract
     public function permissions(): BelongsToMany
     {
         return $this->belongsToMany(Permission::class, 'role_permissions')
-            ->withPivot(['can_view', 'can_add', 'can_edit', 'can_delete', 'can_import', 'can_export', 'can_reverse', 'can_reopen'])
+            ->withPivot(['can_view', 'can_add', 'can_edit', 'can_delete', 'can_import', 'can_export', 'can_reverse', 'can_reopen', 'can_print'])
             ->withTimestamps();
     }
 

@@ -6,6 +6,7 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Support\ItemUomValidation;
 use App\Modules\Inventory\Item\Support\RecipeRules;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 
 class RecipeService
@@ -43,7 +44,7 @@ class RecipeService
         return DB::transaction(function () use ($item, $data): Recipe {
             $recipe = Recipe::query()->firstOrNew(['item_id' => $item->id]);
             $recipe->fill([
-                'yield_quantity' => number_format((float) $data['yield_quantity'], 6, '.', ''),
+                'yield_quantity' => Decimal::round($data['yield_quantity'], 6),
                 'uom_id' => (int) $data['uom_id'],
             ]);
             $recipe->save();

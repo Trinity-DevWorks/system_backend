@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Services;
 
 use App\Modules\Accounting\Services\JournalPostingService;
-use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Enums\OpeningStockStatus;
@@ -15,6 +14,9 @@ use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\OpeningStockRules;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\Decimal;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -86,8 +88,6 @@ class OpeningStockService
                 'created_by' => $userId,
             ]);
 
-            $document->update(['os_number' => $this->formatOsNumber()]);
-
             if (! empty($data['lines'])) {
                 $this->replaceLines($document, $data['lines']);
             }
@@ -154,6 +154,7 @@ class OpeningStockService
     {
         return DB::transaction(function () use ($document, $userId): OpeningStock {
             $locked = OpeningStock::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'os_number', DocumentType::OpeningStock, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->opening_date);
             OpeningStockRules::assertPostable($locked);
             OpeningStockRules::assertWarehouse((int) $locked->warehouse_id);
 
@@ -243,8 +244,8 @@ class OpeningStockService
             $item = Item::query()->findOrFail($itemId);
             OpeningStockRules::assertStockableItem($item);
 
-            $quantity = (float) $row['quantity'];
-            if ($quantity <= 0) {
+            $quantity = Decimal::of($row['quantity']);
+            if (! Decimal::isPositive($quantity)) {
                 abort(422, 'Opening stock quantity must be greater than zero.', [
                     'X-Error-Code' => 'OPENING_STOCK_LINE_INVALID_QUANTITY',
                 ]);
@@ -265,7 +266,7 @@ class OpeningStockService
 
             $normalized[$lineKey] = [
                 'item_id' => $itemId,
-                'quantity' => number_format($quantity, 6, '.', ''),
+                'quantity' => Decimal::round($quantity, 6),
                 'base_quantity' => $baseQuantity,
                 'item_uom_id' => $itemUomId,
                 'unit_cost' => $this->normalizeUnitCost($row['unit_cost'] ?? null),
@@ -323,13 +324,6 @@ class OpeningStockService
         return $locked;
     }
 
-    private function formatOsNumber(): string
-    {
-        $seq = OpeningStock::query()->count();
-
-        return 'OS-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
-    }
-
     private function normalizeNotes(mixed $value): ?string
     {
         if ($value === null) {
@@ -347,8 +341,8 @@ class OpeningStockService
             return null;
         }
 
-        $cost = PriceMath::normalize($value);
-        if (bccomp($cost, '0', PriceMath::scale()) < 0) {
+        $cost = InventoryCostingMath::unitCost($value);
+        if (bccomp($cost, '0', InventoryCostingMath::UNIT_COST_SCALE) < 0) {
             abort(422, 'Unit cost cannot be negative.', ['X-Error-Code' => 'STOCK_UNIT_COST_INVALID']);
         }
 

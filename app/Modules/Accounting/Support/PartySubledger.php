@@ -27,7 +27,6 @@ final class PartySubledger
             'customer_receipt_id',
             'sales_invoice_id',
             'customer',
-            SourceDocuments::CUSTOMER_OPENING_BALANCE,
             $asOf,
         );
     }
@@ -43,7 +42,6 @@ final class PartySubledger
             'supplier_payment_id',
             'purchase_invoice_id',
             'supplier',
-            SourceDocuments::SUPPLIER_OPENING_BALANCE,
             $asOf,
         );
     }
@@ -57,7 +55,6 @@ final class PartySubledger
         string $allocationParent,
         string $allocationInvoice,
         string $partyType,
-        string $openingSource,
         string $asOf,
     ): string {
         $primaryId = (int) (Currency::getPrimary()?->id ?? 0);
@@ -76,7 +73,8 @@ final class PartySubledger
             return JournalMath::store($total);
         }
 
-        $invoiceIds = $foreign->where('reference_type', 'invoice')->pluck('reference_id')->filter()->unique()->all();
+        $invoiceType = $partyType === 'customer' ? 'invoice' : 'purchase_invoice';
+        $invoiceIds = $foreign->where('reference_type', $invoiceType)->pluck('reference_id')->filter()->unique()->all();
         $invoiceRates = $invoiceIds === []
             ? []
             : DB::table($invoiceTable)->whereIn('id', $invoiceIds)->pluck('exchange_rate', 'id')->all();
@@ -102,11 +100,11 @@ final class PartySubledger
                 ? JournalMath::sub($entry->debit, $entry->credit)
                 : JournalMath::sub($entry->credit, $entry->debit);
             $primaryAmount = match ((string) $entry->reference_type) {
-                'invoice' => $this->convert($net, (string) ($invoiceRates[$entry->reference_id] ?? '1')),
+                $invoiceType => $this->convert($net, (string) ($invoiceRates[$entry->reference_id] ?? '1')),
                 'payment' => $this->scaleToBundle($net, $allocations[$entry->reference_id.'|'.$entry->currency_id] ?? null),
                 $noteType => $this->convert($net, (string) ($noteRates[$entry->reference_id] ?? '1')),
                 'refund' => $this->scaleToBundle($net, $refunds[$entry->reference_id.'|'.$entry->currency_id] ?? null),
-                default => $this->convert($net, $this->openingRate($partyType, (string) $entry->{$partyColumn}, (int) $entry->currency_id, $openingSource)),
+                default => $this->convert($net, '1'),
             };
             $total = JournalMath::add($total, $primaryAmount);
         }
@@ -156,19 +154,6 @@ final class PartySubledger
         $ratio = bcdiv(JournalMath::of($bundle['primary']), JournalMath::of($bundle['document']), JournalMath::WORK_SCALE);
 
         return JournalMath::round(JournalMath::mul($net, $ratio));
-    }
-
-    private function openingRate(string $partyType, string $partyId, int $currencyId, string $sourceType): string
-    {
-        $rate = DB::table('journal_entry_lines as l')
-            ->join('journal_entries as je', 'je.id', '=', 'l.journal_entry_id')
-            ->where('l.party_type', $partyType)
-            ->where('l.party_id', $partyId)
-            ->where('l.currency_id', $currencyId)
-            ->where('je.source_type', $sourceType)
-            ->value('l.exchange_rate');
-
-        return $rate !== null && $rate !== '' ? (string) $rate : '1';
     }
 
     private function convert(string $amount, string $rate): string

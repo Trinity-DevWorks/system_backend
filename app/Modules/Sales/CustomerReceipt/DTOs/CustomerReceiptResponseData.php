@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Sales\CustomerReceipt\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\Sales\CustomerCheque\Models\CustomerCheque;
 use App\Modules\Sales\CustomerReceipt\Enums\CustomerReceiptStatus;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
@@ -23,20 +25,31 @@ readonly class CustomerReceiptResponseData
             'customer:id,customer_code,name,phone,status,is_system',
             'currency:id,code,name,symbol',
             'paymentMethod:id,name,code,type,requires_reference,is_active',
+            'cashBankAccount:id,code,name,currency_id,branch_id',
             'createdByUser:id,name,email',
             'postedByUser:id,name,email',
         ]);
 
         $payload = [
             'id' => $receipt->id,
+            ...DocumentBranchPayload::of($receipt),
             'receipt_number' => $receipt->receipt_number,
             'customer_id' => $receipt->customer_id,
             'currency_id' => $receipt->currency_id,
             'exchange_rate' => (string) $receipt->exchange_rate,
             'payment_method_id' => $receipt->payment_method_id,
+            'cash_bank_account_id' => $receipt->cash_bank_account_id,
+            'cash_bank_account' => $receipt->cashBankAccount !== null
+                ? ['id' => (int) $receipt->cashBankAccount->id, 'code' => $receipt->cashBankAccount->code, 'name' => $receipt->cashBankAccount->name]
+                : null,
             'payment_date' => $receipt->payment_date?->toDateString(),
             'amount' => (string) $receipt->amount,
             'reference' => $receipt->reference,
+            'cheque_number' => $receipt->cheque_number,
+            'cheque_bank' => $receipt->cheque_bank,
+            'cheque_due_date' => $receipt->cheque_due_date?->toDateString(),
+            'cheque_status' => CustomerCheque::query()->where('customer_receipt_id', $receipt->id)->value('status'),
+            'unapplied_amount' => $receipt->unappliedAmount(),
             'notes' => $receipt->notes,
             'status' => $receipt->status instanceof CustomerReceiptStatus
                 ? $receipt->status->value
@@ -80,6 +93,7 @@ readonly class CustomerReceiptResponseData
                     'applied_amount' => (string) $allocation->applied_amount,
                     'applied_exchange_rate' => (string) $allocation->applied_exchange_rate,
                     'exchange_difference' => (string) $allocation->exchange_difference,
+                    'applied_later' => (bool) $allocation->applied_later,
                     'currency_id' => $invoice?->currency_id,
                     'currency' => self::currencyBrief($invoice?->currency),
                     'invoice_number' => $invoice?->invoice_number,
@@ -104,6 +118,8 @@ readonly class CustomerReceiptResponseData
         return [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
+            'is_opening' => (bool) $invoice->is_opening,
+            'original_number' => $invoice->original_number,
             'invoice_date' => $invoice->invoice_date?->toDateString(),
             'grand_total' => (string) $invoice->grand_total,
             'paid_total' => (string) $invoice->paid_total,

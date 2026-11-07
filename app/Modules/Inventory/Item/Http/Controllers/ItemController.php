@@ -91,6 +91,7 @@ class ItemController extends Controller
                     'allow_sale' => $request->exists('allow_sale') ? $request->boolean('allow_sale') : null,
                     'allow_purchase' => $request->exists('allow_purchase') ? $request->boolean('allow_purchase') : null,
                     'is_active' => $request->exists('is_active') ? $request->boolean('is_active') : null,
+                    'hide_variants' => $request->boolean('hide_variants'),
                 ],
             ),
             fn ($items) => ItemResponseData::collectionToArray($items),

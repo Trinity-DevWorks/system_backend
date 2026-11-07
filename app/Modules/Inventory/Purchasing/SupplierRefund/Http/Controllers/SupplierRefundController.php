@@ -11,15 +11,18 @@ use App\Modules\Inventory\Purchasing\SupplierRefund\Http\Requests\StoreSupplierR
 use App\Modules\Inventory\Purchasing\SupplierRefund\Http\Requests\SyncSupplierRefundAllocationsRequest;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Http\Requests\UpdateSupplierRefundRequest;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefund;
+use App\Modules\Inventory\Purchasing\SupplierRefund\Services\SupplierRefundPdfService;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Services\SupplierRefundService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class SupplierRefundController extends Controller
 {
     public function __construct(
         private readonly SupplierRefundService $supplierRefundService,
+        private readonly SupplierRefundPdfService $supplierRefundPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -105,5 +108,15 @@ class SupplierRefundController extends Controller
         $refund = $this->supplierRefundService->reverse($supplierRefund, $userId !== null ? (string) $userId : null);
 
         return ApiResponse::success(SupplierRefundResponseData::fromModel($refund), 'Supplier refund reversed successfully.');
+    }
+
+    public function pdf(Request $request, SupplierRefund $supplierRefund): Response
+    {
+        $pdf = $this->supplierRefundPdfService->render(
+            $supplierRefund,
+            $request->query('locale')
+        );
+
+        return $pdf->download($this->supplierRefundPdfService->downloadFilename($supplierRefund));
     }
 }

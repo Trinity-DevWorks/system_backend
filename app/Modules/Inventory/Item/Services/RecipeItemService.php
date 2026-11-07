@@ -7,6 +7,7 @@ use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
 use App\Modules\Inventory\Item\Support\ItemUomValidation;
 use App\Modules\Inventory\Item\Support\RecipeRules;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -54,7 +55,7 @@ class RecipeItemService
             return RecipeItem::query()->create([
                 'recipe_id' => $recipe->id,
                 'item_id' => $data['item_id'],
-                'quantity' => number_format((float) $data['quantity'], 6, '.', ''),
+                'quantity' => Decimal::round($data['quantity'], 6),
                 'uom_id' => (int) $data['uom_id'],
             ])->load(['ingredientItem.itemType', 'uom']);
         });
@@ -73,7 +74,7 @@ class RecipeItemService
         ItemUomValidation::assertUomAllowedForItem($ingredient, (int) $data['uom_id']);
 
         $row->update([
-            'quantity' => number_format((float) $data['quantity'], 6, '.', ''),
+            'quantity' => Decimal::round($data['quantity'], 6),
             'uom_id' => (int) $data['uom_id'],
         ]);
 
@@ -99,7 +100,7 @@ class RecipeItemService
             foreach ($ingredients as $row) {
                 $ingredientId = (string) $row['item_id'];
                 $lines[$ingredientId] = [
-                    'quantity' => number_format((float) $row['quantity'], 6, '.', ''),
+                    'quantity' => Decimal::round($row['quantity'], 6),
                     'uom_id' => (int) $row['uom_id'],
                 ];
             }

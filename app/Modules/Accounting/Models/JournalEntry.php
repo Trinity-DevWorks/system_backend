@@ -49,6 +49,9 @@ class JournalEntry extends Model implements AuditableContract
 
     public const SOURCE_YEAR_END_CLOSE = 'year_end_close';
 
+    /** Month-end revaluation of foreign-currency balances (source id = the date). */
+    public const SOURCE_CURRENCY_REVALUATION = 'currency_revaluation';
+
     public const EVENT_POST = 'post';
 
     public const EVENT_REVERSE = 'reverse';

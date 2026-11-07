@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\PurchaseDebitNote\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Purchasing\Models\PurchaseInvoice;
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Enums\PurchaseDebitNoteStatus;
@@ -33,7 +34,10 @@ readonly class PurchaseDebitNoteResponseData
 
         $payload = [
             'id' => $note->id,
+            ...DocumentBranchPayload::of($note),
             'debit_note_number' => $note->debit_note_number,
+            'is_opening' => (bool) $note->is_opening,
+            'original_number' => $note->original_number,
             'purchase_invoice_id' => $note->purchase_invoice_id,
             'supplier_id' => $note->supplier_id,
             'currency_id' => $note->currency_id,

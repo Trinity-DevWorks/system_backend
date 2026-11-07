@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Stock\Models\StockTransferClosure;
 use App\Modules\Inventory\Stock\Models\StockTransferClosureLine;
 use Illuminate\Support\Collection;
@@ -19,6 +20,7 @@ readonly class StockTransferClosureResponseData
 
         $payload = [
             'id' => $closure->id,
+            ...DocumentBranchPayload::of($closure),
             'closure_number' => $closure->closure_number,
             'stock_transfer_id' => $closure->stock_transfer_id,
             'warehouse_id' => $closure->warehouse_id,

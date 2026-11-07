@@ -8,8 +8,10 @@ use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
+use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Models\StockMovement;
+use App\Modules\Inventory\Stock\Models\StockRevaluationLine;
 use App\Modules\Notification\Services\InstantLotExpiryNotifier;
 use App\Modules\Notification\Services\InstantLowStockNotifier;
 use App\Modules\Warehouse\Models\Warehouse;
@@ -30,11 +32,13 @@ class StockMovementService
      */
     public function post(StockMovementData $data): StockMovement
     {
-        if (bccomp($data->quantityDelta, '0', 6) === 0) {
+        $isRevaluation = $data->type === StockMovementType::Revaluation;
+
+        if (! $isRevaluation && bccomp($data->quantityDelta, '0', 6) === 0) {
             abort(422, 'Stock movement quantity cannot be zero.', ['X-Error-Code' => 'STOCK_MOVEMENT_ZERO_QUANTITY']);
         }
 
-        return DB::transaction(function () use ($data): StockMovement {
+        return DB::transaction(function () use ($data, $isRevaluation): StockMovement {
             $item = Item::query()->findOrFail($data->itemId);
             $warehouse = Warehouse::query()->findOrFail($data->warehouseId);
 
@@ -53,9 +57,33 @@ class StockMovementService
                 }
             }
 
-            $warehouseOnHand = StockBalance::onHandForWarehouse($item->id, $warehouse->id);
             $balance = StockBalance::lockRow($item->id, $warehouse->id, $data->lotId);
+            $movement = StockMovement::query()->create($data->toArray());
 
+            if ($isRevaluation) {
+                $newUnitCost = $data->unitCost;
+                if ($newUnitCost === null) {
+                    abort(422, 'Enter a unit cost for this revaluation.', [
+                        'X-Error-Code' => 'STOCK_UNIT_COST_REQUIRED',
+                    ]);
+                }
+
+                $costing = $this->inventoryCostingService->revalue(
+                    $item,
+                    $balance,
+                    $newUnitCost,
+                    (int) $movement->id,
+                );
+
+                $movement->update([
+                    'unit_cost' => $costing['unit_cost'],
+                    'value_delta' => $costing['value_delta'],
+                ]);
+
+                return $movement->load(['item.baseUom', 'warehouse', 'itemUom.uom', 'user', 'lot']);
+            }
+
+            $warehouseOnHand = StockBalance::onHandForWarehouse($item->id, $warehouse->id);
             $current = (string) $balance->quantity;
             $newQuantity = bcadd($current, $data->quantityDelta, 6);
 
@@ -66,7 +94,14 @@ class StockMovementService
                 abort(422, 'Insufficient stock for this movement.', ['X-Error-Code' => 'STOCK_INSUFFICIENT']);
             }
 
-            $movement = StockMovement::query()->create($data->toArray());
+            if (! in_array($data->type, [StockMovementType::Adjustment, StockMovementType::Count], true)) {
+                app(StockReservationService::class)->assertOutboundRespectsReservations(
+                    $item,
+                    (int) $warehouse->id,
+                    $warehouseOnHand,
+                    $data->quantityDelta,
+                );
+            }
 
             $costing = $this->inventoryCostingService->apply(
                 $item,
@@ -108,6 +143,47 @@ class StockMovementService
      * Post the opposite of every movement for a document, newest first.
      * Caller must already be inside a database transaction.
      */
+    /**
+     * Value-only movement for a landed cost: adds (or removes, when negative) value on stock already on hand.
+     * The caller splits the charge first (InventoryCostingService::landedCostBasis) and passes only the stock share.
+     */
+    public function postLandedCost(
+        string $itemId,
+        int $warehouseId,
+        ?int $lotId,
+        string $value,
+        ?int $sourceMovementId,
+        string $landedCostId,
+        ?string $notes,
+        ?string $userId,
+    ): ?StockMovement {
+        if (bccomp($value, '0', 4) === 0) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($itemId, $warehouseId, $lotId, $value, $sourceMovementId, $landedCostId, $notes, $userId): StockMovement {
+            $item = Item::query()->findOrFail($itemId);
+            $balance = StockBalance::lockRow($itemId, $warehouseId, $lotId);
+
+            $this->inventoryCostingService->addLandedValue($item, $balance, $value, $sourceMovementId);
+            $balance->refresh();
+
+            return StockMovement::query()->create([
+                'item_id' => $itemId,
+                'warehouse_id' => $warehouseId,
+                'lot_id' => $lotId,
+                'quantity_delta' => '0',
+                'unit_cost' => $balance->unit_cost,
+                'value_delta' => $value,
+                'type' => StockMovementType::LandedCost->value,
+                'reference_type' => 'landed_cost',
+                'reference_id' => $landedCostId,
+                'notes' => $notes,
+                'user_id' => $userId,
+            ]);
+        });
+    }
+
     public function reverseReference(string $referenceType, string $referenceId, ?string $userId): void
     {
         $movements = StockMovement::query()
@@ -125,7 +201,15 @@ class StockMovementService
     private function reverseMovement(StockMovement $original, ?string $userId): void
     {
         $originalDelta = (string) $original->quantity_delta;
-        if (bccomp($originalDelta, '0', 6) === 0) {
+        $isRevaluation = $original->type === StockMovementType::Revaluation;
+
+        if (bccomp($originalDelta, '0', 6) === 0 && ! $isRevaluation) {
+            return;
+        }
+
+        if ($isRevaluation) {
+            $this->reverseRevaluationMovement($original, $userId);
+
             return;
         }
 
@@ -181,6 +265,54 @@ class StockMovementService
         );
     }
 
+    private function reverseRevaluationMovement(StockMovement $original, ?string $userId): void
+    {
+        $item = Item::query()->findOrFail($original->item_id);
+        $warehouse = Warehouse::query()->findOrFail($original->warehouse_id);
+        $this->warehouseService->assertVisible($warehouse);
+
+        $lotId = $original->lot_id !== null ? (int) $original->lot_id : null;
+        $balance = StockBalance::lockRow((string) $item->id, (int) $warehouse->id, $lotId);
+
+        $lineQuery = StockRevaluationLine::query()
+            ->where('stock_revaluation_id', $original->reference_id)
+            ->where('item_id', $original->item_id);
+        if ($lotId === null) {
+            $lineQuery->whereNull('lot_id');
+        } else {
+            $lineQuery->where('lot_id', $lotId);
+        }
+        $line = $lineQuery->first();
+        $oldUnitCost = $line?->old_unit_cost !== null
+            ? (string) $line->old_unit_cost
+            : (string) ($original->unit_cost ?? '0');
+
+        $note = trim((string) ($original->notes ?? ''));
+        $reverse = StockMovement::query()->create([
+            'item_id' => $original->item_id,
+            'warehouse_id' => $original->warehouse_id,
+            'lot_id' => $original->lot_id,
+            'quantity_delta' => '0.000000',
+            'unit_cost' => $oldUnitCost,
+            'value_delta' => bcmul((string) ($original->value_delta ?? '0'), '-1', 4),
+            'type' => StockMovementType::Revaluation,
+            'reference_type' => $original->reference_type,
+            'reference_id' => $original->reference_id,
+            'item_uom_id' => $original->item_uom_id,
+            'notes' => $note !== '' ? 'Reverse — '.$note : 'Reverse',
+            'user_id' => $userId,
+        ]);
+
+        $this->inventoryCostingService->unwindRevalue(
+            $item,
+            $balance,
+            (string) ($original->value_delta ?? '0'),
+            $oldUnitCost,
+            (int) $original->id,
+            (int) $reverse->id,
+        );
+    }
+
     private function assertStockableItem(Item $item): void
     {
         if (! $item->is_active) {
@@ -189,6 +321,10 @@ class StockMovementService
 
         if (! $item->track_inventory) {
             abort(422, 'This item does not track inventory.', ['X-Error-Code' => 'STOCK_ITEM_NOT_TRACKED']);
+        }
+
+        if ($item->is_variant_parent) {
+            abort(422, 'A variant template has no stock; use one of its variants.', ['X-Error-Code' => 'ITEM_VARIANT_PARENT_NOT_STOCKABLE']);
         }
     }
 

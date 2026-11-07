@@ -53,6 +53,9 @@ class ItemService
         if (array_key_exists('is_active', $filters) && $filters['is_active'] !== null) {
             $query->where('is_active', (bool) $filters['is_active']);
         }
+        if (! empty($filters['hide_variants'])) {
+            $query->whereNull('parent_item_id');
+        }
 
         ListPagination::applySearch(
             $query,
@@ -92,6 +95,7 @@ class ItemService
             ])
             ->with(['vatGroup:id,percentage'])
             ->where('is_active', true)
+            ->where('is_variant_parent', false)
             ->orderBy('name');
 
         if ($context === 'purchase') {

@@ -11,7 +11,8 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Models\JournalEntryLine;
 use App\Modules\Accounting\Support\JournalLineRules;
 use App\Modules\CompanySetting\Models\CompanySetting;
-use App\Support\SequentialCodeGenerator;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -41,7 +42,7 @@ class JournalEntryService
         $query = JournalEntry::query()
             ->with(['branch:id,name', 'createdByUser:id,name'])
             ->orderByDesc('entry_date')
-            ->orderByDesc('entry_number');
+            ->orderByDesc('created_at');
 
         $search = trim((string) ($filters['search'] ?? ''));
         if ($search !== '') {
@@ -79,7 +80,6 @@ class JournalEntryService
     {
         return DB::transaction(function () use ($data, $userId): JournalEntry {
             $entry = JournalEntry::query()->create([
-                'entry_number' => SequentialCodeGenerator::next(JournalEntry::class, 'entry_number', 'JE-'),
                 'entry_date' => $data->entryDate,
                 'source_type' => JournalEntry::SOURCE_MANUAL,
                 'source_id' => null,
@@ -136,6 +136,7 @@ class JournalEntryService
         return DB::transaction(function () use ($entry, $userId): JournalEntry {
             $entry = $this->lockEditable($entry);
             $this->assertPeriodOpen($this->dateString($entry->entry_date));
+            app(DocumentNumberService::class)->assign($entry, 'entry_number', DocumentType::JournalEntry, $entry->branch_id !== null ? (int) $entry->branch_id : null, $entry->entry_date);
 
             $lines = $entry->lines()->get()->map(fn (JournalEntryLine $line): JournalLineData => new JournalLineData(
                 accountId: (int) $line->account_id,
@@ -204,14 +205,16 @@ class JournalEntryService
         $rows = $this->rules->prepare($lines, false);
         $totals = $this->rules->assertBalanced($rows);
 
+        $branchId = array_key_exists('branch_id', $header) ? $header['branch_id'] : $this->activeBranchId();
+
         $entry = JournalEntry::query()->create([
-            'entry_number' => SequentialCodeGenerator::next(JournalEntry::class, 'entry_number', 'JE-'),
+            'entry_number' => app(DocumentNumberService::class)->next(DocumentType::JournalEntry, $branchId !== null ? (int) $branchId : null, $header['entry_date']),
             'entry_date' => $header['entry_date'],
             'source_type' => $header['source_type'],
             'source_id' => $header['source_id'],
             'source_event' => $header['source_event'],
             'reversal_of_id' => $header['reversal_of_id'] ?? null,
-            'branch_id' => array_key_exists('branch_id', $header) ? $header['branch_id'] : $this->activeBranchId(),
+            'branch_id' => $branchId,
             'description' => isset($header['description']) ? mb_substr((string) $header['description'], 0, 500) : null,
             'status' => JournalEntryStatus::Posted,
             'total_debit' => $totals['debit'],
@@ -238,7 +241,7 @@ class JournalEntryService
         $this->assertPeriodOpen($this->dateString($reversalDate));
 
         $reversal = JournalEntry::query()->create([
-            'entry_number' => SequentialCodeGenerator::next(JournalEntry::class, 'entry_number', 'JE-'),
+            'entry_number' => app(DocumentNumberService::class)->next(DocumentType::JournalEntry, $original->branch_id !== null ? (int) $original->branch_id : null, $reversalDate),
             'entry_date' => $reversalDate,
             'source_type' => $original->source_type,
             'source_id' => $sourceId ?? $original->source_id,

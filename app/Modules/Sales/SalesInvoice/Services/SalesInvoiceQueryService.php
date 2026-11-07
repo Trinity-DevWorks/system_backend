@@ -57,7 +57,7 @@ class SalesInvoiceQueryService
             ->withCount('lines')
             ->withPostedCreditTotal();
 
-        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+        $this->warehouseService->applyVisibleDocumentConstraint($query);
 
         if (! empty($filters['status'])) {
             $status = SalesInvoiceStatus::tryFrom((string) $filters['status']);

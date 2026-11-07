@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesQuotation\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
@@ -31,6 +32,7 @@ readonly class SalesQuotationResponseData
 
         $payload = [
             'id' => $quotation->id,
+            ...DocumentBranchPayload::of($quotation),
             'quotation_number' => $quotation->quotation_number,
             'customer_id' => $quotation->customer_id,
             'currency_id' => $quotation->currency_id,
@@ -45,6 +47,8 @@ readonly class SalesQuotationResponseData
             'exchange_rate' => (string) $quotation->exchange_rate,
             'subtotal' => (string) $quotation->subtotal,
             'discount_total' => (string) $quotation->discount_total,
+            'header_discount_type' => $quotation->header_discount_type,
+            'header_discount_value' => (string) $quotation->header_discount_value,
             'tax_total' => (string) $quotation->tax_total,
             'grand_total' => (string) $quotation->grand_total,
             'notes' => $quotation->notes,

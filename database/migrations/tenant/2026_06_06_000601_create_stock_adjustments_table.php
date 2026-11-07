@@ -12,6 +12,8 @@ return new class extends Migration
     {
         Schema::create('stock_adjustments', function (Blueprint $table) {
             $table->uuid('id')->primary();
+            // Issuing branch, frozen once the document leaves draft (see docs/printing-plan.md D3).
+            $table->foreignId('branch_id')->index()->constrained('branches')->restrictOnDelete();
             $table->string('adj_number', 32)->nullable()->unique();
             $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
             $table->foreignId('stock_adjustment_reason_id')->constrained('stock_adjustment_reasons')->restrictOnDelete();

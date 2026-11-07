@@ -19,6 +19,10 @@ final class ItemDeleteRules
 {
     public static function assertDeletable(Item $item): void
     {
+        if (Item::query()->where('parent_item_id', $item->id)->exists()) {
+            abort(409, 'Cannot delete item: it has variants. Delete the variants first.', ['X-Error-Code' => 'ITEM_DELETE_HAS_VARIANTS']);
+        }
+
         if (SupplierItem::query()->where('item_id', $item->id)->exists()) {
             abort(409, 'Cannot delete item: linked to one or more suppliers.', ['X-Error-Code' => 'ITEM_DELETE_REFERENCED_BY_SUPPLIERS']);
         }

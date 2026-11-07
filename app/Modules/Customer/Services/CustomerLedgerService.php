@@ -8,6 +8,7 @@ use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Customer\Enums\LedgerReferenceType;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerLedgerEntry;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -79,26 +80,15 @@ class CustomerLedgerService
         return $out;
     }
 
-    public function postOpeningBalance(Customer $customer, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
+    /**
+     * Remove a document's ledger rows. Only for opening documents edited or deleted before anything used them.
+     */
+    public function deleteDocumentEntries(LedgerReferenceType $referenceType, string $referenceId): void
     {
-        $amount = (float) $openingBalance;
-        if (abs($amount) < 0.0000001) {
-            return;
-        }
-
-        $date = $transactionDate ?? now()->toDateString();
-
-        if ($amount > 0) {
-            $this->insertEntry($customer, $currencyId, (string) $amount, '0', LedgerReferenceType::OpeningBalance, null, $date);
-        } else {
-            $this->insertEntry($customer, $currencyId, '0', (string) abs($amount), LedgerReferenceType::OpeningBalance, null, $date);
-        }
-    }
-
-    public function replaceOpeningBalancePosting(Customer $customer, int $currencyId, string $openingBalance, ?string $transactionDate = null): void
-    {
-        $this->deleteOpeningEntries($customer, $currencyId);
-        $this->postOpeningBalance($customer, $currencyId, $openingBalance, $transactionDate);
+        CustomerLedgerEntry::query()
+            ->where('reference_type', $referenceType)
+            ->where('reference_id', $referenceId)
+            ->delete();
     }
 
     /**
@@ -113,9 +103,7 @@ class CustomerLedgerService
         ?string $referenceId,
         string $transactionDate
     ): CustomerLedgerEntry {
-        $d = (float) $debit;
-        $c = (float) $credit;
-        if ($d <= 0 && $c <= 0) {
+        if (! Decimal::isPositive($debit) && ! Decimal::isPositive($credit)) {
             throw new \InvalidArgumentException('Ledger entry must have a positive debit or credit.');
         }
 
@@ -213,15 +201,6 @@ class CustomerLedgerService
             ->with('currency:id,code,symbol')
             ->orderBy('transaction_date')
             ->orderBy('id');
-    }
-
-    private function deleteOpeningEntries(Customer $customer, int $currencyId): void
-    {
-        CustomerLedgerEntry::query()
-            ->where('customer_id', $customer->id)
-            ->where('currency_id', $currencyId)
-            ->where('reference_type', LedgerReferenceType::OpeningBalance)
-            ->delete();
     }
 
     private function insertEntry(

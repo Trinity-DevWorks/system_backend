@@ -21,10 +21,12 @@ use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Services\SupplierLedgerService;
 use App\Modules\Warehouse\Services\WarehouseService;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ListPagination;
+use App\Support\OpeningDocumentService;
 use App\Support\PaymentAllocation;
 use App\Support\ProportionalCredit;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -108,7 +110,8 @@ class PurchaseDebitNoteService
     public function invoiceLines(string $invoiceId): array
     {
         $invoice = $this->postedInvoice($invoiceId);
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        OpeningDocumentService::assertCanReturnAgainst($invoice);
+        $this->warehouseService->assertDocumentVisible($invoice);
         $usage = $this->postedUsage($invoiceId);
         $invoice->load(['lines.item', 'lines.itemUom.uom', 'lines.warehouse']);
 
@@ -182,11 +185,13 @@ class PurchaseDebitNoteService
             ->where('net_to_pay', '>', 0)
             ->orderBy('invoice_date')
             ->orderBy('invoice_number');
-        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+        $this->warehouseService->applyVisibleDocumentConstraint($query);
 
         return $query->get()->map(fn (PurchaseInvoice $invoice): array => [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
+            'is_opening' => (bool) $invoice->is_opening,
+            'original_number' => $invoice->original_number,
             'invoice_date' => $invoice->invoice_date?->toDateString(),
             'grand_total' => (string) $invoice->grand_total,
             'paid_total' => (string) $invoice->paid_total,
@@ -207,12 +212,12 @@ class PurchaseDebitNoteService
     public function create(array $data, ?string $userId): PurchaseDebitNote
     {
         $invoice = $this->postedInvoice((string) $data['purchase_invoice_id']);
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        OpeningDocumentService::assertCanReturnAgainst($invoice);
+        $this->warehouseService->assertDocumentVisible($invoice);
         $this->assertDate($invoice, (string) $data['debit_date']);
 
         return DB::transaction(function () use ($data, $userId, $invoice): PurchaseDebitNote {
             $note = PurchaseDebitNote::query()->create([
-                'debit_note_number' => SequentialCodeGenerator::next(PurchaseDebitNote::class, 'debit_note_number', 'PDN-'),
                 'purchase_invoice_id' => $invoice->id,
                 'supplier_id' => $invoice->supplier_id,
                 'currency_id' => $invoice->currency_id,
@@ -242,7 +247,7 @@ class PurchaseDebitNoteService
         return DB::transaction(function () use ($note, $data): PurchaseDebitNote {
             $locked = $this->lockDraft($note);
             $invoice = $this->postedInvoice((string) $locked->purchase_invoice_id);
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
             $this->assertDate($invoice, (string) $data['debit_date']);
             $type = $this->type($data['type']);
             $typeChanged = $type !== $locked->type;
@@ -286,7 +291,7 @@ class PurchaseDebitNoteService
         DB::transaction(function () use ($note): void {
             $locked = $this->lockDraft($note);
             $invoice = PurchaseInvoice::query()->findOrFail($locked->purchase_invoice_id);
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
             $locked->delete();
         });
     }
@@ -295,6 +300,7 @@ class PurchaseDebitNoteService
     {
         return DB::transaction(function () use ($note, $userId): PurchaseDebitNote {
             $locked = PurchaseDebitNote::query()->whereKey($note->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'debit_note_number', DocumentType::PurchaseDebitNote, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->debit_date);
             if ($locked->status !== PurchaseDebitNoteStatus::Draft) {
                 $this->fail('Only a draft debit note can be posted.', 'PURCHASE_DEBIT_NOTE_NOT_DRAFT');
             }
@@ -303,7 +309,7 @@ class PurchaseDebitNoteService
             if ($invoice->status !== PurchaseInvoiceStatus::Posted) {
                 $this->fail('Debit notes can only be posted against a posted invoice.', 'PURCHASE_DEBIT_NOTE_INVOICE_NOT_POSTED');
             }
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
             $this->assertDate($invoice, $locked->debit_date->toDateString());
 
             PurchaseInvoiceLine::query()
@@ -418,6 +424,7 @@ class PurchaseDebitNoteService
     {
         return DB::transaction(function () use ($note, $userId): PurchaseDebitNote {
             $locked = PurchaseDebitNote::query()->whereKey($note->id)->lockForUpdate()->firstOrFail();
+            OpeningDocumentService::assertNotOpening($locked);
             if ($locked->status !== PurchaseDebitNoteStatus::Posted) {
                 $this->fail('Only a posted debit note can be reversed.', 'PURCHASE_DEBIT_NOTE_NOT_POSTED');
             }
@@ -426,7 +433,7 @@ class PurchaseDebitNoteService
             }
 
             $invoice = PurchaseInvoice::query()->findOrFail($locked->purchase_invoice_id);
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
 
             $allocations = $locked->allocations()->orderBy('id')->get();
             $invoiceIds = $allocations->pluck('purchase_invoice_id')->map(fn ($id): string => (string) $id)->all();
@@ -476,7 +483,7 @@ class PurchaseDebitNoteService
     private function replaceLines(PurchaseDebitNote $note, array $rows): void
     {
         $invoice = $this->postedInvoice((string) $note->purchase_invoice_id);
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
         $invoice->load('lines.goodsReceiptLine');
         $usage = $this->postedUsage((string) $invoice->id);
         $sources = $invoice->lines->keyBy('id');
@@ -735,7 +742,7 @@ class PurchaseDebitNoteService
         if ((string) $invoice->supplier_id !== (string) $note->supplier_id || (int) $invoice->currency_id !== (int) $note->currency_id) {
             $this->fail('Invoice customer or currency does not match this debit note.', 'PURCHASE_DEBIT_NOTE_INVOICE_MISMATCH');
         }
-        $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+        $this->warehouseService->assertDocumentVisible($invoice);
         if (! PaymentAllocation::isPositive($amount) || PaymentAllocation::exceeds($amount, $invoice->net_to_pay)) {
             $this->fail('Allocation exceeds the invoice open amount.', 'PURCHASE_DEBIT_NOTE_INVOICE_NOT_OPEN');
         }

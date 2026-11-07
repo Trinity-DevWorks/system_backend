@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Inventory\Purchasing\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Supplier\Models\Supplier;
@@ -29,11 +30,16 @@ readonly class GoodsReceiptResponseData
 
         $payload = [
             'id' => $receipt->id,
+            ...DocumentBranchPayload::of($receipt),
             'grn_number' => $receipt->grn_number,
             'purchase_order_id' => $receipt->purchase_order_id,
             'has_purchase_order' => $receipt->purchase_order_id !== null,
             'supplier_id' => $receipt->supplier_id ?? $order?->supplier_id,
             'warehouse_id' => $receipt->warehouse_id,
+            // Reference only: the PO's currency and rate. Receipt costs are in the primary currency.
+            'currency_id' => $receipt->currency_id,
+            'currency_code' => $receipt->currency_id !== null ? $receipt->currency?->code : null,
+            'exchange_rate' => $receipt->exchange_rate !== null ? (string) $receipt->exchange_rate : null,
             'status' => $receipt->status->value,
             'received_date' => $receipt->received_date?->toDateString(),
             'notes' => $receipt->notes,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Item\Models\Recipe;
@@ -20,11 +21,13 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property ProductionStatus $status
  * @property Carbon|null $production_date
  * @property Carbon|null $posted_at
  */
 #[Fillable([
+    'branch_id',
     'prd_number',
     'warehouse_id',
     'item_id',
@@ -44,6 +47,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class Production extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
 
     public const REFERENCE_TYPE = 'production';

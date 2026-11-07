@@ -18,11 +18,13 @@ use App\Modules\Sales\CustomerRefund\Models\CustomerRefundAllocation;
 use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteStatus;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
+use App\Modules\Treasury\Support\PaymentCashBankAccount;
 use App\Support\CurrencyCashRound;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -108,6 +110,8 @@ class CustomerRefundService
                 'id' => $note->id,
                 'invoice_number' => $note->credit_note_number,
                 'credit_note_number' => $note->credit_note_number,
+                'is_opening' => (bool) $note->is_opening,
+                'original_number' => $note->original_number,
                 'invoice_date' => $note->credit_date?->toDateString(),
                 'credit_date' => $note->credit_date?->toDateString(),
                 'grand_total' => (string) $note->grand_total,
@@ -138,7 +142,6 @@ class CustomerRefundService
             $refund = CustomerRefund::query()->create([
                 ...$this->headerAttributes($data, null),
                 'customer_id' => (string) $data['customer_id'],
-                'refund_number' => SequentialCodeGenerator::next(CustomerRefund::class, 'refund_number', 'CRF-'),
                 'status' => CustomerRefundStatus::Draft,
                 'created_by' => $userId,
             ]);
@@ -195,6 +198,7 @@ class CustomerRefundService
     {
         return DB::transaction(function () use ($refund, $userId): CustomerRefund {
             $locked = CustomerRefund::query()->whereKey($refund->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'refund_number', DocumentType::CustomerRefund, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->refund_date);
             if ($locked->status !== CustomerRefundStatus::Draft) {
                 $this->fail('Only a draft customer refund can be posted.', 'CUSTOMER_REFUND_NOT_DRAFT');
             }
@@ -210,6 +214,14 @@ class CustomerRefundService
             }
 
             $this->assertPaymentMethod((int) $locked->payment_method_id, $locked->reference);
+            $locked->cash_bank_account_id = PaymentCashBankAccount::resolve(
+                $locked->cash_bank_account_id,
+                (int) $locked->payment_method_id,
+                $locked->branch_id !== null ? (int) $locked->branch_id : null,
+                (int) $locked->currency_id,
+                true,
+            );
+            $locked->save();
             $customer = SalesInvoiceRules::assertCustomer((string) $locked->customer_id);
             $ids = $allocations->pluck('sales_credit_note_id')->map(fn ($id): string => (string) $id)->all();
             sort($ids);
@@ -317,6 +329,9 @@ class CustomerRefundService
             'refund_date' => Carbon::parse((string) $data['refund_date'])->toDateString(),
             'amount' => PaymentAllocation::normalize($data['amount']),
             'reference' => $this->nullableString($data['reference'] ?? null),
+            'cash_bank_account_id' => array_key_exists('cash_bank_account_id', $data)
+                ? ($data['cash_bank_account_id'] !== null && $data['cash_bank_account_id'] !== '' ? (int) $data['cash_bank_account_id'] : null)
+                : $existing?->cash_bank_account_id,
             'notes' => $this->nullableString($data['notes'] ?? null),
         ];
     }

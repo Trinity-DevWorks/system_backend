@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Stock\Models;
 
 use App\Models\User;
+use App\Modules\Branch\Support\HasDocumentBranch;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -16,9 +17,11 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
+ * @property int $branch_id
  * @property Carbon|null $closed_at
  */
 #[Fillable([
+    'branch_id',
     'closure_number',
     'stock_transfer_id',
     'warehouse_id',
@@ -29,7 +32,24 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 class StockTransferClosure extends Model implements AuditableContract
 {
     use Auditable;
+    use HasDocumentBranch;
     use HasUuids;
+
+    /**
+     * A closure writes off on the sending side of its transfer.
+     */
+    public function documentBranchFromParent(): ?int
+    {
+        return $this->branchOfDocument(StockTransfer::class, $this->stock_transfer_id, 'from_branch_id');
+    }
+
+    /**
+     * Closures are recorded in one step, so their branch never changes after creation.
+     */
+    public function documentBranchIsFrozen(): bool
+    {
+        return true;
+    }
 
     public const REFERENCE_TYPE = 'stock_transfer_closure';
 

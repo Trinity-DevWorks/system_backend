@@ -19,12 +19,14 @@ use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Services\SupplierLedgerService;
+use App\Modules\Treasury\Support\PaymentCashBankAccount;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\CurrencyCashRound;
+use App\Support\DocumentNumberService;
+use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
 use App\Support\ListPagination;
 use App\Support\PaymentAllocation;
-use App\Support\SequentialCodeGenerator;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -120,7 +122,7 @@ class SupplierPaymentService
             ->orderBy('invoice_date')
             ->orderBy('invoice_number');
 
-        $this->warehouseService->applyVisibleWarehouseConstraint($query, 'warehouse_id');
+        $this->warehouseService->applyVisibleDocumentConstraint($query);
 
         return $query->get()
             ->map(fn (PurchaseInvoice $invoice): array => SupplierPaymentResponseData::openInvoice($invoice))
@@ -139,7 +141,6 @@ class SupplierPaymentService
             $payment = SupplierPayment::query()->create([
                 ...$this->headerAttributes($data, null),
                 'supplier_id' => $supplier->id,
-                'payment_number' => SequentialCodeGenerator::next(SupplierPayment::class, 'payment_number', 'SP-'),
                 'status' => SupplierPaymentStatus::Draft,
                 'created_by' => $userId,
             ]);
@@ -205,6 +206,7 @@ class SupplierPaymentService
     {
         return DB::transaction(function () use ($payment, $userId): SupplierPayment {
             $locked = SupplierPayment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+            app(DocumentNumberService::class)->assign($locked, 'payment_number', DocumentType::SupplierPayment, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->payment_date);
             if ($locked->status !== SupplierPaymentStatus::Draft) {
                 $this->fail('Only a draft supplier payment can be posted.', 'SUPPLIER_PAYMENT_NOT_DRAFT');
             }
@@ -227,6 +229,14 @@ class SupplierPaymentService
             }
 
             $this->assertPaymentMethod((int) $locked->payment_method_id, $locked->reference);
+            $locked->cash_bank_account_id = PaymentCashBankAccount::resolve(
+                $locked->cash_bank_account_id,
+                (int) $locked->payment_method_id,
+                $locked->branch_id !== null ? (int) $locked->branch_id : null,
+                (int) $locked->currency_id,
+                true,
+            );
+            $locked->save();
             $supplier = PurchaseInvoiceRules::assertSupplier((string) $locked->supplier_id);
 
             $invoiceIds = $allocations->pluck('purchase_invoice_id')->map(fn ($id): string => (string) $id)->all();
@@ -247,7 +257,7 @@ class SupplierPaymentService
                     $this->fail('An allocated invoice does not match this payment.', 'SUPPLIER_PAYMENT_INVOICE_MISMATCH');
                 }
 
-                $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+                $this->warehouseService->assertDocumentVisible($invoice);
                 $this->assertInvoiceOpenFor($locked, $invoice, (string) $allocation->applied_amount);
 
                 $paid = PaymentAllocation::add($invoice->paid_total, $allocation->applied_amount);
@@ -308,7 +318,7 @@ class SupplierPaymentService
                     $this->fail('An allocated invoice is no longer open.', 'SUPPLIER_PAYMENT_INVOICE_NOT_OPEN');
                 }
 
-                $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+                $this->warehouseService->assertDocumentVisible($invoice);
                 $paid = PaymentAllocation::subtract($invoice->paid_total, $allocation->applied_amount);
                 if ($paid === null) {
                     $this->fail(
@@ -365,6 +375,9 @@ class SupplierPaymentService
             'payment_date' => Carbon::parse((string) $data['payment_date'])->toDateString(),
             'amount' => PaymentAllocation::normalize($data['amount']),
             'reference' => $this->nullableString($data['reference'] ?? null),
+            'cash_bank_account_id' => array_key_exists('cash_bank_account_id', $data)
+                ? ($data['cash_bank_account_id'] !== null && $data['cash_bank_account_id'] !== '' ? (int) $data['cash_bank_account_id'] : null)
+                : $existing?->cash_bank_account_id,
             'notes' => $this->nullableString($data['notes'] ?? null),
         ];
     }
@@ -400,7 +413,7 @@ class SupplierPaymentService
                 $this->fail('An allocated invoice does not match this payment.', 'SUPPLIER_PAYMENT_INVOICE_MISMATCH');
             }
             $this->assertInvoiceBelongs($payment, $invoice);
-            $this->warehouseService->assertVisibleById((int) $invoice->warehouse_id);
+            $this->warehouseService->assertDocumentVisible($invoice);
             $payload[$index] += $this->appliedSettlement($payment, $invoice, $row['amount']);
         }
 

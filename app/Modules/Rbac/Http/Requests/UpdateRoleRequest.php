@@ -26,6 +26,7 @@ class UpdateRoleRequest extends FormRequest
             ],
             'description' => ['nullable', 'string'],
             'is_active' => ['required', 'boolean'],
+            'max_discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'permissions' => ['sometimes', 'array'],
             'permissions.*.permission_id' => ['required', 'integer', 'exists:permissions,id'],
             'permissions.*.can_view' => ['required', 'boolean'],
@@ -36,6 +37,8 @@ class UpdateRoleRequest extends FormRequest
             'permissions.*.can_export' => ['required', 'boolean'],
             'permissions.*.can_reverse' => ['required', 'boolean'],
             'permissions.*.can_reopen' => ['required', 'boolean'],
+            // Optional so clients that predate `print` keep working (missing = false).
+            'permissions.*.can_print' => ['sometimes', 'boolean'],
         ];
     }
 }

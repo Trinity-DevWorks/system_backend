@@ -29,6 +29,8 @@ class UpdateRolePermissionsRequest extends FormRequest
             'permissions.*.can_export' => ['required', 'boolean'],
             'permissions.*.can_reverse' => ['required', 'boolean'],
             'permissions.*.can_reopen' => ['required', 'boolean'],
+            // Optional so clients that predate `print` keep working (missing = false).
+            'permissions.*.can_print' => ['sometimes', 'boolean'],
         ];
     }
 }

@@ -25,9 +25,12 @@ class StorePaymentMethodRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', new Enum(PaymentMethodType::class)],
             'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
-            'account_id' => ['nullable', 'integer', 'exists:accounts,id'],
             'requires_reference' => ['required', 'boolean'],
             'supports_change' => ['required', 'boolean'],
+            // Cash boxes / bank accounts this method uses.
+            'cash_bank_account_ids' => ['sometimes', 'array', 'max:100'],
+            'cash_bank_account_ids.*' => ['integer', 'distinct', 'exists:cash_bank_accounts,id'],
+            // Default method of the branch the user is working in.
             'is_default' => ['required', 'boolean'],
             'is_active' => ['required', 'boolean'],
             'notes' => ['nullable', 'string'],

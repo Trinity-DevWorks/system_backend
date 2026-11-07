@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Purchasing\SupplierRefund\DTOs;
 
 use App\Models\User;
+use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Enums\SupplierRefundStatus;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefund;
@@ -23,17 +24,23 @@ readonly class SupplierRefundResponseData
             'supplier:id,supplier_code,name,phone,is_active',
             'currency:id,code,name,symbol',
             'paymentMethod:id,name,code,type,requires_reference,is_active',
+            'cashBankAccount:id,code,name,currency_id,branch_id',
             'createdByUser:id,name,email',
             'postedByUser:id,name,email',
         ]);
 
         $payload = [
             'id' => $refund->id,
+            ...DocumentBranchPayload::of($refund),
             'refund_number' => $refund->refund_number,
             'supplier_id' => $refund->supplier_id,
             'currency_id' => $refund->currency_id,
             'exchange_rate' => (string) $refund->exchange_rate,
             'payment_method_id' => $refund->payment_method_id,
+            'cash_bank_account_id' => $refund->cash_bank_account_id,
+            'cash_bank_account' => $refund->cashBankAccount !== null
+                ? ['id' => (int) $refund->cashBankAccount->id, 'code' => $refund->cashBankAccount->code, 'name' => $refund->cashBankAccount->name]
+                : null,
             'refund_date' => $refund->refund_date?->toDateString(),
             'payment_date' => $refund->refund_date?->toDateString(),
             'amount' => (string) $refund->amount,

@@ -12,8 +12,10 @@ use App\Modules\Customer\DTOs\CustomerLedgerEntryResponseData;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerLedgerEntry;
 use App\Modules\Customer\Services\CustomerLedgerService;
+use App\Support\Decimal;
 use App\Support\Export\LedgerStatementDocument;
 use App\Support\Export\TabularExportService;
+use App\Support\OpeningDocumentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -113,24 +115,30 @@ class CustomerLedgerController extends Controller
         return $this->tabularExportService->download($document, (string) $validated['format']);
     }
 
+    /**
+     * The customer's opening invoices / credits (old open balances), for the drawer's opening balance tab.
+     */
+    public function openingDocuments(Customer $customer, OpeningDocumentService $openings): JsonResponse
+    {
+        return ApiResponse::success($openings->listForCustomer($customer), 'Opening documents retrieved successfully.');
+    }
+
     public function balance(Customer $customer): JsonResponse
     {
         $customer->load(['balances.currency']);
         $currencies = [];
+        $openings = app(OpeningDocumentService::class)->totals('customer', [(string) $customer->id])[(string) $customer->id] ?? [];
 
         foreach ($customer->balances as $cb) {
             $currencyId = (int) $cb->currency_id;
             $balStr = $this->ledgerService->balanceInCurrency($customer, $currencyId);
-            $balance = (float) $balStr;
-            $creditLimit = (float) $cb->credit_limit;
-            $outstanding = max(0.0, $balance);
-            $remainingCredit = max(0.0, $creditLimit - $outstanding);
+            $outstanding = Decimal::max('0', $balStr);
+            $remainingCredit = Decimal::max('0', Decimal::sub($cb->credit_limit, $outstanding));
 
             $currencies[] = [
                 'currency_id' => $currencyId,
                 'currency_code' => $cb->currency?->code,
-                'opening_balance' => (string) $cb->opening_balance,
-                'opening_date' => $cb->opening_date?->toDateString(),
+                'opening_balance' => $openings[$currencyId] ?? '0.0000',
                 'credit_limit' => (string) $cb->credit_limit,
                 'balance' => $balStr,
                 'outstanding' => PriceMath::normalize($outstanding),

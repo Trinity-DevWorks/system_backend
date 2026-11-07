@@ -114,12 +114,13 @@ class CustomerReceiptApiTest extends TestCase
                 ],
             ])
             ->assertCreated()
-            ->assertJsonPath('data.receipt_number', 'CR-000001')
+            ->assertJsonPath('data.receipt_number', null)
             ->json('data.id');
 
         $this->asTenantRequest($this->token)
             ->postJson($this->tenantUrl("/customer-receipts/{$id}/post"))
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonPath('data.receipt_number', fn ($n): bool => is_string($n) && preg_match('/^CR-[A-Z0-9]+-\d{4}-\d{6}$/', $n) === 1);
 
         $this->tenant->run(function () use ($first, $second): void {
             $this->assertEqualsWithDelta(0.0, (float) SalesInvoice::query()->findOrFail($first)->net_to_pay, 0.001);
@@ -200,7 +201,21 @@ class CustomerReceiptApiTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('code', 'CUSTOMER_RECEIPT_INVOICE_MISMATCH');
 
-        $unbalanced = $this->asTenantRequest($this->token)
+        // Allocations above the amount are refused.
+        $overAllocated = $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl('/customer-receipts'), $this->receiptPayload($postedId, '40', [
+                'amount' => 30,
+            ]))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->asTenantRequest($this->token)
+            ->postJson($this->tenantUrl("/customer-receipts/{$overAllocated}/post"))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CUSTOMER_RECEIPT_ALLOCATION_MISMATCH');
+
+        // An amount above the allocations posts: the rest stays as customer credit.
+        $withCredit = $this->asTenantRequest($this->token)
             ->postJson($this->tenantUrl('/customer-receipts'), $this->receiptPayload($postedId, '40', [
                 'amount' => 50,
             ]))
@@ -208,9 +223,9 @@ class CustomerReceiptApiTest extends TestCase
             ->json('data.id');
 
         $this->asTenantRequest($this->token)
-            ->postJson($this->tenantUrl("/customer-receipts/{$unbalanced}/post"))
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'CUSTOMER_RECEIPT_ALLOCATION_MISMATCH');
+            ->postJson($this->tenantUrl("/customer-receipts/{$withCredit}/post"))
+            ->assertOk()
+            ->assertJsonPath('data.unapplied_amount', '10.0000');
     }
 
     public function test_primary_currency_receipt_settles_a_foreign_invoice(): void
@@ -444,7 +459,7 @@ class CustomerReceiptApiTest extends TestCase
             ->postJson($this->tenantUrl('/customer-receipts'), $payload)
             ->assertCreated();
 
-        $this->assertMatchesRegularExpression('/^CR-\d{6}$/', (string) $created->json('data.receipt_number'));
+        $this->assertNull($created->json('data.receipt_number'), 'Number is assigned at posting.');
         $id = (string) $created->json('data.id');
 
         $this->asTenantRequest($this->token)
@@ -562,6 +577,10 @@ class CustomerReceiptApiTest extends TestCase
             'requires_reference' => true,
             'is_active' => true,
         ]);
+
+        $this->linkCashBank((int) $cash->id, (int) $usd->id, '5310');
+        $this->linkCashBank((int) $cash->id, (int) $eur->id, '2812');
+        $this->linkCashBank((int) $cheque->id, (int) $usd->id, '5110', 'bank');
 
         return [
             'usd_id' => (int) $usd->id,

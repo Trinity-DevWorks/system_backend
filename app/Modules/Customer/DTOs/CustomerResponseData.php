@@ -7,6 +7,7 @@ namespace App\Modules\Customer\DTOs;
 use App\Modules\Customer\Enums\CustomerStatus;
 use App\Modules\Customer\Enums\CustomerType;
 use App\Modules\Customer\Models\Customer;
+use App\Support\OpeningDocumentService;
 use Illuminate\Support\Collection;
 
 readonly class CustomerResponseData
@@ -28,6 +29,7 @@ readonly class CustomerResponseData
         public ?string $phone,
         public string $type,
         public ?int $customerGroupId,
+        public ?int $priceListId,
         public ?array $customerGroup,
         public ?string $salesmanId,
         public ?array $salesman,
@@ -60,9 +62,11 @@ readonly class CustomerResponseData
 
     /**
      * @param  array<int, string>  $ledgerByCurrencyId  currency_id => balance
+     * @param  array<int, string>|null  $openingByCurrencyId  currency_id => opening balance (sum of opening documents); loaded when null
      */
-    public static function fromModel(Customer $customer, array $ledgerByCurrencyId, ?int $primaryCurrencyId): self
+    public static function fromModel(Customer $customer, array $ledgerByCurrencyId, ?int $primaryCurrencyId, ?array $openingByCurrencyId = null): self
     {
+        $openingByCurrencyId ??= app(OpeningDocumentService::class)->totals('customer', [(string) $customer->id])[(string) $customer->id] ?? [];
         $customer->loadMissing([
             'customerGroup',
             'balances.currency',
@@ -85,8 +89,8 @@ readonly class CustomerResponseData
             $currencyBalances[] = [
                 'currency_id' => $cid,
                 'currency_code' => $cur?->code ?? '',
-                'opening_balance' => (string) $cb->opening_balance,
-                'opening_date' => $cb->opening_date?->toDateString(),
+                // Sum of the opening invoices / credits in this currency (read-only).
+                'opening_balance' => $openingByCurrencyId[$cid] ?? '0.0000',
                 'credit_limit' => (string) $cb->credit_limit,
                 'balance' => $ledgerByCurrencyId[$cid] ?? '0.0000',
             ];
@@ -124,6 +128,7 @@ readonly class CustomerResponseData
             phone: $customer->phone,
             type: $customer->type instanceof CustomerType ? $customer->type->value : (string) $customer->type,
             customerGroupId: $customer->customer_group_id,
+            priceListId: $customer->price_list_id !== null ? (int) $customer->price_list_id : null,
             customerGroup: $group ? ['id' => $group->id, 'name' => $group->name] : null,
             salesmanId: $customer->salesman_id,
             salesman: $sm ? [
@@ -178,11 +183,13 @@ readonly class CustomerResponseData
      */
     public static function collectionToArray(Collection $customers, array $ledgerGrouped, ?int $primaryCurrencyId): array
     {
+        $openings = app(OpeningDocumentService::class)->totals('customer', $customers->map(fn (Customer $c): string => (string) $c->id)->values()->all());
+
         return $customers
-            ->map(function (Customer $c) use ($ledgerGrouped, $primaryCurrencyId): array {
+            ->map(function (Customer $c) use ($ledgerGrouped, $primaryCurrencyId, $openings): array {
                 $byCur = $ledgerGrouped[(string) $c->id] ?? [];
 
-                return self::fromModel($c, $byCur, $primaryCurrencyId)->toArray();
+                return self::fromModel($c, $byCur, $primaryCurrencyId, $openings[(string) $c->id] ?? [])->toArray();
             })
             ->values()
             ->all();
@@ -202,6 +209,7 @@ readonly class CustomerResponseData
             'phone' => $this->phone,
             'type' => $this->type,
             'customer_group_id' => $this->customerGroupId,
+            'price_list_id' => $this->priceListId,
             'customer_group' => $this->customerGroup,
             'salesman_id' => $this->salesmanId,
             'salesman' => $this->salesman,

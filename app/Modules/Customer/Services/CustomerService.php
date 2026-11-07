@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Customer\Services;
 
-use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Customer\Enums\CustomerStatus;
 use App\Modules\Customer\Models\Customer;
@@ -12,8 +11,8 @@ use App\Modules\Customer\Models\CustomerAddress;
 use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerContact;
 use App\Support\ListPagination;
+use App\Support\OpeningDocumentService;
 use App\Support\SequentialCodeGenerator;
-use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -21,8 +20,7 @@ use Illuminate\Support\Facades\DB;
 class CustomerService
 {
     public function __construct(
-        private readonly CustomerLedgerService $ledgerService,
-        private readonly JournalPostingService $journalPostingService,
+        private readonly OpeningDocumentService $openingDocuments,
     ) {}
 
     private function userId(): ?string
@@ -111,6 +109,7 @@ class CustomerService
         return DB::transaction(function () use ($validated): Customer {
             $customer = Customer::query()->create([
                 'customer_group_id' => $validated['customer_group_id'] ?? null,
+                'price_list_id' => $validated['price_list_id'] ?? null,
                 'salesman_id' => $validated['salesman_id'] ?? null,
                 'payment_method_id' => $validated['payment_method_id'] ?? null,
                 'payment_terms_id' => $validated['payment_terms_id'] ?? null,
@@ -169,22 +168,16 @@ class CustomerService
                 $this->lockCustomerForBalanceWrites($customer);
 
                 foreach ($validated['currency_balances'] as $row) {
-                    $currencyId = (int) $row['currency_id'];
-                    $openingStr = isset($row['opening_balance']) ? (string) $row['opening_balance'] : '0';
-                    $creditStr = isset($row['credit_limit']) ? (string) $row['credit_limit'] : '0';
-                    $openingDate = $this->resolveOpeningBalanceDate($row, null);
-
-                    $balance = CustomerBalance::query()->create([
+                    CustomerBalance::query()->create([
                         'customer_id' => $customer->id,
-                        'currency_id' => $currencyId,
-                        'opening_balance' => $openingStr,
-                        'opening_date' => $openingDate,
-                        'credit_limit' => $creditStr,
+                        'currency_id' => (int) $row['currency_id'],
+                        'credit_limit' => isset($row['credit_limit']) ? (string) $row['credit_limit'] : '0',
                     ]);
-
-                    $this->ledgerService->postOpeningBalance($customer, $currencyId, $openingStr, $openingDate);
-                    $this->journalPostingService->customerOpeningBalance($balance->refresh(), $this->userId());
                 }
+            }
+
+            if (($validated['opening_documents'] ?? []) !== []) {
+                $this->syncOpeningDocuments($customer, $validated['opening_documents']);
             }
 
             return $customer->load([
@@ -207,8 +200,9 @@ class CustomerService
             $customer = $this->lockCustomerForBalanceWrites($customer);
 
             $currencyBalances = $patch['currency_balances'] ?? null;
+            $openingDocuments = $patch['opening_documents'] ?? null;
             $addresses = array_key_exists('addresses', $patch) ? $patch['addresses'] : null;
-            $scalar = collect($patch)->except(['currency_balances', 'is_system', 'addresses'])->all();
+            $scalar = collect($patch)->except(['currency_balances', 'opening_documents', 'is_system', 'addresses'])->all();
 
             if ($customer->is_system && array_key_exists('status', $scalar)) {
                 $next = $scalar['status'] instanceof CustomerStatus
@@ -229,6 +223,10 @@ class CustomerService
 
             if (is_array($currencyBalances)) {
                 $this->syncCurrencyBalances($customer, $currencyBalances);
+            }
+
+            if (is_array($openingDocuments)) {
+                $this->syncOpeningDocuments($customer, $openingDocuments);
             }
 
             if (is_array($addresses)) {
@@ -254,33 +252,26 @@ class CustomerService
         $this->lockCustomerForBalanceWrites($customer);
 
         foreach ($rows as $row) {
-            $currencyId = (int) $row['currency_id'];
-            $balanceRow = $this->lockCustomerBalanceRow($customer, $currencyId);
-
-            $prevOpening = $this->normalizeMoneyString((string) $balanceRow->opening_balance);
-            $prevOpeningDate = $balanceRow->opening_date?->toDateString();
-
-            $newOpening = array_key_exists('opening_balance', $row)
-                ? $this->normalizeMoneyString((string) $row['opening_balance'])
-                : $prevOpening;
-
-            $newOpeningDate = $this->resolveOpeningBalanceDate($row, $balanceRow);
-
-            $newCredit = array_key_exists('credit_limit', $row)
-                ? $this->normalizeMoneyString((string) $row['credit_limit'])
-                : $this->normalizeMoneyString((string) $balanceRow->credit_limit);
-
-            $balanceRow->update([
-                'opening_balance' => $newOpening,
-                'opening_date' => $newOpeningDate,
-                'credit_limit' => $newCredit,
-            ]);
-
-            if ($newOpening !== $prevOpening || $newOpeningDate !== $prevOpeningDate) {
-                $this->ledgerService->replaceOpeningBalancePosting($customer, $currencyId, $newOpening, $newOpeningDate);
-                $this->journalPostingService->replaceCustomerOpeningBalance($balanceRow->refresh(), $this->userId());
+            $balanceRow = $this->lockCustomerBalanceRow($customer, (int) $row['currency_id']);
+            if (array_key_exists('credit_limit', $row)) {
+                $balanceRow->update(['credit_limit' => $this->normalizeMoneyString((string) $row['credit_limit'])]);
             }
         }
+    }
+
+    /**
+     * Old open balances as opening invoices / credits. Each currency used also gets a balance row,
+     * so the customer's balances list shows it.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function syncOpeningDocuments(Customer $customer, array $rows): void
+    {
+        $this->lockCustomerForBalanceWrites($customer);
+        foreach (array_unique(array_map(fn (array $row): int => (int) $row['currency_id'], $rows)) as $currencyId) {
+            $this->lockCustomerBalanceRow($customer, $currencyId);
+        }
+        $this->openingDocuments->syncCustomer($customer, $rows, $this->userId());
     }
 
     private function lockCustomerForBalanceWrites(Customer $customer): Customer
@@ -303,8 +294,6 @@ class CustomerService
         CustomerBalance::query()->create([
             'customer_id' => $customer->id,
             'currency_id' => $currencyId,
-            'opening_balance' => '0.0000',
-            'opening_date' => now()->toDateString(),
             'credit_limit' => '0.0000',
         ]);
 
@@ -313,21 +302,6 @@ class CustomerService
             ->where('currency_id', $currencyId)
             ->lockForUpdate()
             ->firstOrFail();
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function resolveOpeningBalanceDate(array $row, ?CustomerBalance $existing): string
-    {
-        if (array_key_exists('opening_date', $row) && $row['opening_date'] !== null && $row['opening_date'] !== '') {
-            return Carbon::parse((string) $row['opening_date'])->toDateString();
-        }
-        if ($existing?->opening_date !== null) {
-            return $existing->opening_date->toDateString();
-        }
-
-        return now()->toDateString();
     }
 
     private function normalizeMoneyString(string $value): string

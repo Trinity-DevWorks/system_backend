@@ -29,7 +29,7 @@ class SupplierItem extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
-            'last_purchase_price' => 'decimal:4',
+            'last_purchase_price' => 'decimal:6',
             'lead_time_days' => 'integer',
             'is_preferred' => 'boolean',
         ];

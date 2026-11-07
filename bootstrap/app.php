@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\EnsureModule;
+use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ResolveActiveBranch;
 use App\Http\Responses\ApiResponse;
@@ -47,6 +48,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'check.permission' => CheckPermission::class,
             'ensure.module' => EnsureModule::class,
             'ensure.active' => EnsureUserIsActive::class,
+            'ensure.super_admin' => EnsureSuperAdmin::class,
             'resolve.branch' => ResolveActiveBranch::class,
         ]);
     })
