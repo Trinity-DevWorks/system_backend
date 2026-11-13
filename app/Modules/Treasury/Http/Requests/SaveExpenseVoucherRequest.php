@@ -34,6 +34,10 @@ class SaveExpenseVoucherRequest extends FormRequest
             'lines.*.description' => ['nullable', 'string', 'max:500'],
             'lines.*.amount' => ['required', 'numeric', 'gt:0'],
             'lines.*.vat_group_id' => ['nullable', 'integer', Rule::exists('vat_groups', 'id')],
+            'lines.*.deferral_start_date' => ['nullable', 'date'],
+            'lines.*.deferral_end_date' => ['nullable', 'date', 'after_or_equal:lines.*.deferral_start_date', 'required_with:lines.*.deferral_start_date'],
+            'lines.*.deferral_recognition_account_id' => ['nullable', 'integer', 'required_with:lines.*.deferral_start_date'],
+            'lines.*.deferral_method' => ['nullable', Rule::in(['straight_line_monthly', 'daily_prorata'])],
         ];
     }
 }

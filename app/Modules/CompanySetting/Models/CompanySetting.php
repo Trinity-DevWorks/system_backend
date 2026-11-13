@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\CompanySetting\Models;
 
+use App\Modules\CompanySetting\Enums\BudgetWarningScope;
 use App\Modules\CompanySetting\Enums\DateFormat;
 use App\Modules\CompanySetting\Enums\NumberFormat;
 use App\Modules\CompanySetting\Enums\PreferredLanguage;
@@ -25,6 +26,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * @property PriceRoundingMode $price_rounding_mode
  * @property TaxPriceMode $tax_price_mode
  * @property InventoryCostingMethod $inventory_costing_method
+ * @property BudgetWarningScope $budget_warning_scope
+ * @property bool $budget_warnings_enabled
  */
 #[Fillable([
     'primary_currency_id',
@@ -42,6 +45,9 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'fiscal_year_start_month',
     'books_closed_through',
     'chart_template',
+    'budget_warnings_enabled',
+    'budget_warning_scope',
+    'auto_depreciation',
 ])]
 class CompanySetting extends Model implements AuditableContract
 {
@@ -66,6 +72,8 @@ class CompanySetting extends Model implements AuditableContract
             'inventory_costing_method' => InventoryCostingMethod::MovingAverage,
             'price_rounding_mode' => PriceRoundingMode::HalfUp,
             'price_decimal_places' => 2,
+            'budget_warnings_enabled' => true,
+            'budget_warning_scope' => BudgetWarningScope::Month,
         ]);
     }
 
@@ -94,6 +102,9 @@ class CompanySetting extends Model implements AuditableContract
             'price_decimal_places' => 'integer',
             'fiscal_year_start_month' => 'integer',
             'books_closed_through' => 'date',
+            'budget_warnings_enabled' => 'boolean',
+            'budget_warning_scope' => BudgetWarningScope::class,
+            'auto_depreciation' => 'boolean',
         ];
     }
 

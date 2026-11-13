@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\PurchaseDebitNote\Services;
 
+use App\Modules\Accounting\FixedAsset\Services\FixedAssetService;
 use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
@@ -38,6 +39,7 @@ class PurchaseDebitNoteService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly JournalPostingService $journalPostingService,
+        private readonly FixedAssetService $fixedAssets,
     ) {}
 
     /**
@@ -322,6 +324,7 @@ class PurchaseDebitNoteService
             $this->recomputeStoredLines($locked, $invoice);
             $locked->refresh();
             $locked->load('lines.item.itemType');
+            $this->fixedAssets->assertDebitNoteHasNoAsset($locked);
 
             if ($locked->lines->isEmpty() || ! PaymentAllocation::isPositive($locked->grand_total)) {
                 $this->fail('Add at least one line with a quantity or an amount.', 'PURCHASE_DEBIT_NOTE_NO_LINES');

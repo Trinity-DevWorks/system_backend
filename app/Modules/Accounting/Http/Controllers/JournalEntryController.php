@@ -36,6 +36,7 @@ class JournalEntryController extends Controller
             'source_type' => $request->query('source_type'),
             'status' => $request->query('status'),
             'account_id' => $request->query('account_id') !== null ? (int) $request->query('account_id') : null,
+            'recurring_template_id' => $request->query('recurring_template_id') !== null ? (string) $request->query('recurring_template_id') : null,
         ], ListPagination::perPage($request));
 
         $numbers = SourceDocuments::numbers(collect($paginator->items())

@@ -71,7 +71,7 @@ final class AnalyticsReport
     /** Category / movement type / opening-closing codes become readable labels. */
     private static function code(string $key, mixed $value): mixed
     {
-        if (! in_array($key, ['category', 'type', 'description'], true) || ! is_string($value) || $value === '') {
+        if (! in_array($key, ['category', 'type', 'description', 'field', 'source'], true) || ! is_string($value) || $value === '') {
             return $value;
         }
         $langKey = 'reports.val_'.$value;

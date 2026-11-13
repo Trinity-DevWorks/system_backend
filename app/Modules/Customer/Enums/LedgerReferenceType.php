@@ -10,4 +10,5 @@ enum LedgerReferenceType: string
     case Payment = 'payment';
     case CreditNote = 'credit_note';
     case Refund = 'refund';
+    case FixedAssetDisposal = 'fixed_asset_disposal';
 }

@@ -163,5 +163,35 @@ return [
             'mail_subject' => 'Stock movement posted',
             'permission' => ['resource' => 'stock', 'action' => 'view'],
         ],
+        'depreciation.posted' => [
+            'severity' => 'info',
+            'default_channels' => ['database', 'mail'],
+            'mail_subject' => 'Depreciation posted for :month',
+            'permission' => ['resource' => 'depreciation_runs', 'action' => 'view'],
+        ],
+        'accounting.budget_exceeded' => [
+            'severity' => 'warning',
+            'default_channels' => ['database'],
+            'mail_subject' => ':document is over budget',
+            'permission' => ['resource' => 'budgets', 'action' => 'view'],
+        ],
+        'accounting.recurring_failed' => [
+            'severity' => 'warning',
+            'default_channels' => ['database', 'mail'],
+            'mail_subject' => 'Recurring entry :template_number failed',
+            'permission' => ['resource' => 'recurring_entries', 'action' => 'view'],
+        ],
+        'accounting.recurring_drafts_ready' => [
+            'severity' => 'info',
+            'default_channels' => ['database'],
+            'mail_subject' => ':count recurring document(s) waiting for review',
+            'permission' => ['resource' => 'recurring_entries', 'action' => 'view'],
+        ],
+        'accounting.deferral_posting_failed' => [
+            'severity' => 'warning',
+            'default_channels' => ['database', 'mail'],
+            'mail_subject' => 'Deferral :schedule_number could not be recognised',
+            'permission' => ['resource' => 'deferral_schedules', 'action' => 'view'],
+        ],
     ],
 ];

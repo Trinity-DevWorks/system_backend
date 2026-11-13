@@ -464,6 +464,7 @@ class CustomerLedgerService
         $paymentIds = [];
         $creditNoteIds = [];
         $refundIds = [];
+        $disposalIds = [];
         foreach ($entries as $entry) {
             if ($entry->reference_id === null) {
                 continue;
@@ -477,6 +478,8 @@ class CustomerLedgerService
                 $creditNoteIds[] = (string) $entry->reference_id;
             } elseif ($type === LedgerReferenceType::Refund->value) {
                 $refundIds[] = (string) $entry->reference_id;
+            } elseif ($type === LedgerReferenceType::FixedAssetDisposal->value) {
+                $disposalIds[] = (string) $entry->reference_id;
             }
         }
 
@@ -510,6 +513,14 @@ class CustomerLedgerService
             foreach ($numbers as $id => $number) {
                 if ($number !== null && $number !== '') {
                     $out[LedgerReferenceType::Refund->value.'|'.$id] = (string) $number;
+                }
+            }
+        }
+        if ($disposalIds !== []) {
+            $numbers = DB::table('fixed_assets')->whereIn('id', array_values(array_unique($disposalIds)))->pluck('disposal_number', 'id');
+            foreach ($numbers as $id => $number) {
+                if ($number !== null && $number !== '') {
+                    $out[LedgerReferenceType::FixedAssetDisposal->value.'|'.$id] = (string) $number;
                 }
             }
         }

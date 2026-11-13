@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\Services;
 
+use App\Modules\Accounting\Budget\Services\BudgetCheckService;
+use App\Modules\Accounting\FixedAsset\Services\FixedAssetService;
 use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
@@ -54,6 +56,7 @@ class PurchaseInvoiceService
         private readonly SupplierItemService $supplierItemService,
         private readonly ExchangeRateService $exchangeRateService,
         private readonly JournalPostingService $journalPostingService,
+        private readonly FixedAssetService $fixedAssets,
     ) {}
 
     /**
@@ -223,7 +226,7 @@ class PurchaseInvoiceService
 
     public function post(PurchaseInvoice $invoice, ?string $userId): PurchaseInvoice
     {
-        return DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
+        $posted = DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
             $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             app(DocumentNumberService::class)->assign($locked, 'invoice_number', DocumentType::PurchaseInvoice, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->invoice_date);
             PurchaseInvoiceRules::assertPostable($locked);
@@ -297,6 +300,7 @@ class PurchaseInvoiceService
             }
 
             $this->journalPostingService->purchaseInvoice($locked, $userId);
+            $this->fixedAssets->createFromInvoice($locked, $userId);
 
             $locked->update([
                 'status' => PurchaseInvoiceStatus::Posted,
@@ -306,6 +310,10 @@ class PurchaseInvoiceService
 
             return $this->find($locked->id);
         });
+        // Over-budget is only a warning: checked after the commit so it can never block or roll back the post.
+        app(BudgetCheckService::class)->notifyAfterPost(BudgetCheckService::SOURCE_PURCHASE_INVOICE, (string) $posted->id, (string) ($posted->invoice_number ?? ''));
+
+        return $posted;
     }
 
     public function reverse(PurchaseInvoice $invoice, ?string $userId): PurchaseInvoice
@@ -330,6 +338,7 @@ class PurchaseInvoiceService
                 ]);
             }
             $this->warehouseService->assertDocumentVisible($locked);
+            $this->fixedAssets->assertInvoiceReversible($locked);
 
             if ($locked->goods_receipt_id === null) {
                 $this->stockMovementService->reverseReference(PurchaseInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
@@ -350,6 +359,7 @@ class PurchaseInvoiceService
             }
 
             $this->journalPostingService->reverse(PurchaseInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->fixedAssets->deleteForInvoice($locked);
 
             $locked->update(['status' => PurchaseInvoiceStatus::Reversed]);
 

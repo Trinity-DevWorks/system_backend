@@ -65,6 +65,8 @@ class UpdateItemRequest extends FormRequest
             'allow_purchase' => ['sometimes', 'boolean'],
             'allow_return' => ['sometimes', 'boolean'],
             'is_landed_cost' => ['sometimes', 'boolean'],
+            'is_fixed_asset' => ['sometimes', 'boolean'],
+            'fixed_asset_category_id' => ['nullable', 'integer', 'exists:fixed_asset_categories,id'],
             'weight' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:99999999'],
             'volume' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:99999999'],
             'is_active' => ['sometimes', 'boolean'],

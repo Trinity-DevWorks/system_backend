@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Moves a fiscal year's profit or loss into retained earnings (or accumulated
@@ -195,6 +196,7 @@ class FiscalYearService
             'closed_at' => $year->closed_at?->toIso8601String(),
             'can_close' => ! $closed && $ends === $nextEndsOn,
             'can_reverse' => $closed && $ends === $latestClosedEnd,
+            'warnings' => $closed ? [] : $this->closeWarnings($starts, $ends),
         ];
     }
 
@@ -423,6 +425,7 @@ class FiscalYearService
             'closed_at' => null,
             'can_close' => $canClose,
             'can_reverse' => false,
+            'warnings' => $this->closeWarnings($bounds['starts_on'], $bounds['ends_on']),
         ];
     }
 
@@ -451,6 +454,47 @@ class FiscalYearService
             return;
         }
         $entry->update(['source_id' => $entry->id]);
+    }
+
+    /**
+     * Non-blocking close preview: recognition lines and failed recurring runs inside the year.
+     *
+     * @return array<string, array<string, int|string>>
+     */
+    private function closeWarnings(string $starts, string $ends): array
+    {
+        if (! (bool) config('accounting.deferrals.warn_on_year_close', true)) {
+            return [];
+        }
+
+        $warnings = [];
+        if (Schema::hasTable('deferral_schedule_lines')) {
+            $row = DB::table('deferral_schedule_lines')
+                ->where('status', 'pending')
+                ->whereDate('posting_date', '>=', $starts)
+                ->whereDate('posting_date', '<=', $ends)
+                ->selectRaw('COUNT(*) as aggregate_count, COALESCE(SUM(amount_primary), 0) as amount_primary')
+                ->first();
+            $count = (int) ($row->aggregate_count ?? 0);
+            if ($count > 0) {
+                $warnings['pending_deferral_lines'] = [
+                    'count' => $count,
+                    'amount_primary' => JournalMath::store($row->amount_primary ?? '0'),
+                ];
+            }
+        }
+        if (Schema::hasTable('recurring_runs')) {
+            $failed = (int) DB::table('recurring_runs')
+                ->where('status', 'failed')
+                ->whereDate('scheduled_date', '>=', $starts)
+                ->whereDate('scheduled_date', '<=', $ends)
+                ->count();
+            if ($failed > 0) {
+                $warnings['failed_recurring_runs'] = ['count' => $failed];
+            }
+        }
+
+        return $warnings;
     }
 
     private function dateString(mixed $date): string

@@ -6,12 +6,16 @@ use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
+use App\Modules\Inventory\PriceChange\Enums\PriceField;
+use App\Modules\Inventory\PriceChange\Services\PriceHistoryRecorder;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ItemUomService
 {
+    public function __construct(private readonly PriceHistoryRecorder $history) {}
+
     /** Stored scale for item_uoms.conversion_factor (decimal 24,12). */
     private const CONVERSION_SCALE = 12;
 
@@ -90,6 +94,8 @@ class ItemUomService
                 $this->clearOtherDefaultPurchaseFlags($item->id, $row->id);
             }
 
+            $this->history->recordItemUom($row, null, PriceHistoryRecorder::contextFrom($data));
+
             return $row->load(['uom']);
         });
     }
@@ -105,6 +111,10 @@ class ItemUomService
 
         return DB::transaction(function () use ($item, $itemUom, $data): ItemUom {
             $item->refresh();
+            $before = [];
+            foreach (PriceField::itemUomValues() as $field) {
+                $before[$field] = $itemUom->getAttribute($field);
+            }
 
             $isBase = array_key_exists('is_base', $data) ? (bool) $data['is_base'] : (bool) $itemUom->is_base;
             $conversionFactor = array_key_exists('conversion_factor', $data)
@@ -172,6 +182,8 @@ class ItemUomService
             if ($itemUom->is_default_purchase) {
                 $this->clearOtherDefaultPurchaseFlags($item->id, $itemUom->id);
             }
+
+            $this->history->recordItemUom($itemUom, $before, PriceHistoryRecorder::contextFrom($data));
 
             return $itemUom->load(['uom']);
         });

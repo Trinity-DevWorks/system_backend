@@ -62,6 +62,10 @@ class CurrencyService
         'landed_costs',
         'treasury_transfers',
         'expense_vouchers',
+        'fixed_assets',
+        'fixed_asset_depreciation_runs',
+        'recurring_templates',
+        'deferral_schedules',
     ];
 
     public function __construct(

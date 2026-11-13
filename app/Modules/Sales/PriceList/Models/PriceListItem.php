@@ -9,6 +9,8 @@ use App\Modules\Inventory\Item\Models\ItemUom;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use OwenIt\Auditing\Auditable;
+use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * One price for an item unit in a list. min_quantity is a quantity break (0 = any quantity).
@@ -21,8 +23,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $price
  */
 #[Fillable(['price_list_id', 'item_id', 'item_uom_id', 'min_quantity', 'price'])]
-class PriceListItem extends Model
+class PriceListItem extends Model implements AuditableContract
 {
+    use Auditable;
+
     /**
      * @return array<string, string>
      */

@@ -43,6 +43,8 @@ return [
                 'unit_of_measurements',
                 'items',
                 'item_attributes',
+                'price_changes',
+                'price_below_cost_override',
             ],
         ],
         'sales' => [
@@ -61,10 +63,10 @@ return [
         ],
         'accounting' => [
             'name' => 'Accounting',
-            'description' => 'Chart of accounts, journal entries, financial statements, VAT, and fiscal years.',
+            'description' => 'Chart of accounts, journal entries, financial statements, VAT, budgets, and fiscal years.',
             'is_core' => false,
             'sort_order' => 60,
-            'resources' => ['accounts', 'account_mappings', 'journal_entries', 'accounting_reports', 'vat_settlements', 'currency_revaluations', 'accounting_periods', 'cash_bank_accounts', 'treasury_transfers', 'expense_vouchers'],
+            'resources' => ['accounts', 'account_mappings', 'journal_entries', 'accounting_reports', 'vat_settlements', 'currency_revaluations', 'accounting_periods', 'budgets', 'cash_bank_accounts', 'treasury_transfers', 'expense_vouchers', 'recurring_entries', 'deferral_schedules', 'fixed_asset_categories', 'fixed_assets', 'depreciation_runs'],
         ],
     ],
 

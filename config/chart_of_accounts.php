@@ -496,6 +496,12 @@ return [
                 'accumulated_losses' => '1250',
                 'current_year_profit' => '1380',
                 'current_year_loss' => '1390',
+                'accumulated_depreciation' => '2826',
+                'depreciation_expense' => '6512',
+                'asset_disposal_loss' => '6812',
+                'asset_disposal_gain' => '7812',
+                'prepaid_expenses' => '4720',
+                'deferred_revenue' => '4730',
             ],
             // First matching prefix wins. `types` (when set) also has to contain the account type.
             // Labels live in the frontend (`FinancialReports.sections`), not here.

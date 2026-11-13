@@ -44,6 +44,34 @@ final class JournalBuilder
     }
 
     /**
+     * Primary and document amounts already allocated. Used when both sides of an
+     * entry must match a pre-rounded schedule exactly, so no Rounding line appears.
+     */
+    public function exact(
+        Account $account,
+        string $signedPrimary,
+        int $currencyId,
+        string $rate,
+        string $signedAmountCurrency,
+        ?string $description = null,
+    ): self {
+        if ($currencyId === $this->primaryCurrencyId) {
+            $rate = '1';
+        }
+
+        return $this->push(
+            $account,
+            JournalMath::store($signedPrimary),
+            $currencyId,
+            $rate,
+            JournalMath::store($signedAmountCurrency),
+            null,
+            null,
+            $description,
+        );
+    }
+
+    /**
      * Amount already in the primary currency (stock values).
      */
     public function primary(

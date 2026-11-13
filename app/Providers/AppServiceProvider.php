@@ -11,6 +11,10 @@ use App\Models\DocumentNumberSetting;
 use App\Models\PrintSetting;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Accounting\Budget\Models\Budget;
+use App\Modules\Accounting\FixedAsset\Models\DepreciationRun;
+use App\Modules\Accounting\FixedAsset\Models\FixedAsset;
+use App\Modules\Accounting\FixedAsset\Models\FixedAssetCategory;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\AccountMapping;
 use App\Modules\Accounting\Models\FiscalYear;
@@ -26,12 +30,15 @@ use App\Modules\Customer\Models\CustomerAddress;
 use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerContact;
 use App\Modules\Customer\Models\CustomerGroup;
+use App\Modules\Deferral\Models\DeferralSchedule;
 use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
+use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
 use App\Modules\Inventory\ItemVariant\Models\ItemAttribute;
 use App\Modules\Inventory\ItemVariant\Models\ItemAttributeValue;
+use App\Modules\Inventory\PriceChange\Models\PriceChange;
 use App\Modules\Inventory\Purchasing\LandedCost\Models\LandedCost;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceiptLine;
@@ -68,10 +75,12 @@ use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Rbac\Models\Permission;
 use App\Modules\Rbac\Models\Role;
+use App\Modules\RecurringEntry\Models\RecurringTemplate;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerRefund\Models\CustomerRefund;
 use App\Modules\Sales\DeliveryNote\Models\DeliveryNote;
 use App\Modules\Sales\PriceList\Models\PriceList;
+use App\Modules\Sales\PriceList\Models\PriceListItem;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
@@ -128,19 +137,27 @@ class AppServiceProvider extends ServiceProvider
             'account' => Account::class,
             'account_mapping' => AccountMapping::class,
             'journal_entry' => JournalEntry::class,
+            'fixed_asset_category' => FixedAssetCategory::class,
+            'fixed_asset' => FixedAsset::class,
+            'fixed_asset_depreciation' => DepreciationRun::class,
             'fiscal_year' => FiscalYear::class,
             'audit' => Audit::class,
             'attachment' => Attachment::class,
             'brand' => Brand::class,
             'branch' => Branch::class,
+            'budget' => Budget::class,
             'category' => Category::class,
             'company_profile' => CompanyProfile::class,
             'customer' => Customer::class,
             'customer_group' => CustomerGroup::class,
             'price_list' => PriceList::class,
+            'price_list_item' => PriceListItem::class,
+            'price_change' => PriceChange::class,
             'cash_bank_account' => CashBankAccount::class,
             'treasury_transfer' => TreasuryTransfer::class,
             'expense_voucher' => ExpenseVoucher::class,
+            'recurring_template' => RecurringTemplate::class,
+            'deferral_schedule' => DeferralSchedule::class,
             'customer_address' => CustomerAddress::class,
             'customer_balance' => CustomerBalance::class,
             'salesman' => Salesman::class,
@@ -168,6 +185,7 @@ class AppServiceProvider extends ServiceProvider
             'permission' => Permission::class,
             'role' => Role::class,
             'item' => Item::class,
+            'item_uom' => ItemUom::class,
             'bundle_item' => BundleItem::class,
             'recipe' => Recipe::class,
             'recipe_item' => RecipeItem::class,

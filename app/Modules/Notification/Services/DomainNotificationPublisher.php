@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Notification\Services;
 
 use App\Models\User;
+use App\Modules\Accounting\FixedAsset\Models\DepreciationRun;
 use App\Modules\Branch\Models\Branch;
+use App\Modules\Deferral\Models\DeferralSchedule;
+use App\Modules\Deferral\Models\DeferralScheduleLine;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
@@ -13,7 +16,10 @@ use App\Modules\Inventory\Stock\Services\InventoryLotService;
 use App\Modules\Inventory\Stock\Services\PurchasingAlertService;
 use App\Modules\Notification\Support\RecipientQuery;
 use App\Modules\Rbac\Models\Role;
+use App\Modules\RecurringEntry\Models\RecurringRun;
+use App\Modules\RecurringEntry\Models\RecurringTemplate;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Support\TenantClock;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -410,10 +416,130 @@ class DomainNotificationPublisher
         );
     }
 
+    public function depreciationPosted(DepreciationRun $run): void
+    {
+        $month = $run->period_month->format('Y-m');
+        $this->dispatcher->dispatch(
+            'depreciation.posted',
+            [
+                'params' => [
+                    'month' => $month,
+                    'total' => (string) $run->total,
+                ],
+                'mail_lines' => [
+                    'Depreciation for :month was posted.',
+                    'Total: :total.',
+                ],
+                'action_path' => '/main/accounting/depreciation',
+                'resource_type' => 'fixed_asset_depreciation',
+                'resource_id' => (string) $run->id,
+            ],
+            RecipientQuery::permission('depreciation_runs', 'view'),
+        );
+    }
+
+    public function recurringRunFailed(RecurringTemplate $template, RecurringRun $run): void
+    {
+        $this->dispatcher->dispatch(
+            'accounting.recurring_failed',
+            [
+                'params' => [
+                    'template_number' => (string) ($template->template_number ?? $template->name),
+                    'error_code' => (string) ($run->error_code ?? ''),
+                ],
+                'mail_lines' => [
+                    'Recurring template :template_number failed (:error_code).',
+                ],
+                'action_path' => '/main/accounting/recurring-entries?drawer='.rawurlencode((string) $template->id).'&mode=view',
+                'resource_type' => RecurringTemplate::REFERENCE_TYPE,
+                'resource_id' => (string) $template->id,
+            ],
+            RecipientQuery::permission('recurring_entries', 'view'),
+        );
+    }
+
+    public function recurringDraftsReady(int $count): void
+    {
+        if ($count < 1) {
+            return;
+        }
+        $key = 'notifications:recurring_drafts:'.(string) tenant('id').':'.TenantClock::today()->toDateString();
+        if (! Cache::add($key, 1, now()->addDay())) {
+            return;
+        }
+        $this->dispatcher->dispatch(
+            'accounting.recurring_drafts_ready',
+            [
+                'params' => ['count' => (string) $count],
+                'mail_lines' => [
+                    ':count recurring document(s) are waiting for review.',
+                ],
+                'action_path' => '/main/accounting/recurring-entries',
+                'resource_type' => 'recurring_template',
+                'resource_id' => null,
+            ],
+            RecipientQuery::permission('recurring_entries', 'view'),
+        );
+    }
+
+    public function deferralPostingFailed(DeferralSchedule $schedule, DeferralScheduleLine $line, string $code): void
+    {
+        $this->dispatcher->dispatch(
+            'accounting.deferral_posting_failed',
+            [
+                'params' => [
+                    'schedule_number' => (string) ($schedule->schedule_number ?? $schedule->name),
+                    'error_code' => $code,
+                ],
+                'mail_lines' => [
+                    'Deferral :schedule_number could not be recognised (:error_code).',
+                ],
+                'action_path' => '/main/accounting/deferral-schedules?drawer='.rawurlencode((string) $schedule->id).'&mode=view',
+                'resource_type' => DeferralSchedule::REFERENCE_TYPE,
+                'resource_id' => (string) $schedule->id,
+            ],
+            RecipientQuery::permission('deferral_schedules', 'view'),
+        );
+    }
+
     private function branchIdForWarehouse(int $warehouseId): ?int
     {
         $branchId = Warehouse::query()->whereKey($warehouseId)->value('branch_id');
 
         return $branchId !== null ? (int) $branchId : null;
+    }
+
+    /**
+     * A posted document took one or more expense accounts over the approved budget.
+     *
+     * @param  list<array<string, mixed>>  $warnings
+     */
+    public function budgetExceeded(string $documentLabel, array $warnings): void
+    {
+        if ($warnings === []) {
+            return;
+        }
+        $first = $warnings[0];
+        $accounts = implode(', ', array_map(
+            fn (array $w): string => trim(((string) ($w['account_code'] ?? '')).' '.((string) ($w['account_name'] ?? ''))),
+            $warnings,
+        ));
+        $this->dispatcher->dispatch(
+            'accounting.budget_exceeded',
+            [
+                'params' => [
+                    'document' => $documentLabel,
+                    'accounts' => $accounts,
+                    'count' => count($warnings),
+                ],
+                'mail_lines' => [
+                    ':document went over budget on: :accounts.',
+                ],
+                'action_path' => '/main/accounting/budget-vs-actual?budget_id='.rawurlencode((string) ($first['budget_id'] ?? '')),
+                'resource_type' => 'budget',
+                'resource_id' => (string) ($first['budget_id'] ?? ''),
+            ],
+            RecipientQuery::permission('budgets', 'view'),
+        );
     }
 }

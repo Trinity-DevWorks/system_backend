@@ -107,6 +107,10 @@ Inventory:
 - `ITEM_BASE_UOM_MISMATCH` (HTTP 422)
 - `ITEM_UOM_UNIT_GROUP_MISMATCH` (HTTP 422)
 - `ITEM_BASE_UOM_CHANGE_GROUP_MISMATCH` (HTTP 422)
+- `ITEM_DELETE_REFERENCED_BY_SUPPLIERS` (HTTP 409)
+- `ITEM_DELETE_REFERENCED_BY_STOCK` (HTTP 409)
+- `ITEM_DELETE_REFERENCED_BY_RECIPE` (HTTP 409)
+- `ITEM_DELETE_REFERENCED_BY_BUNDLE` (HTTP 409)
 - `ITEM_BASE_UOM_REBASE_INVALID_FACTOR` (HTTP 422)
 - `ITEM_DELETE_REFERENCED_BY_SUPPLIERS` (HTTP 409)
 - `ITEM_DELETE_REFERENCED_BY_STOCK` (HTTP 409)
@@ -184,6 +188,15 @@ Goods receipt:
 - `GOODS_RECEIPT_WAREHOUSE_REQUIRED` (HTTP 422)
 - `GOODS_RECEIPT_ITEM_REQUIRED` (HTTP 422)
 - `PURCHASE_ORDER_CLOSED` (HTTP 422)
+
+Opening stock:
+
+- `OPENING_STOCK_NOT_DRAFT` (HTTP 422)
+- `OPENING_STOCK_NO_LINES` (HTTP 422)
+- `OPENING_STOCK_ITEM_REQUIRED` (HTTP 422)
+- `OPENING_STOCK_DUPLICATE_LINE` (HTTP 422)
+- `OPENING_STOCK_LINE_INVALID_QUANTITY` (HTTP 422)
+- `PURCHASE_ORDER_CLOSED` (HTTP 422)
 - `PURCHASE_ORDER_QTY_EXCEEDS_MAX` (HTTP 422) — PO qty would put on-hand + open PO + inbound above the item's warehouse max_qty
 
 Opening stock:
@@ -250,10 +263,21 @@ Stock count:
 - `STOCK_COUNT_LINE_INVALID_QUANTITY` (HTTP 422)
 - `STOCK_COUNT_COUNTED_REQUIRED` (HTTP 422)
 
+Goods receipt:
+
+- `GOODS_RECEIPT_NOT_DRAFT` (HTTP 422)
+- `GOODS_RECEIPT_NO_LINES` (HTTP 422)
+- `GOODS_RECEIPT_PO_NOT_RECEIVABLE` (HTTP 422)
+- `GOODS_RECEIPT_PO_FULLY_RECEIVED` (HTTP 422)
+- `GOODS_RECEIPT_PO_LINE_MISMATCH` (HTTP 422)
+- `GOODS_RECEIPT_DUPLICATE_LINE` (HTTP 422)
+- `GOODS_RECEIPT_QTY_EXCEEDS_OPEN` (HTTP 422)
+
 Customer/Supplier scope and attachments:
 
 - `ATTACHMENT_FILE_TOO_LARGE` (HTTP 413 — request body exceeds PHP/server or app limit)
 - `ATTACHMENT_PRIMARY_IMAGE_ONLY` (HTTP 422 — only image attachments can be primary)
+- `ATTACHMENT_FILE_TOO_LARGE` (HTTP 413 — request body exceeds PHP/server or app limit)
 - `ATTACHMENT_DOWNLOAD_STORAGE_NOT_CONFIGURED` (HTTP 500)
 - `CUSTOMER_ATTACHMENT_SCOPE_MISMATCH` (HTTP 404)
 - `SUPPLIER_ATTACHMENT_SCOPE_MISMATCH` (HTTP 404)
@@ -292,6 +316,56 @@ Price lists:
 - `PRICE_LIST_DUPLICATE_ITEM` (HTTP 422) — same item, unit and minimum quantity twice in one list
 - `PRICE_LIST_DATES_INVALID` (HTTP 422) — end date before start date
 
+Price changes:
+
+- `PRICE_CHANGE_NOT_DRAFT` (HTTP 422) — only a draft can be edited or deleted
+- `PRICE_CHANGE_NOT_OPEN` (HTTP 422) — only a draft or a scheduled change can be applied
+- `PRICE_CHANGE_NOT_CANCELLABLE` (HTTP 422) — only a draft or a scheduled change can be cancelled
+- `PRICE_CHANGE_EMPTY` (HTTP 422) — the document has no prices
+- `PRICE_CHANGE_LINE_INVALID` (HTTP 422) — a line is missing its item, unit or field, or the same price appears twice
+- `PRICE_CHANGE_ROW_MISSING` (HTTP 422) — a price list row on the document no longer exists
+- `PRICE_CHANGE_FIELD_INVALID` (HTTP 422) — unknown price field
+- `PRICE_CHANGE_BULK_INVALID` (HTTP 422) — the bulk rule or rounding is not recognised
+- `PRICE_CHANGE_BULK_LIST_REQUIRED` (HTTP 422) — changing list prices needs a price list
+- `PRICE_BELOW_COST` (HTTP 422) — a new selling price is below the current cost; the response lists the rows. Needs `price_below_cost_override,edit`
+
+
+Customer refunds:
+
+- `CUSTOMER_REFUND_FILTER_REQUIRED` (HTTP 422)
+- `CUSTOMER_REFUND_HEADER_LOCKED` (HTTP 422)
+- `CUSTOMER_REFUND_NOT_DRAFT` (HTTP 422)
+- `CUSTOMER_REFUND_NOT_POSTED` (HTTP 422)
+- `CUSTOMER_REFUND_AMOUNT_INVALID` (HTTP 422)
+- `CUSTOMER_REFUND_ALLOCATION_MISMATCH` (HTTP 422)
+- `CUSTOMER_REFUND_CREDIT_NOTE_MISMATCH` (HTTP 422)
+- `CUSTOMER_REFUND_CREDIT_NOTE_NOT_OPEN` (HTTP 422)
+
+Purchase debit notes use the same set as sales credit notes with the `PURCHASE_DEBIT_NOTE_` prefix, plus `PURCHASE_INVOICE_HAS_DEBIT_NOTES`.
+
+Supplier refunds use the same set as customer refunds with the `SUPPLIER_REFUND_` prefix and `DEBIT_NOTE` in place of `CREDIT_NOTE`.
+
+Sales credit notes:
+
+- `SALES_CREDIT_NOTE_NOT_DRAFT` (HTTP 422)
+- `SALES_CREDIT_NOTE_NOT_POSTED` (HTTP 422)
+- `SALES_CREDIT_NOTE_INVOICE_NOT_POSTED` (HTTP 422)
+- `SALES_CREDIT_NOTE_DATE_BEFORE_INVOICE` (HTTP 422)
+- `SALES_CREDIT_NOTE_QTY_EXCEEDED` (HTTP 422)
+- `SALES_CREDIT_NOTE_AMOUNT_EXCEEDED` (HTTP 422)
+- `SALES_CREDIT_NOTE_EXCEEDS_INVOICE` (HTTP 422)
+- `SALES_CREDIT_NOTE_NO_LINES` (HTTP 422)
+- `SALES_CREDIT_NOTE_TOTAL_INVALID` (HTTP 422)
+- `SALES_CREDIT_NOTE_LINE_MISMATCH` (HTTP 422)
+- `SALES_CREDIT_NOTE_INVOICE_MISMATCH` (HTTP 422)
+- `SALES_CREDIT_NOTE_INVOICE_NOT_OPEN` (HTTP 422)
+- `SALES_CREDIT_NOTE_APPLY_EXCEEDS_OPEN` (HTTP 422)
+- `SALES_CREDIT_NOTE_HAS_REFUNDS` (HTTP 422)
+- `SALES_CREDIT_NOTE_WAREHOUSE_REQUIRED` (HTTP 422)
+- `SALES_CREDIT_NOTE_BUNDLE_EMPTY` (HTTP 422)
+- `SALES_CREDIT_NOTE_BUNDLE_LOT_NOT_SUPPORTED` (HTTP 422)
+- `SALES_CREDIT_NOTE_TYPE_INVALID` (HTTP 422)
+- `SALES_INVOICE_HAS_CREDIT_NOTES` (HTTP 422)
 
 Customer refunds:
 
@@ -329,6 +403,25 @@ Treasury (cash/bank accounts, transfers, expense vouchers):
 - `TREASURY_DOCUMENT_NOT_DRAFT` / `TREASURY_DOCUMENT_NOT_POSTED` (HTTP 422) — wrong status for edit/post or reverse
 - `EXPENSE_VOUCHER_ACCOUNT_INVALID` (HTTP 422) — expense lines must use an active, non-group expense account
 - `EXPENSE_VOUCHER_NO_LINES` (HTTP 422) — post needs at least one line with a positive total
+
+Recurring entries and deferral schedules:
+
+- `RECURRING_TEMPLATE_INVALID_SCHEDULE` (HTTP 422) — frequency, day, or date range is not a valid schedule
+- `RECURRING_TEMPLATE_UNBALANCED` (HTTP 422) — journal template debits do not equal credits
+- `RECURRING_TEMPLATE_NO_LINES` (HTTP 422) — the template has no lines or a zero total
+- `RECURRING_TEMPLATE_NOT_ACTIVE` (HTTP 422) — run or skip on a template that is not active
+- `RECURRING_TEMPLATE_NOT_EDITABLE` (HTTP 422) — edit of a finished template, or a schedule change after the first run
+- `RECURRING_TEMPLATE_HAS_RUNS` (HTTP 422) — delete is blocked once a run exists; cancel instead
+- `RECURRING_RUN_NOT_FAILED` (HTTP 422) — retry of a run that is not the current failed occurrence
+- `DEFERRAL_INVALID_PERIOD` (HTTP 422) — end before start, or more periods than the configured maximum
+- `DEFERRAL_ACCOUNT_INVALID` (HTTP 422) — account is the wrong type, inactive, a group, or a controlled role
+- `DEFERRAL_NOT_DRAFT` (HTTP 422) — update, delete, or activate of a schedule that is not a draft
+- `DEFERRAL_NOT_ACTIVE` (HTTP 422) — post or pause of a schedule that is not active
+- `DEFERRAL_LINE_OUT_OF_ORDER` (HTTP 422) — posting out of order, or reversing a line that is not the latest posted
+- `DEFERRAL_LINE_NOT_POSTED` / `DEFERRAL_LINE_NOT_PENDING` (HTTP 422) — the line is not in the status the action needs
+- `DEFERRAL_HAS_POSTED_LINES` (HTTP 422) — cancel, or reverse the source voucher, while recognition lines are posted
+- `DEFERRAL_INSUFFICIENT_BALANCE` (HTTP 422) — manual activation when the deferral account balance is below the schedule and strict checking is on
+- `DEFERRAL_SOURCE_LINE_TAKEN` (HTTP 422) — that voucher line already has a schedule
 
 Delivery notes (optional step: sales order -> delivery note -> invoice):
 
@@ -413,3 +506,41 @@ Old open balances of customers/suppliers are opening documents (`is_opening = tr
 | `LANDED_COST_PDF_NOT_ALLOWED` | 422 | Only posted or reversed landed costs print. |
 | `DOCUMENT_HAS_LANDED_COST` | 422 | A posted landed cost uses this receipt or bill; reverse the landed cost first. |
 | `ITEM_LANDED_COST_MUST_BE_SERVICE` | 422 | Only items that do not track stock can be landed-cost items. |
+| `ITEM_FIXED_ASSET_MUST_BE_SERVICE` | 422 | A fixed-asset item cannot track stock and cannot also be a landed-cost item. |
+
+## Budgets
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `BUDGET_NOT_DRAFT` | 422 | Only a draft budget can be changed, filled or deleted. |
+| `BUDGET_ACCOUNT_INVALID` | 422 | The account is missing, inactive, or a group. Budgets are entered on active posting accounts. |
+| `BUDGET_MONTH_OUT_OF_RANGE` | 422 | The month is not one of the twelve months of the budget's fiscal year. |
+| `BUDGET_ALREADY_APPROVED_FOR_YEAR` | 422 | An approved budget already exists for that fiscal year and branch. |
+| `BUDGET_IMPORT_INVALID` | 422 | The spreadsheet could not be read, or one or more rows are invalid (`details.rows`). |
+| `REPORT_BUDGET_REQUIRED` | 422 | Budget vs actual report: choose a budget (`budget_id`). |
+
+## Fixed assets
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `FIXED_ASSET_CATEGORY_IN_USE` | 409 | The category is used by an asset or an item. |
+| `FIXED_ASSET_ACCOUNT_INVALID` | 422 | A category account is missing, inactive, a group, or the wrong type. |
+| `FIXED_ASSET_NOT_DRAFT` | 422 | Only a draft asset can be activated or deleted. |
+| `FIXED_ASSET_NOT_ACTIVE` | 422 | The asset is not in service. |
+| `FIXED_ASSET_SALVAGE_TOO_HIGH` | 422 | Salvage is higher than cost, or higher than the current book value. |
+| `FIXED_ASSET_OPENING_TOO_HIGH` | 422 | Depreciation already taken is higher than cost. |
+| `FIXED_ASSET_CATEGORY_INVALID` | 422 | Choose an active asset category. |
+| `FIXED_ASSET_HAS_DEPRECIATION` | 422 | A purchase invoice cannot be reversed after one of its assets was depreciated or disposed. |
+| `FIXED_ASSET_RETURN_NOT_SUPPORTED` | 422 | Dispose of the asset. A debit note cannot return it. |
+| `FIXED_ASSET_QUANTITY_TOO_LARGE` | 422 | One invoice line cannot create more than 500 asset cards. |
+| `FIXED_ASSET_DISPOSAL_DATE` | 422 | The disposal date is in the future, or depreciation is already posted after it. |
+| `FIXED_ASSET_DISPOSAL_AMOUNT` | 422 | The sale amount cannot be negative. |
+| `FIXED_ASSET_CUSTOMER_REQUIRED` | 422 | A sale on account needs a customer. |
+| `FIXED_ASSET_CASH_ACCOUNT_INVALID` | 422 | The cash or bank account is missing, inactive, or not in the primary currency. |
+| `FIXED_ASSET_NOT_DISPOSED` | 422 | The asset has no disposal to reverse. |
+| `FIXED_ASSET_LATER_DEPRECIATION` | 422 | A depreciation run after the disposal must be undone first. |
+| `DEPRECIATION_ALREADY_POSTED` | 422 | That month already has a posted depreciation run. |
+| `DEPRECIATION_PREVIOUS_MONTH_MISSING` | 422 | An earlier month still has depreciation to post. |
+| `DEPRECIATION_NOT_LATEST` | 422 | Only the latest depreciation run can be undone. |
+| `DEPRECIATION_BRANCH_REQUIRED` | 422 | Undoing depreciation needs the branch whose run is undone. |
+| `DEPRECIATION_NOTHING_DUE` | 422 | No asset has depreciation due for that month. |

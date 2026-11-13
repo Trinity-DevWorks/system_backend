@@ -7,6 +7,7 @@ namespace App\Modules\Accounting\Models;
 use App\Models\User;
 use App\Modules\Accounting\Enums\JournalEntryStatus;
 use App\Modules\Branch\Models\Branch;
+use App\Modules\RecurringEntry\Models\RecurringTemplate;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -37,6 +38,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'created_by',
     'posted_by',
     'posted_at',
+    'recurring_template_id',
 ])]
 class JournalEntry extends Model implements AuditableContract
 {
@@ -114,6 +116,14 @@ class JournalEntry extends Model implements AuditableContract
     public function createdByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * @return BelongsTo<RecurringTemplate, $this>
+     */
+    public function recurringTemplate(): BelongsTo
+    {
+        return $this->belongsTo(RecurringTemplate::class);
     }
 
     /**

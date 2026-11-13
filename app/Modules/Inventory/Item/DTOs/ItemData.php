@@ -38,9 +38,14 @@ readonly class ItemData
         public bool $isLandedCost = false,
         public ?string $weight = null,
         public ?string $volume = null,
+        public bool $isFixedAsset = false,
+        public ?int $fixedAssetCategoryId = null,
     ) {
         if ($this->isLandedCost && $this->trackInventory) {
             abort(422, 'Only items that do not track stock can be landed-cost items.', ['X-Error-Code' => 'ITEM_LANDED_COST_MUST_BE_SERVICE']);
+        }
+        if ($this->isFixedAsset && ($this->trackInventory || $this->isLandedCost)) {
+            abort(422, 'Only items that do not track stock, and are not landed-cost items, can be fixed assets.', ['X-Error-Code' => 'ITEM_FIXED_ASSET_MUST_BE_SERVICE']);
         }
     }
 
@@ -94,6 +99,8 @@ readonly class ItemData
             isLandedCost: (bool) ($data['is_landed_cost'] ?? false),
             weight: self::normalizeMeasure($data['weight'] ?? null),
             volume: self::normalizeMeasure($data['volume'] ?? null),
+            isFixedAsset: (bool) ($data['is_fixed_asset'] ?? false),
+            fixedAssetCategoryId: isset($data['fixed_asset_category_id']) ? (int) $data['fixed_asset_category_id'] : null,
         );
     }
 
@@ -173,6 +180,12 @@ readonly class ItemData
                 : (bool) $item->is_landed_cost,
             weight: array_key_exists('weight', $data) ? self::normalizeMeasure($data['weight']) : $item->weight,
             volume: array_key_exists('volume', $data) ? self::normalizeMeasure($data['volume']) : $item->volume,
+            isFixedAsset: array_key_exists('is_fixed_asset', $data)
+                ? (bool) $data['is_fixed_asset']
+                : (bool) $item->is_fixed_asset,
+            fixedAssetCategoryId: array_key_exists('fixed_asset_category_id', $data)
+                ? ($data['fixed_asset_category_id'] !== null ? (int) $data['fixed_asset_category_id'] : null)
+                : ($item->fixed_asset_category_id !== null ? (int) $item->fixed_asset_category_id : null),
         );
     }
 
@@ -209,6 +222,8 @@ readonly class ItemData
             'is_landed_cost' => $this->isLandedCost,
             'weight' => $this->weight,
             'volume' => $this->volume,
+            'is_fixed_asset' => $this->isFixedAsset,
+            'fixed_asset_category_id' => $this->isFixedAsset ? $this->fixedAssetCategoryId : null,
         ];
     }
 

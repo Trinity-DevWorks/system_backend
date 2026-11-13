@@ -48,6 +48,7 @@ Services:
 |---------|-----------|--------|
 | `app` | 8080 → 8000 | nginx + PHP-FPM (not `artisan serve`) |
 | `queue` | — | `queue:work` (required for tenant create bootstrap jobs) |
+| `scheduler` | — | `schedule:work` (audit prune, digests, recurring entries, deferrals). Without it, scheduled commands do not run. A host cron `* * * * * php artisan schedule:run` is the alternative. |
 | `postgres` | 5433 → 5432 | Central DB `erp_central` (5433 avoids clash with local Postgres) |
 | `redis` | (internal) | Cache + queue |
 | `frontend` | 3000 | Profile `with-frontend` only |

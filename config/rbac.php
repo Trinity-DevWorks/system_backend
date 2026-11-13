@@ -122,6 +122,15 @@ return [
             'label' => 'Item Management',
             'actions' => $crud,
         ],
+        'price_changes' => [
+            'label' => 'Price Change Management',
+            'actions' => $crud,
+        ],
+        // Lets a role save a selling price that is below the item's current cost.
+        'price_below_cost_override' => [
+            'label' => 'Allow Prices Below Cost',
+            'actions' => ['edit'],
+        ],
 
         'customer_groups' => [
             'label' => 'Customer Group Management',
@@ -149,6 +158,14 @@ return [
         ],
         'expense_vouchers' => [
             'label' => 'Expense Voucher Management',
+            'actions' => [...$crud, 'reverse'],
+        ],
+        'recurring_entries' => [
+            'label' => 'Recurring Entries',
+            'actions' => $crud,
+        ],
+        'deferral_schedules' => [
+            'label' => 'Prepaid & Deferred Schedules',
             'actions' => [...$crud, 'reverse'],
         ],
         'price_lists' => [
@@ -242,9 +259,25 @@ return [
             'label' => 'Currency Revaluations',
             'actions' => ['view', 'add', 'reverse'],
         ],
+        'fixed_asset_categories' => [
+            'label' => 'Fixed Asset Categories',
+            'actions' => $crud,
+        ],
+        'fixed_assets' => [
+            'label' => 'Fixed Assets',
+            'actions' => [...$crud, 'reverse', 'print'],
+        ],
+        'depreciation_runs' => [
+            'label' => 'Depreciation Runs',
+            'actions' => ['view', 'add', 'reverse'],
+        ],
         'accounting_periods' => [
             'label' => 'Accounting Periods',
             'actions' => ['view', 'edit', 'reopen'],
+        ],
+        'budgets' => [
+            'label' => 'Budgets',
+            'actions' => [...$crud, 'import', 'export'],
         ],
         'business_reports' => [
             'label' => 'Business Reports',

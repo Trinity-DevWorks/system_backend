@@ -3,6 +3,11 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AssignedModuleController;
+use App\Modules\Accounting\Budget\Http\Controllers\BudgetCheckController;
+use App\Modules\Accounting\Budget\Http\Controllers\BudgetController;
+use App\Modules\Accounting\FixedAsset\Http\Controllers\DepreciationRunController;
+use App\Modules\Accounting\FixedAsset\Http\Controllers\FixedAssetCategoryController;
+use App\Modules\Accounting\FixedAsset\Http\Controllers\FixedAssetController;
 use App\Modules\Accounting\Http\Controllers\AccountController;
 use App\Modules\Accounting\Http\Controllers\AccountingPeriodController;
 use App\Modules\Accounting\Http\Controllers\AccountingReportController;
@@ -27,6 +32,8 @@ use App\Modules\Customer\Http\Controllers\CustomerContactController;
 use App\Modules\Customer\Http\Controllers\CustomerController;
 use App\Modules\Customer\Http\Controllers\CustomerGroupController;
 use App\Modules\Customer\Http\Controllers\CustomerLedgerController;
+use App\Modules\Deferral\Http\Controllers\DeferralReportController;
+use App\Modules\Deferral\Http\Controllers\DeferralScheduleController;
 use App\Modules\DocumentNumbering\Http\Controllers\DocumentNumberSettingController;
 use App\Modules\DocumentNumbering\Http\Controllers\PrintSettingController;
 use App\Modules\Inventory\Item\Http\Controllers\BundleItemController;
@@ -38,6 +45,7 @@ use App\Modules\Inventory\Item\Http\Controllers\RecipeController;
 use App\Modules\Inventory\Item\Http\Controllers\RecipeItemController;
 use App\Modules\Inventory\ItemType\Http\Controllers\ItemTypeController;
 use App\Modules\Inventory\ItemVariant\Http\Controllers\ItemVariantController;
+use App\Modules\Inventory\PriceChange\Http\Controllers\PriceChangeController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseInvoiceController;
 use App\Modules\Inventory\Purchasing\Http\Controllers\PurchaseOrderController;
@@ -75,6 +83,8 @@ use App\Modules\Rbac\Http\Controllers\RolePermissionController;
 use App\Modules\Rbac\Http\Controllers\UserAttachmentController;
 use App\Modules\Rbac\Http\Controllers\UserController;
 use App\Modules\Rbac\Http\Controllers\UserRoleController;
+use App\Modules\RecurringEntry\Http\Controllers\RecurringRunController;
+use App\Modules\RecurringEntry\Http\Controllers\RecurringTemplateController;
 use App\Modules\Reports\Http\Controllers\AnalyticsReportController;
 use App\Modules\Reports\Http\Controllers\OverviewController;
 use App\Modules\Reports\Http\Controllers\ReportController;
@@ -266,6 +276,14 @@ Route::middleware([
                     ->middleware('ensure.module:inventory');
                 Route::get('reports/item-movement', [AnalyticsReportController::class, 'show'])->defaults('report', 'item-movement')
                     ->middleware('ensure.module:inventory');
+                Route::get('reports/price-history', [AnalyticsReportController::class, 'show'])->defaults('report', 'price-history')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/price-changes', [AnalyticsReportController::class, 'show'])->defaults('report', 'price-changes')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/below-cost', [AnalyticsReportController::class, 'show'])->defaults('report', 'below-cost')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/purchase-price-history', [AnalyticsReportController::class, 'show'])->defaults('report', 'purchase-price-history')
+                    ->middleware('ensure.module:purchasing');
             });
 
             Route::middleware(['check.permission:business_reports,export'])->group(function () {
@@ -289,6 +307,14 @@ Route::middleware([
                     ->middleware('ensure.module:inventory');
                 Route::get('reports/item-movement/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'item-movement')
                     ->middleware('ensure.module:inventory');
+                Route::get('reports/price-history/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'price-history')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/price-changes/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'price-changes')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/below-cost/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'below-cost')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/purchase-price-history/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'purchase-price-history')
+                    ->middleware('ensure.module:purchasing');
             });
         });
 
@@ -576,6 +602,20 @@ Route::middleware([
                 ->middleware('check.permission:items,edit');
             Route::delete('items/{item}/item-uoms/{item_uom}', [ItemUomController::class, 'destroy'])
                 ->middleware('check.permission:items,edit');
+            Route::get('items/{item}/price-history', [PriceChangeController::class, 'itemHistory'])
+                ->middleware('check.permission:items,view');
+
+            Route::post('price-changes/bulk-preview', [PriceChangeController::class, 'bulkPreview'])
+                ->middleware('check.permission:price_changes,add');
+            Route::post('price-changes/{price_change}/apply', [PriceChangeController::class, 'apply'])
+                ->middleware('check.permission:price_changes,edit');
+            Route::post('price-changes/{price_change}/cancel', [PriceChangeController::class, 'cancel'])
+                ->middleware('check.permission:price_changes,edit');
+            Route::apiResource('price-changes', PriceChangeController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:price_changes,view'])
+                ->middlewareFor(['store'], ['check.permission:price_changes,add'])
+                ->middlewareFor(['update'], ['check.permission:price_changes,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:price_changes,delete']);
             Route::get('item-attributes', [ItemVariantController::class, 'attributesIndex'])
                 ->middleware('check.permission:item_attributes,view');
             Route::get('item-attributes/{itemAttribute}', [ItemVariantController::class, 'attributesShow'])
@@ -1074,6 +1114,8 @@ Route::middleware([
                 ->middleware('check.permission:treasury_transfers,edit');
             Route::post('treasury-transfers/{treasury_transfer}/reverse', [TreasuryTransferController::class, 'reverse'])
                 ->middleware('check.permission:treasury_transfers,reverse');
+            Route::get('expense-vouchers/deferral-defaults', [DeferralScheduleController::class, 'defaults'])
+                ->middleware('check.permission:expense_vouchers,view');
             Route::apiResource('expense-vouchers', ExpenseVoucherController::class)
                 ->middlewareFor(['index', 'show'], ['check.permission:expense_vouchers,view'])
                 ->middlewareFor(['store'], ['check.permission:expense_vouchers,add'])
@@ -1083,6 +1125,57 @@ Route::middleware([
                 ->middleware('check.permission:expense_vouchers,edit');
             Route::post('expense-vouchers/{expense_voucher}/reverse', [ExpenseVoucherController::class, 'reverse'])
                 ->middleware('check.permission:expense_vouchers,reverse');
+
+            Route::post('recurring-templates/preview', [RecurringTemplateController::class, 'previewDraft'])
+                ->middleware('check.permission:recurring_entries,view');
+            Route::apiResource('recurring-templates', RecurringTemplateController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:recurring_entries,view'])
+                ->middlewareFor(['store'], ['check.permission:recurring_entries,add'])
+                ->middlewareFor(['update'], ['check.permission:recurring_entries,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:recurring_entries,delete']);
+            foreach (['run', 'pause', 'resume', 'skip', 'cancel'] as $recurringAction) {
+                Route::post("recurring-templates/{recurring_template}/{$recurringAction}", [RecurringTemplateController::class, $recurringAction])
+                    ->middleware('check.permission:recurring_entries,edit');
+            }
+            Route::get('recurring-templates/{recurring_template}/preview', [RecurringTemplateController::class, 'preview'])
+                ->middleware('check.permission:recurring_entries,view');
+            Route::get('recurring-runs', [RecurringRunController::class, 'index'])
+                ->middleware('check.permission:recurring_entries,view');
+            Route::post('recurring-runs/{recurring_run}/retry', [RecurringRunController::class, 'retry'])
+                ->middleware('check.permission:recurring_entries,edit');
+
+            Route::get('deferral-schedules/defaults', [DeferralScheduleController::class, 'defaults'])
+                ->middleware('check.permission:deferral_schedules,view');
+            Route::post('deferral-schedules/preview', [DeferralScheduleController::class, 'preview'])
+                ->middleware('check.permission:deferral_schedules,view');
+            Route::apiResource('deferral-schedules', DeferralScheduleController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:deferral_schedules,view'])
+                ->middlewareFor(['store'], ['check.permission:deferral_schedules,add'])
+                ->middlewareFor(['update'], ['check.permission:deferral_schedules,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:deferral_schedules,delete']);
+            foreach (['activate', 'post-due', 'pause', 'resume'] as $deferralAction) {
+                Route::post("deferral-schedules/{deferral_schedule}/{$deferralAction}", [DeferralScheduleController::class, match ($deferralAction) {
+                    'post-due' => 'postDue',
+                    default => $deferralAction,
+                }])->middleware('check.permission:deferral_schedules,edit');
+            }
+            Route::post('deferral-schedules/{deferral_schedule}/lines/{line}/post', [DeferralScheduleController::class, 'postLine'])
+                ->middleware('check.permission:deferral_schedules,edit');
+            Route::post('deferral-schedules/{deferral_schedule}/lines/{line}/reverse', [DeferralScheduleController::class, 'reverseLine'])
+                ->middleware('check.permission:deferral_schedules,reverse');
+            Route::post('deferral-schedules/{deferral_schedule}/reschedule', [DeferralScheduleController::class, 'reschedule'])
+                ->middleware('check.permission:deferral_schedules,edit');
+            Route::post('deferral-schedules/{deferral_schedule}/recognize-remaining', [DeferralScheduleController::class, 'recognizeRemaining'])
+                ->middleware('check.permission:deferral_schedules,edit');
+            Route::post('deferral-schedules/{deferral_schedule}/cancel', [DeferralScheduleController::class, 'cancel'])
+                ->middleware('check.permission:deferral_schedules,reverse');
+
+            Route::get('accounting/deferral-balances', [DeferralReportController::class, 'balances'])
+                ->middleware('check.permission:accounting_reports,view');
+            Route::get('accounting/deferral-balances/export', [DeferralReportController::class, 'exportBalances'])
+                ->middleware('check.permission:accounting_reports,export');
+            Route::get('accounting/deferral-forecast', [DeferralReportController::class, 'forecast'])
+                ->middleware('check.permission:accounting_reports,view');
 
             Route::apiResource('accounts', AccountController::class)
                 ->middlewareFor(['index', 'show'], ['check.permission:accounts,view'])
@@ -1108,6 +1201,34 @@ Route::middleware([
                 ->middlewareFor(['store'], ['check.permission:journal_entries,add'])
                 ->middlewareFor(['update'], ['check.permission:journal_entries,edit'])
                 ->middlewareFor(['destroy'], ['check.permission:journal_entries,delete']);
+
+            // Permission is checked inside: add or edit on the document being posted.
+            Route::post('budgets/check', [BudgetCheckController::class, 'check']);
+            Route::get('budgets/{budget}/grid', [BudgetController::class, 'grid'])
+                ->middleware('check.permission:budgets,view');
+            Route::put('budgets/{budget}/lines', [BudgetController::class, 'saveLines'])
+                ->middleware('check.permission:budgets,edit');
+            Route::post('budgets/{budget}/spread', [BudgetController::class, 'spread'])
+                ->middleware('check.permission:budgets,edit');
+            Route::post('budgets/{budget}/copy-actuals', [BudgetController::class, 'copyActuals'])
+                ->middleware('check.permission:budgets,edit');
+            Route::post('budgets/{budget}/copy-from', [BudgetController::class, 'copyFrom'])
+                ->middleware('check.permission:budgets,edit');
+            Route::post('budgets/{budget}/approve', [BudgetController::class, 'approve'])
+                ->middleware('check.permission:budgets,edit');
+            Route::post('budgets/{budget}/revise', [BudgetController::class, 'revise'])
+                ->middleware('check.permission:budgets,edit');
+            Route::post('budgets/{budget}/archive', [BudgetController::class, 'archive'])
+                ->middleware('check.permission:budgets,edit');
+            Route::get('budgets/{budget}/export', [BudgetController::class, 'export'])
+                ->middleware('check.permission:budgets,export');
+            Route::post('budgets/{budget}/import', [BudgetController::class, 'import'])
+                ->middleware('check.permission:budgets,import');
+            Route::apiResource('budgets', BudgetController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:budgets,view'])
+                ->middlewareFor(['store'], ['check.permission:budgets,add'])
+                ->middlewareFor(['update'], ['check.permission:budgets,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:budgets,delete']);
 
             Route::get('accounting/trial-balance', [AccountingReportController::class, 'trialBalance'])
                 ->middleware('check.permission:accounting_reports,view');
@@ -1156,6 +1277,56 @@ Route::middleware([
                 ->middleware('check.permission:currency_revaluations,add');
             Route::delete('accounting/currency-revaluations/{date}', [CurrencyRevaluationController::class, 'destroy'])
                 ->middleware('check.permission:currency_revaluations,reverse');
+
+            Route::get('fixed-asset-categories/defaults', [FixedAssetCategoryController::class, 'defaults'])
+                ->middleware('check.permission:fixed_asset_categories,view');
+            Route::apiResource('fixed-asset-categories', FixedAssetCategoryController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:fixed_asset_categories,view'])
+                ->middlewareFor(['store'], ['check.permission:fixed_asset_categories,add'])
+                ->middlewareFor(['update'], ['check.permission:fixed_asset_categories,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:fixed_asset_categories,delete']);
+
+            Route::post('fixed-assets/{fixed_asset}/activate', [FixedAssetController::class, 'activate'])
+                ->middleware('check.permission:fixed_assets,edit');
+            Route::post('fixed-assets/{fixed_asset}/estimate', [FixedAssetController::class, 'estimate'])
+                ->middleware('check.permission:fixed_assets,edit');
+            Route::post('fixed-assets/{fixed_asset}/dispose', [FixedAssetController::class, 'dispose'])
+                ->middleware('check.permission:fixed_assets,edit');
+            Route::post('fixed-assets/{fixed_asset}/reverse-disposal', [FixedAssetController::class, 'reverseDisposal'])
+                ->middleware('check.permission:fixed_assets,reverse');
+            Route::get('fixed-assets/{fixed_asset}/pdf', [FixedAssetController::class, 'pdf'])
+                ->middleware('check.permission:fixed_assets,print');
+            Route::apiResource('fixed-assets', FixedAssetController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:fixed_assets,view'])
+                ->middlewareFor(['store'], ['check.permission:fixed_assets,add'])
+                ->middlewareFor(['update'], ['check.permission:fixed_assets,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:fixed_assets,delete']);
+
+            Route::get('accounting/depreciation-runs', [DepreciationRunController::class, 'index'])
+                ->middleware('check.permission:depreciation_runs,view');
+            Route::get('accounting/depreciation-runs/preview', [DepreciationRunController::class, 'preview'])
+                ->middleware('check.permission:depreciation_runs,view');
+            Route::post('accounting/depreciation-runs', [DepreciationRunController::class, 'store'])
+                ->middleware('check.permission:depreciation_runs,add');
+            Route::delete('accounting/depreciation-runs/{month}', [DepreciationRunController::class, 'destroy'])
+                ->middleware('check.permission:depreciation_runs,reverse');
+
+            Route::get('reports/budget-vs-actual', [AnalyticsReportController::class, 'show'])->defaults('report', 'budget-vs-actual')
+                ->middleware('check.permission:accounting_reports,view');
+            Route::get('reports/budget-vs-actual/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'budget-vs-actual')
+                ->middleware('check.permission:accounting_reports,export');
+            Route::get('reports/fixed-asset-register', [AnalyticsReportController::class, 'show'])->defaults('report', 'fixed-asset-register')
+                ->middleware('check.permission:accounting_reports,view');
+            Route::get('reports/fixed-asset-register/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'fixed-asset-register')
+                ->middleware('check.permission:accounting_reports,export');
+            Route::get('reports/depreciation-schedule', [AnalyticsReportController::class, 'show'])->defaults('report', 'depreciation-schedule')
+                ->middleware('check.permission:accounting_reports,view');
+            Route::get('reports/depreciation-schedule/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'depreciation-schedule')
+                ->middleware('check.permission:accounting_reports,export');
+            Route::get('reports/depreciation-by-period', [AnalyticsReportController::class, 'show'])->defaults('report', 'depreciation-by-period')
+                ->middleware('check.permission:accounting_reports,view');
+            Route::get('reports/depreciation-by-period/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'depreciation-by-period')
+                ->middleware('check.permission:accounting_reports,export');
 
             Route::get('accounting/period', [AccountingPeriodController::class, 'show'])
                 ->middleware('check.permission:accounting_periods,view');

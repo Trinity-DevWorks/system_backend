@@ -65,6 +65,21 @@ final class FiscalCalendar
     }
 
     /**
+     * Fiscal year whose first day falls in the given calendar year.
+     *
+     * @return array{starts_on: string, ends_on: string}
+     */
+    public function yearStartingIn(int $year): array
+    {
+        $start = Carbon::createFromDate($year, $this->startMonth(), 1)->startOfDay();
+
+        return [
+            'starts_on' => $start->toDateString(),
+            'ends_on' => $start->copy()->addYear()->subDay()->toDateString(),
+        ];
+    }
+
+    /**
      * Bounds when `$endsOn` is the last day of a fiscal year.
      *
      * @return array{starts_on: string, ends_on: string}|null

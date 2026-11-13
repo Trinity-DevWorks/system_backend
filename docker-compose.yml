@@ -116,6 +116,45 @@ services:
     volumes:
       - app_storage:/var/www/html/storage/app
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Runs schedule:work so daily commands (audits:prune, accounting:run-periodic, digests) fire.
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
+    environment:
+      APP_NAME: ERP
+      APP_ENV: local
+      APP_DEBUG: "false"
+      APP_URL: http://localhost:8080
+      APP_KEY: ${APP_KEY:-}
+      RUN_MIGRATIONS: "false"
+      CENTRAL_DOMAIN: app.localhost,localhost,127.0.0.1
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: erp_central
+      DB_USERNAME: erp
+      DB_PASSWORD: secret
+      DB_SCHEMA: public
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: redis
+      REDIS_CLIENT: predis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LOG_CHANNEL: stderr
+    volumes:
+      - app_storage:/var/www/html/storage/app
+
   frontend:
     profiles: ["with-frontend"]
     build:

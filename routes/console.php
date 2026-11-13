@@ -7,15 +7,27 @@ use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Jobs\BootstrapTenantWalkInCustomer;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Modules\Accounting\FixedAsset\Services\DepreciationRunService;
 use App\Modules\Accounting\Services\AccountingBackfillService;
 use App\Modules\Accounting\Services\ChartOfAccountsService;
 use App\Modules\Branch\Services\BranchService;
+use App\Modules\Deferral\Enums\DeferralLineStatus;
+use App\Modules\Deferral\Enums\DeferralStatus;
+use App\Modules\Deferral\Models\DeferralSchedule;
+use App\Modules\Deferral\Services\DeferralPostingService;
+use App\Modules\Inventory\PriceChange\Services\PriceChangeService;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
+use App\Modules\RecurringEntry\Enums\RecurringTemplateStatus;
+use App\Modules\RecurringEntry\Models\RecurringTemplate;
+use App\Modules\RecurringEntry\Services\RecurringGenerationService;
 use App\Services\ModuleEntitlementService;
+use App\Support\TenantClock;
 use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 Artisan::command('inspire', function () {
@@ -269,6 +281,53 @@ Artisan::command('notifications:lot-expiry-digest', function (): void {
 
 /*
 |--------------------------------------------------------------------------
+| fixed-assets:depreciate
+|--------------------------------------------------------------------------
+|
+| Posts the previous month of depreciation for every tenant that turned on
+| automatic depreciation. A month that is already posted is left alone.
+|
+*/
+Artisan::command('fixed-assets:depreciate {--month=}', function (): void {
+    $command = $this;
+    $month = $this->option('month');
+    $month = is_string($month) && $month !== '' ? $month : null;
+    $posted = 0;
+    $skipped = 0;
+
+    Tenant::query()->cursor()->each(function (Tenant $tenant) use ($command, $month, &$posted, &$skipped): void {
+        $tenant->run(function () use ($tenant, $command, $month, &$posted, &$skipped): void {
+            if (! Schema::hasTable('fixed_assets') || ! Schema::hasColumn('company_settings', 'auto_depreciation')) {
+                $command->warn("Skipped tenant [{$tenant->id}] — fixed assets are not migrated.");
+                $skipped++;
+
+                return;
+            }
+
+            try {
+                $result = app(DepreciationRunService::class)->postAutomatic($month);
+            } catch (Throwable $exception) {
+                $skipped++;
+                $command->warn("Tenant [{$tenant->id}]: {$exception->getMessage()}");
+
+                return;
+            }
+
+            if ($result['posted']) {
+                $posted++;
+                $command->info("Tenant [{$tenant->id}]: depreciation posted.");
+            } else {
+                $skipped++;
+                $command->info("Tenant [{$tenant->id}]: skipped ({$result['reason']}).");
+            }
+        });
+    });
+
+    $this->info("Done. Posted={$posted}. Skipped={$skipped}.");
+})->purpose('Post monthly depreciation for tenants that run it automatically');
+
+/*
+|--------------------------------------------------------------------------
 | notifications:prune
 |--------------------------------------------------------------------------
 |
@@ -332,6 +391,56 @@ Artisan::command('accounting:seed-chart {--tenant=* : Tenant ids (default: all)}
     }
 })->purpose('Seed the chart of accounts and account mappings for tenants');
 
+/*
+|--------------------------------------------------------------------------
+| prices:apply-scheduled
+|--------------------------------------------------------------------------
+|
+| Applies price change documents whose effective date has arrived. Passing
+| --date uses that day as the tenant's today, so a change dated tomorrow
+| can be applied in a test or a catch-up run. Already-applied documents
+| are left alone.
+|
+*/
+Artisan::command('prices:apply-scheduled {--date=} {--tenant=*}', function (): void {
+    $dateOption = $this->option('date');
+    $date = is_string($dateOption) && $dateOption !== '' ? $dateOption : null;
+    $ids = array_values(array_filter((array) $this->option('tenant'), fn ($id): bool => is_string($id) && $id !== ''));
+    $tenants = Tenant::query();
+    if ($ids !== []) {
+        $tenants->whereIn('id', $ids);
+    }
+    $applied = 0;
+    $skipped = 0;
+    $command = $this;
+
+    foreach ($tenants->cursor() as $tenant) {
+        $tenant->run(function () use ($tenant, $command, $date, &$applied, &$skipped): void {
+            if (! Schema::hasTable('price_changes')) {
+                $command->warn("Skipped tenant [{$tenant->id}] — price changes are not migrated.");
+                $skipped++;
+
+                return;
+            }
+
+            try {
+                $result = app(PriceChangeService::class)->applyScheduled($date);
+            } catch (Throwable $exception) {
+                $skipped++;
+                Log::error('prices:apply-scheduled failed', ['tenant' => $tenant->id, 'error' => $exception->getMessage()]);
+                $command->warn("Tenant [{$tenant->id}]: {$exception->getMessage()}");
+
+                return;
+            }
+            $applied += $result['applied'];
+            $skipped += $result['skipped'];
+            $command->info("Tenant [{$tenant->id}]: applied {$result['applied']}, skipped {$result['skipped']} (as of {$result['date']}).");
+        });
+    }
+
+    $this->info("Done. Applied={$applied}. Skipped={$skipped}.");
+})->purpose('Apply price changes whose effective date has arrived');
+
 Artisan::command('accounting:backfill {--tenant=* : Tenant ids (default: all)}', function () use ($accountingTenants): void {
     $command = $this;
 
@@ -348,3 +457,62 @@ Artisan::command('accounting:backfill {--tenant=* : Tenant ids (default: all)}',
         $command->info("Tenant [{$tenant->id}]: {$created} journal entr(y/ies) created.");
     }
 })->purpose('Create journal entries for documents posted before accounting was enabled');
+
+Artisan::command('accounting:run-periodic {--tenant=* : Tenant ids (default: all)} {--date= : Y-m-d, defaults to tenant today} {--dry-run}', function () use ($accountingTenants): void {
+    $command = $this;
+    $dateOption = $this->option('date');
+    $dryRun = (bool) $this->option('dry-run');
+
+    foreach ($accountingTenants((array) $this->option('tenant')) as $tenant) {
+        try {
+            $tenant->run(function () use ($tenant, $command, $dateOption, $dryRun): void {
+                if (! app(ModuleEntitlementService::class)->tenantHas((string) $tenant->id, 'accounting')) {
+                    $command->warn("Skipped tenant [{$tenant->id}] — accounting module not enabled.");
+
+                    return;
+                }
+                if (! Schema::hasTable('recurring_templates')) {
+                    $command->warn("Skipped tenant [{$tenant->id}] — recurring tables are not migrated.");
+
+                    return;
+                }
+
+                $asOf = is_string($dateOption) && $dateOption !== ''
+                    ? Carbon::parse($dateOption)->startOfDay()
+                    : TenantClock::today();
+
+                if ($dryRun) {
+                    $templates = RecurringTemplate::query()
+                        ->where('status', RecurringTemplateStatus::Active)
+                        ->whereNotNull('next_run_date')
+                        ->whereDate('next_run_date', '<=', $asOf->toDateString())
+                        ->count();
+                    $lines = 0;
+                    if (Schema::hasTable('deferral_schedule_lines')) {
+                        $lines = DeferralSchedule::query()
+                            ->where('status', DeferralStatus::Active)
+                            ->where('auto_post', true)
+                            ->whereHas('lines', fn ($q) => $q
+                                ->where('status', DeferralLineStatus::Pending->value)
+                                ->whereDate('posting_date', '<=', $asOf->toDateString()))
+                            ->count();
+                    }
+                    $command->info("accounting:run-periodic tenant={$tenant->id} dry_run=1 due_templates={$templates} due_schedules={$lines}");
+
+                    return;
+                }
+
+                $recurring = app(RecurringGenerationService::class)->runDue($asOf);
+                $deferrals = Schema::hasTable('deferral_schedules')
+                    ? app(DeferralPostingService::class)->postAllDue($asOf)
+                    : ['posted' => 0, 'failed' => 0];
+                $line = "accounting:run-periodic tenant={$tenant->id} generated={$recurring['generated']} failed={$recurring['failed']} deferral_posted={$deferrals['posted']} deferral_failed={$deferrals['failed']}";
+                Log::info($line);
+                $command->info($line);
+            });
+        } catch (Throwable $exception) {
+            Log::error('accounting:run-periodic tenant='.$tenant->id.' '.$exception->getMessage());
+            $command->warn("Tenant [{$tenant->id}]: {$exception->getMessage()}");
+        }
+    }
+})->purpose('Generate due recurring entries and post due deferral recognitions');
