@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'amount',
     'applied_amount',
     'applied_exchange_rate',
+    'exchange_difference',
 ])]
 class CustomerReceiptAllocation extends Model
 {
@@ -29,6 +30,7 @@ class CustomerReceiptAllocation extends Model
             'amount' => 'decimal:4',
             'applied_amount' => 'decimal:4',
             'applied_exchange_rate' => 'decimal:12',
+            'exchange_difference' => 'decimal:4',
         ];
     }
 

@@ -12,7 +12,7 @@ class DatabaseSeeder extends Seeder
      * Seed the application's database.
      *
      * Central `users` holds optional global accounts (see central migrations).
-     * Tenant app users (Spinneys, Kassatly Chtaura, Liban Lait) come from {@see TenantSeeder}.
+     * Tenant app users come from {@see TenantSeeder}.
      *
      * Note: Do not use WithoutModelEvents on this seeder.
      * Stancl assigns tenant UUIDs in a `creating` listener; suppressing model events breaks that.
@@ -24,6 +24,15 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Test User',
                 'password' => 'password',
+                'is_active' => true,
+            ]
+        );
+
+        User::query()->firstOrCreate(
+            ['email' => 'haidarshokor@gmail.com'],
+            [
+                'name' => 'haidarshokor',
+                'password' => '12345678',
                 'is_active' => true,
             ]
         );

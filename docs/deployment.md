@@ -86,8 +86,22 @@ Demo companies (`TenantSeeder`): password `12345678` for every user.
 | Spinneys | http://spinneys.localhost:3000 | `spinneys.owner@gmail.com` |
 | Kassatly Chtaura | http://kassatly.localhost:3000 | `kassatly.owner@gmail.com` |
 | Liban Lait | http://libanlait.localhost:3000 | `libanlait.owner@gmail.com` |
+| Sahel Mashghara | http://sahelmashghara.localhost:3000 | `sahelmashghara.owner@gmail.com` |
+| Amleya Hypermarket | http://amleya.localhost:3000 | `amleya.owner@gmail.com` |
+| Sabil | http://sabil.localhost:3000 | `sabil.owner@gmail.com` |
+| Baytouna Market | http://baytouna.localhost:3000 | `baytouna.owner@gmail.com` |
+| Dayra Bakery | http://dayra.localhost:3000 | `dayra.owner@gmail.com` |
+| Nahla Cafe | http://nahla.localhost:3000 | `nahla.owner@gmail.com` |
+| Qarya | http://qarya.localhost:3000 | `qarya.owner@gmail.com` |
+| Souqna Market | http://souqna.localhost:3000 | `souqna.owner@gmail.com` |
+| Rif | http://rif.localhost:3000 | `rif.owner@gmail.com` |
+| Wared Market | http://wared.localhost:3000 | `wared.owner@gmail.com` |
+| Nabea | http://nabea.localhost:3000 | `nabea.owner@gmail.com` |
+| Baladi Grocery | http://baladi.localhost:3000 | `baladi.owner@gmail.com` |
+| Ghadeer | http://ghadeer.localhost:3000 | `ghadeer.owner@gmail.com` |
+| Arz Mart | http://arzmart.localhost:3000 | `arzmart.owner@gmail.com` |
 
-Each company also has admin, user, and employee logins on `@gmail.com` (`spinneys.admin@gmail.com`, `spinneys.user@gmail.com`, `spinneys.employee@gmail.com`, and the same pattern for the other companies). User and Employee are extra roles. Items, currencies, and posted opening-stock balances are the same in all three so a sales invoice can be linked as a purchase invoice. Wallet addresses are not seeded.
+Each company also has admin, user, and employee logins on `@gmail.com` (`spinneys.admin@gmail.com`, `spinneys.user@gmail.com`, `spinneys.employee@gmail.com`, and the same pattern for the other companies). User and Employee are extra roles. Companies that share a catalog have the same items, currencies, and posted opening-stock balances so a sales invoice can be linked as a purchase invoice. Wallet addresses are not seeded. Pairs: grocery (Spinneys, Kassatly Chtaura, Liban Lait), dairy (Sahel Mashghara, Amleya Hypermarket), beverages (Sabil, Baytouna Market), bakery (Dayra Bakery, Nahla Cafe), snacks (Qarya, Souqna Market), home care (Rif, Wared Market), coffee (Nabea, Baladi Grocery), pantry (Ghadeer, Arz Mart).
 
 Central domains default to `app.localhost,localhost,127.0.0.1` (see `CENTRAL_DOMAIN`).  
 Tenant APIs are identified by **hostname**. Map hosts in `/etc/hosts`:
@@ -97,6 +111,20 @@ Tenant APIs are identified by **hostname**. Map hosts in `/etc/hosts`:
 127.0.0.1 spinneys.localhost
 127.0.0.1 kassatly.localhost
 127.0.0.1 libanlait.localhost
+127.0.0.1 sahelmashghara.localhost
+127.0.0.1 amleya.localhost
+127.0.0.1 sabil.localhost
+127.0.0.1 baytouna.localhost
+127.0.0.1 dayra.localhost
+127.0.0.1 nahla.localhost
+127.0.0.1 qarya.localhost
+127.0.0.1 souqna.localhost
+127.0.0.1 rif.localhost
+127.0.0.1 wared.localhost
+127.0.0.1 nabea.localhost
+127.0.0.1 baladi.localhost
+127.0.0.1 ghadeer.localhost
+127.0.0.1 arzmart.localhost
 ```
 
 ### Frontend “Network Error”

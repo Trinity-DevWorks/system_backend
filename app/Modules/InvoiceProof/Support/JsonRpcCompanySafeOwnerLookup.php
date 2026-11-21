@@ -14,6 +14,7 @@ use Throwable;
 /**
  * Reads Safe owners (and whether an address is a wallet, Safe, or other contract)
  * over JSON-RPC. Prefers getOwners() (Safe{Wallet}); falls back to owner() (OneOwnerSafe).
+ * EIP-7702 delegation bytecode is treated as a personal wallet, not a contract.
  */
 final class JsonRpcCompanySafeOwnerLookup implements CompanySafeOwnerLookup
 {
@@ -48,7 +49,8 @@ final class JsonRpcCompanySafeOwnerLookup implements CompanySafeOwnerLookup
     {
         $code = $this->rpc('eth_getCode', [$address, 'latest']);
 
-        return is_string($code) && $code !== '' && $code !== '0x' && $code !== '0x0';
+        // EIP-7702 delegated EOAs still have designator bytecode; treat them as wallets.
+        return WalletAddress::hasDeployedContractCode($code);
     }
 
     /**

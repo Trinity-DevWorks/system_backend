@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
@@ -55,6 +56,7 @@ class PurchaseInvoiceService
         private readonly InvoiceSnapshotService $invoiceSnapshotService,
         private readonly InvoiceChainRegistrationService $invoiceChainRegistrationService,
         private readonly LinkedPurchaseDisclosureService $linkedPurchaseDisclosureService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -298,6 +300,8 @@ class PurchaseInvoiceService
                 $this->supplierItemService->rememberLastPurchasePrice((string) $supplier->id, $itemId, $price);
             }
 
+            $this->journalPostingService->purchaseInvoice($locked, $userId);
+
             $locked->update([
                 'status' => PurchaseInvoiceStatus::Posted,
                 'posted_by' => $userId,
@@ -365,6 +369,8 @@ class PurchaseInvoiceService
                     now()->toDateString(),
                 );
             }
+
+            $this->journalPostingService->reverse(PurchaseInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
 
             $locked->update(['status' => PurchaseInvoiceStatus::Reversed]);
 

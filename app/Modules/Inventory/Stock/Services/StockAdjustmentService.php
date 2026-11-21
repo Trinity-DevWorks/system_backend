@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
@@ -25,6 +26,7 @@ class StockAdjustmentService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -211,6 +213,8 @@ class StockAdjustmentService
                 ));
             }
 
+            $this->journalPostingService->stockAdjustment($locked, $userId);
+
             $locked->update([
                 'status' => StockAdjustmentStatus::Posted,
                 'posted_by' => $userId,
@@ -232,6 +236,7 @@ class StockAdjustmentService
             }
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
             $this->stockMovementService->reverseReference(StockAdjustment::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->journalPostingService->reverse(StockAdjustment::REFERENCE_TYPE, (string) $locked->id, $userId);
             $locked->update(['status' => StockAdjustmentStatus::Reversed]);
 
             return $this->find($locked->id);

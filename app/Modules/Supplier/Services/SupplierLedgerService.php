@@ -218,14 +218,7 @@ class SupplierLedgerService
         int $perPage = 25,
     ): array {
         $partyId = (string) $supplier->id;
-        $range = $this->scopedEntries($partyId, $currencyId);
-        $this->applyDateRange($range, $dateFrom, $dateTo);
-
-        $paginator = (clone $range)
-            ->with('currency:id,code,symbol')
-            ->orderBy('transaction_date')
-            ->orderBy('id')
-            ->paginate($perPage);
+        $paginator = $this->orderedStatementEntries($partyId, $currencyId, $dateFrom, $dateTo)->paginate($perPage);
 
         $summaries = $this->currencySummaries($partyId, $currencyId, $dateFrom, $dateTo);
 
@@ -237,6 +230,50 @@ class SupplierLedgerService
             'reversed' => $this->reversalIds($partyId, $currencyId, $paginator->getCollection()),
             'document_numbers' => $this->documentNumbers($paginator->getCollection()),
         ];
+    }
+
+    /**
+     * Same statement as {@see statement()} with every in-range row, for export and print.
+     *
+     * @return array{
+     *     entries: Collection<int, SupplierLedgerEntry>,
+     *     summaries: list<array{currency_id: int, currency_code: ?string, currency_symbol: ?string, opening_balance: string, period_debit: string, period_credit: string, closing_balance: string}>,
+     *     running_balances: array<int, string>,
+     *     reversed: array<int, true>,
+     *     document_numbers: array<string, string>
+     * }
+     */
+    public function fullStatement(
+        Supplier $supplier,
+        ?int $currencyId,
+        ?string $dateFrom,
+        ?string $dateTo,
+    ): array {
+        $partyId = (string) $supplier->id;
+        $entries = $this->orderedStatementEntries($partyId, $currencyId, $dateFrom, $dateTo)->get();
+        $summaries = $this->currencySummaries($partyId, $currencyId, $dateFrom, $dateTo);
+
+        return [
+            'entries' => $entries,
+            'summaries' => $summaries,
+            'running_balances' => $this->runningBalances($partyId, $dateFrom, $dateTo, $entries, $summaries),
+            'reversed' => $this->reversalIds($partyId, $currencyId, $entries),
+            'document_numbers' => $this->documentNumbers($entries),
+        ];
+    }
+
+    /**
+     * @return Builder<SupplierLedgerEntry>
+     */
+    private function orderedStatementEntries(string $partyId, ?int $currencyId, ?string $dateFrom, ?string $dateTo): Builder
+    {
+        $range = $this->scopedEntries($partyId, $currencyId);
+        $this->applyDateRange($range, $dateFrom, $dateTo);
+
+        return $range
+            ->with('currency:id,code,symbol')
+            ->orderBy('transaction_date')
+            ->orderBy('id');
     }
 
     private function deleteOpeningEntries(Supplier $supplier, int $currencyId): void
@@ -332,7 +369,9 @@ class SupplierLedgerService
     }
 
     /**
-     * The second stored row for a document is the reversal. Opening balance has no reference id.
+     * The second stored row for a document in one currency is the reversal.
+     * One payment can post an original row in each invoice currency, so currency is part of the key.
+     * Opening balance has no reference id.
      *
      * @param  Collection<int, SupplierLedgerEntry>  $page
      * @return array<int, true>
@@ -350,13 +389,13 @@ class SupplierLedgerService
             ->whereIn('reference_id', $referenceIds->all())
             ->orderBy('transaction_date')
             ->orderBy('id')
-            ->get(['id', 'reference_type', 'reference_id']);
+            ->get(['id', 'currency_id', 'reference_type', 'reference_id']);
 
         $seen = [];
         $reversed = [];
         foreach ($rows as $row) {
             $type = $row->reference_type instanceof \BackedEnum ? $row->reference_type->value : (string) $row->reference_type;
-            $key = $type.'|'.$row->reference_id;
+            $key = $type.'|'.$row->reference_id.'|'.$row->currency_id;
             if (! isset($seen[$key])) {
                 $seen[$key] = true;
 

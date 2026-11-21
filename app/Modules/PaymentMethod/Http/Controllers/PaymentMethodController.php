@@ -60,7 +60,7 @@ class PaymentMethodController extends Controller
 
     public function show(PaymentMethod $paymentMethod): JsonResponse
     {
-        $paymentMethod->loadMissing(['currency:id,code,name']);
+        $paymentMethod->loadMissing(['currency:id,code,name', 'account:id,code,name']);
 
         return ApiResponse::success(
             PaymentMethodResponseData::fromModel($paymentMethod)->toArray(),

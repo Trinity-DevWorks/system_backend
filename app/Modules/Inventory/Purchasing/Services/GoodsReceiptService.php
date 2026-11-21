@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\Enums\GoodsReceiptStatus;
@@ -39,6 +40,7 @@ class GoodsReceiptService
         private readonly InventoryLotService $inventoryLotService,
         private readonly SupplierItemService $supplierItemService,
         private readonly DomainNotificationPublisher $notifications,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -258,6 +260,8 @@ class GoodsReceiptService
                 );
             }
 
+            $this->journalPostingService->goodsReceipt($locked, $userId);
+
             $locked->update([
                 'status' => GoodsReceiptStatus::Posted,
                 'posted_by' => $userId,
@@ -299,6 +303,7 @@ class GoodsReceiptService
             }
 
             $this->stockMovementService->reverseReference(GoodsReceipt::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->journalPostingService->reverse(GoodsReceipt::REFERENCE_TYPE, (string) $locked->id, $userId);
 
             $lines = GoodsReceiptLine::query()
                 ->where('goods_receipt_id', $locked->id)

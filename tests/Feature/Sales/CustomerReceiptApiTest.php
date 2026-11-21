@@ -20,6 +20,7 @@ use App\Modules\Inventory\ItemType\Models\ItemType;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Inventory\UnitOfMeasurement\Models\UnitOfMeasurement;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
+use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\VatGroup\Models\VatGroup;
 use App\Modules\Warehouse\Enums\WarehouseType;
@@ -345,6 +346,39 @@ class CustomerReceiptApiTest extends TestCase
             ->postJson($this->tenantUrl("/customer-receipts/{$draftId}/reverse"))
             ->assertStatus(422)
             ->assertJsonPath('code', 'CUSTOMER_RECEIPT_NOT_POSTED');
+    }
+
+    public function test_allowed_receipt_difference_closes_the_invoice_and_stores_the_exchange_difference(): void
+    {
+        $this->tenant->run(function (): void {
+            Currency::query()->whereKey($this->catalog['eur_id'])->update([
+                'allowed_difference_in_receipt' => 0.05,
+            ]);
+            app(ExchangeRateService::class)->setPairRate($this->catalog['usd_id'], $this->catalog['eur_id'], 3.5);
+        });
+
+        $invoiceId = $this->postSalesInvoice(100.02, [
+            'currency_id' => $this->catalog['eur_id'],
+            'exchange_rate' => 3.5,
+        ]);
+        $receiptId = $this->createAndPostReceipt($this->receiptPayload($invoiceId, '28.58'));
+
+        $this->tenant->run(function () use ($invoiceId, $receiptId): void {
+            $invoice = SalesInvoice::query()->findOrFail($invoiceId);
+            $this->assertEqualsWithDelta(100.02, (float) $invoice->paid_total, 0.001);
+            $this->assertEqualsWithDelta(0.0, (float) $invoice->net_to_pay, 0.001);
+
+            $allocation = CustomerReceiptAllocation::query()->where('customer_receipt_id', $receiptId)->first();
+            $this->assertNotNull($allocation);
+            $this->assertEqualsWithDelta(100.02, (float) $allocation->applied_amount, 0.001);
+            $this->assertEqualsWithDelta(0.01, (float) $allocation->exchange_difference, 0.001);
+
+            $balance = app(CustomerLedgerService::class)->balanceInCurrency(
+                Customer::query()->findOrFail($this->catalog['customer_id']),
+                $this->catalog['eur_id'],
+            );
+            $this->assertEqualsWithDelta(0.0, (float) $balance, 0.001);
+        });
     }
 
     private function postSalesInvoice(float $amount, array $overrides = []): string

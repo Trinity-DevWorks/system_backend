@@ -31,6 +31,7 @@ class CurrencyService
         'sales_credit_notes',
         'customer_receipts',
         'supplier_payments',
+        'journal_entry_lines',
     ];
 
     public function __construct(

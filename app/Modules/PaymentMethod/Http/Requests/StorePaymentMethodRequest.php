@@ -25,6 +25,7 @@ class StorePaymentMethodRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', new Enum(PaymentMethodType::class)],
             'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
+            'account_id' => ['nullable', 'integer', 'exists:accounts,id'],
             'requires_reference' => ['required', 'boolean'],
             'supports_change' => ['required', 'boolean'],
             'is_default' => ['required', 'boolean'],

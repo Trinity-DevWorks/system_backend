@@ -58,6 +58,13 @@ return [
             'sort_order' => 50,
             'resources' => ['supplier_groups', 'suppliers', 'purchase_invoices', 'supplier_payments'],
         ],
+        'accounting' => [
+            'name' => 'Accounting',
+            'description' => 'Chart of accounts, journal entries, trial balance, and account ledger.',
+            'is_core' => false,
+            'sort_order' => 60,
+            'resources' => ['accounts', 'account_mappings', 'journal_entries', 'accounting_reports'],
+        ],
     ],
 
     /**

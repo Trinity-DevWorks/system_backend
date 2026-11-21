@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AssignedModuleController;
+use App\Modules\Accounting\Http\Controllers\AccountController;
+use App\Modules\Accounting\Http\Controllers\AccountingReportController;
+use App\Modules\Accounting\Http\Controllers\AccountMappingController;
+use App\Modules\Accounting\Http\Controllers\JournalEntryController;
 use App\Modules\Audit\Http\Controllers\AuditController;
 use App\Modules\Branch\Http\Controllers\BranchContextController;
 use App\Modules\Branch\Http\Controllers\BranchController;
@@ -51,6 +55,7 @@ use App\Modules\InvoiceProof\Http\Controllers\InvoiceProofPortalController;
 use App\Modules\InvoiceProof\Http\Controllers\InvoiceVerifierController;
 use App\Modules\InvoiceProof\Http\Controllers\WalletInspectionController;
 use App\Modules\Notification\Http\Controllers\NotificationController;
+use App\Modules\Overview\Http\Controllers\OverviewController;
 use App\Modules\PaymentMethod\Http\Controllers\PaymentMethodController;
 use App\Modules\PaymentTerm\Http\Controllers\PaymentTermController;
 use App\Modules\Rbac\Http\Controllers\ForgotPasswordController;
@@ -159,6 +164,10 @@ Route::middleware([
         Route::get('tenant/assigned-modules', AssignedModuleController::class);
 
         Route::middleware(['ensure.module:core'])->group(function () {
+            // Home for every signed-in user. Sections inside the payload are
+            // omitted unless that user has the matching module and view permission.
+            Route::get('overview', OverviewController::class);
+
             // When adding check.permission:<resource>,import|export (or any new
             // action), add that action to config/rbac.php for the same resource.
             // The permissions matrix only offers catalogued actions.
@@ -702,6 +711,8 @@ Route::middleware([
                 ->middleware('check.permission:customers,view');
             Route::get('customers/{customer}/ledger-entries', [CustomerLedgerController::class, 'index'])
                 ->middleware('check.permission:customers,view');
+            Route::get('customers/{customer}/ledger-export', [CustomerLedgerController::class, 'export'])
+                ->middleware('check.permission:customers,view');
 
             Route::apiResource('customers.addresses', CustomerAddressController::class)
                 ->scoped()
@@ -802,6 +813,8 @@ Route::middleware([
                 ->middleware('check.permission:suppliers,view');
             Route::get('suppliers/{supplier}/ledger-entries', [SupplierLedgerController::class, 'index'])
                 ->middleware('check.permission:suppliers,view');
+            Route::get('suppliers/{supplier}/ledger-export', [SupplierLedgerController::class, 'export'])
+                ->middleware('check.permission:suppliers,view');
 
             Route::apiResource('suppliers.addresses', SupplierAddressController::class)
                 ->scoped()
@@ -835,6 +848,40 @@ Route::middleware([
                 ->middlewareFor(['store'], ['check.permission:suppliers,add'])
                 ->middlewareFor(['update'], ['check.permission:suppliers,edit'])
                 ->middlewareFor(['destroy'], ['check.permission:suppliers,delete']);
+        });
+
+        Route::middleware(['ensure.module:accounting'])->group(function () {
+            Route::apiResource('accounts', AccountController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:accounts,view'])
+                ->middlewareFor(['store'], ['check.permission:accounts,add'])
+                ->middlewareFor(['update'], ['check.permission:accounts,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:accounts,delete']);
+
+            Route::get('account-mappings', [AccountMappingController::class, 'index'])
+                ->middleware('check.permission:account_mappings,view');
+            Route::put('account-mappings', [AccountMappingController::class, 'update'])
+                ->middleware('check.permission:account_mappings,edit');
+
+            Route::put('journal-entries/{journal_entry}/lines', [JournalEntryController::class, 'replaceLines'])
+                ->middleware('check.permission:journal_entries,edit');
+            Route::post('journal-entries/{journal_entry}/post', [JournalEntryController::class, 'post'])
+                ->middleware('check.permission:journal_entries,edit');
+            Route::post('journal-entries/{journal_entry}/reverse', [JournalEntryController::class, 'reverse'])
+                ->middleware('check.permission:journal_entries,reverse');
+            Route::apiResource('journal-entries', JournalEntryController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:journal_entries,view'])
+                ->middlewareFor(['store'], ['check.permission:journal_entries,add'])
+                ->middlewareFor(['update'], ['check.permission:journal_entries,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:journal_entries,delete']);
+
+            Route::get('accounting/trial-balance', [AccountingReportController::class, 'trialBalance'])
+                ->middleware('check.permission:accounting_reports,view');
+            Route::get('accounting/trial-balance/export', [AccountingReportController::class, 'exportTrialBalance'])
+                ->middleware('check.permission:accounting_reports,export');
+            Route::get('accounting/account-ledger', [AccountingReportController::class, 'accountLedger'])
+                ->middleware('check.permission:accounting_reports,view');
+            Route::get('accounting/account-ledger/export', [AccountingReportController::class, 'exportAccountLedger'])
+                ->middleware('check.permission:accounting_reports,export');
         });
     });
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
+use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\Recipe;
 use App\Modules\Inventory\Item\Models\RecipeItem;
@@ -30,6 +31,7 @@ class ProductionService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly JournalPostingService $journalPostingService,
     ) {}
 
     /**
@@ -311,6 +313,8 @@ class ProductionService
                 productionId: (string) $locked->id,
             ));
 
+            $this->journalPostingService->production($locked, $userId);
+
             $locked->update([
                 'status' => ProductionStatus::Posted,
                 'posted_by' => $userId,
@@ -332,6 +336,7 @@ class ProductionService
             }
             $this->warehouseService->assertVisibleById((int) $locked->warehouse_id);
             $this->stockMovementService->reverseReference(Production::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->journalPostingService->reverse(Production::REFERENCE_TYPE, (string) $locked->id, $userId);
             $locked->update(['status' => ProductionStatus::Reversed]);
 
             return $this->find($locked->id);

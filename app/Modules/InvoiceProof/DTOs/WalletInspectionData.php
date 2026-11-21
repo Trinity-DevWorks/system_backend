@@ -7,8 +7,9 @@ namespace App\Modules\InvoiceProof\DTOs;
 use App\Modules\InvoiceProof\Enums\WalletType;
 
 /**
- * What the active network holds at an address: a personal wallet (no code), a Safe
- * (owners readable), or another contract that can neither sign nor act as a Safe.
+ * What the active network holds at an address: a personal wallet (no deployed code,
+ * including EIP-7702 delegated EOAs), a Safe (owners readable), or another contract
+ * that can neither sign nor act as a Safe.
  */
 readonly class WalletInspectionData
 {

@@ -119,9 +119,13 @@ class CustomerReceiptController extends Controller
         );
     }
 
-    public function reverse(CustomerReceipt $customerReceipt): JsonResponse
+    public function reverse(Request $request, CustomerReceipt $customerReceipt): JsonResponse
     {
-        $receipt = $this->customerReceiptService->reverse($customerReceipt);
+        $userId = $request->user()?->id;
+        $receipt = $this->customerReceiptService->reverse(
+            $customerReceipt,
+            $userId !== null ? (string) $userId : null,
+        );
 
         return ApiResponse::success(
             CustomerReceiptResponseData::fromModel($receipt),

@@ -30,4 +30,19 @@ class WalletAddressTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         WalletAddress::normalize('not-an-address');
     }
+
+    public function test_eip7702_delegation_code_is_not_deployed_contract(): void
+    {
+        $delegation = '0xef010063c0c19a282a1b52b07dd5a65b58948a07dae32b';
+
+        $this->assertTrue(WalletAddress::isEip7702DelegationCode($delegation));
+        $this->assertTrue(WalletAddress::isEip7702DelegationCode(strtoupper($delegation)));
+        $this->assertFalse(WalletAddress::hasDeployedContractCode($delegation));
+        $this->assertFalse(WalletAddress::hasDeployedContractCode('0x'));
+        $this->assertFalse(WalletAddress::hasDeployedContractCode('0x0'));
+        $this->assertFalse(WalletAddress::hasDeployedContractCode(null));
+        $this->assertTrue(WalletAddress::hasDeployedContractCode('0x6080604052'));
+        $this->assertFalse(WalletAddress::isEip7702DelegationCode('0x6080604052'));
+        $this->assertFalse(WalletAddress::isEip7702DelegationCode('0xef010063c0c19a282a1b52b07dd5a65b58948a07dae3'));
+    }
 }

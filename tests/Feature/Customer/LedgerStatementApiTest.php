@@ -22,7 +22,9 @@ use App\Modules\Warehouse\Enums\WarehouseType;
 use App\Modules\Warehouse\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use PHPUnit\Framework\Attributes\Group;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Tests\Concerns\InteractsWithTenant;
 use Tests\TestCase;
 
@@ -167,6 +169,58 @@ class LedgerStatementApiTest extends TestCase
         $this->assertEqualsWithDelta(95.0, (float) $page['data'][1]['running_balance'], 0.001);
     }
 
+    public function test_customer_ledger_export_includes_the_full_statement(): void
+    {
+        $seed = $this->tenant->run(fn (): array => $this->seedCustomerStatement());
+        $query = http_build_query([
+            'format' => 'xlsx',
+            'locale' => 'en',
+            'currency_id' => $seed['currency_id'],
+            'date_from' => '2026-02-01',
+            'date_to' => '2026-02-28',
+        ]);
+
+        $response = $this->asTenantRequest($this->token)
+            ->get($this->tenantUrl('/customers/'.$seed['customer_id'].'/ledger-export?'.$query));
+
+        $response->assertOk();
+        $this->assertStringContainsString(
+            'spreadsheetml',
+            (string) $response->headers->get('content-type'),
+        );
+
+        $binary = $response->baseResponse;
+        $xlsx = $binary instanceof BinaryFileResponse
+            ? (string) file_get_contents($binary->getFile()->getPathname())
+            : $response->getContent();
+        $path = tempnam(sys_get_temp_dir(), 'ledger').'.xlsx';
+        file_put_contents($path, $xlsx);
+        $sheet = IOFactory::load($path)->getActiveSheet()->toArray();
+        @unlink($path);
+        $flat = implode("\n", array_map(
+            fn (array $row): string => implode(' | ', array_map(fn ($cell): string => (string) $cell, $row)),
+            $sheet,
+        ));
+
+        $this->assertSame(1, substr_count($flat, 'CR-000099'));
+        $this->assertSame(2, substr_count($flat, 'SI-000099'));
+        $this->assertStringContainsString('Sales invoice Reversed', $flat);
+        $this->assertStringContainsString('Opening balance', $flat);
+
+        $pdf = $this->asTenantRequest($this->token)
+            ->get($this->tenantUrl('/customers/'.$seed['customer_id'].'/ledger-export?'.http_build_query([
+                'format' => 'pdf',
+                'locale' => 'en',
+                'currency_id' => $seed['currency_id'],
+                'date_from' => '2026-02-01',
+                'date_to' => '2026-02-28',
+            ])));
+
+        $pdf->assertOk();
+        $this->assertStringContainsString('pdf', (string) $pdf->headers->get('content-type'));
+        $this->assertStringStartsWith('%PDF', $pdf->getContent());
+    }
+
     public function test_customer_statement_without_currency_includes_every_currency(): void
     {
         $seed = $this->tenant->run(function (): array {
@@ -228,6 +282,45 @@ class LedgerStatementApiTest extends TestCase
         $this->assertEqualsWithDelta(20.0, (float) $page['data'][1]['running_balance'], 0.001);
         $this->assertSame('USD', $page['data'][2]['currency_code']);
         $this->assertEqualsWithDelta(140.0, (float) $page['data'][2]['running_balance'], 0.001);
+    }
+
+    public function test_receipt_rows_in_two_currencies_stay_original_until_that_currency_is_reversed(): void
+    {
+        $seed = $this->tenant->run(function (): array {
+            $usd = $this->makeCurrency();
+            $eur = Currency::query()->create([
+                'name' => 'Euro',
+                'code' => 'EUR',
+                'iso_code' => 'EUR',
+                'symbol' => '€',
+                'is_active' => true,
+            ]);
+            $customer = Customer::query()->create([
+                'name' => 'Two Currency Receipt',
+                'type' => 'individual',
+                'status' => 'active',
+            ]);
+            $receiptId = (string) Str::uuid();
+            $ledger = app(CustomerLedgerService::class);
+            $ledger->postEntry($customer, (int) $usd->id, '0', '10', CustomerLedgerReferenceType::Payment, $receiptId, '2026-02-01');
+            $ledger->postEntry($customer, (int) $eur->id, '0', '20', CustomerLedgerReferenceType::Payment, $receiptId, '2026-02-01');
+            $ledger->postEntry($customer, (int) $usd->id, '10', '0', CustomerLedgerReferenceType::Payment, $receiptId, '2026-02-02');
+
+            return ['customer_id' => (string) $customer->id];
+        });
+
+        $rows = $this->asTenantRequest($this->token)
+            ->getJson($this->tenantUrl('/customers/'.$seed['customer_id'].'/ledger-entries'))
+            ->assertOk()
+            ->json('data.data');
+
+        $this->assertCount(3, $rows);
+        $this->assertSame('USD', $rows[0]['currency_code']);
+        $this->assertFalse($rows[0]['reversed']);
+        $this->assertSame('EUR', $rows[1]['currency_code']);
+        $this->assertFalse($rows[1]['reversed']);
+        $this->assertSame('USD', $rows[2]['currency_code']);
+        $this->assertTrue($rows[2]['reversed']);
     }
 
     /**

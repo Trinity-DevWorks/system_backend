@@ -39,6 +39,7 @@ return new class extends Migration
             $table->decimal('amount', 20, 4);
             $table->decimal('applied_amount', 20, 4);
             $table->decimal('applied_exchange_rate', 24, 12);
+            $table->decimal('exchange_difference', 20, 4)->default(0);
             $table->unique(['supplier_payment_id', 'purchase_invoice_id']);
         });
     }
