@@ -44,6 +44,18 @@ enum AccountRole: string
     case AccumulatedLosses = 'accumulated_losses';
     case CurrentYearProfit = 'current_year_profit';
     case CurrentYearLoss = 'current_year_loss';
+    /** Default accumulated-depreciation account for a new asset category. */
+    case AccumulatedDepreciation = 'accumulated_depreciation';
+    /** Default depreciation-expense account for a new asset category. */
+    case DepreciationExpense = 'depreciation_expense';
+    /** Book value removed when an asset is sold or scrapped. */
+    case AssetDisposalLoss = 'asset_disposal_loss';
+    /** Proceeds booked when an asset is sold. */
+    case AssetDisposalGain = 'asset_disposal_gain';
+    /** Default prepaid / deferred-charge account. A schedule may use any postable asset. */
+    case PrepaidExpenses = 'prepaid_expenses';
+    /** Default unearned-revenue account. A schedule may use any postable liability. */
+    case DeferredRevenue = 'deferred_revenue';
 
     /**
      * Account types a mapping for this role may point at.
@@ -61,6 +73,7 @@ enum AccountRole: string
             self::ChequesToCollect => [AccountType::Asset],
             self::Payable,
             self::GoodsReceivedNotInvoiced,
+            self::LandedCostClearing,
             self::SalesmanCommissionPayable => [AccountType::Liability],
             self::VatOutput,
             self::VatInput,
@@ -84,6 +97,12 @@ enum AccountRole: string
             self::AccumulatedLosses,
             self::CurrentYearProfit,
             self::CurrentYearLoss => [AccountType::Equity],
+            self::AccumulatedDepreciation => [AccountType::Asset],
+            self::DepreciationExpense,
+            self::AssetDisposalLoss => [AccountType::Expense],
+            self::AssetDisposalGain => [AccountType::Revenue],
+            self::PrepaidExpenses => [AccountType::Asset],
+            self::DeferredRevenue => [AccountType::Liability],
         };
     }
 

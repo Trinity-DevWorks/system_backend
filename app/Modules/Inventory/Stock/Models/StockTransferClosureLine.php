@@ -15,12 +15,14 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * @property StockTransferClosureOutcome $outcome
+ * @property list<string>|null $serial_numbers
  */
 #[Fillable([
     'stock_transfer_closure_id',
     'stock_transfer_line_id',
     'item_id',
     'lot_id',
+    'serial_numbers',
     'outcome',
     'quantity',
     'base_quantity',
@@ -38,6 +40,7 @@ class StockTransferClosureLine extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
+            'serial_numbers' => 'array',
             'outcome' => StockTransferClosureOutcome::class,
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',

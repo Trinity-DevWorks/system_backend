@@ -13,6 +13,8 @@ final class SourceDocuments
 {
     public const CASH_BANK_OPENING_BALANCE = 'cash_bank_opening_balance';
 
+    public const DEFERRAL_RECOGNITION = 'deferral_recognition';
+
     /** @var array<string, array{table: string, number: string}> */
     private const DOCUMENTS = [
         'sales_invoice' => ['table' => 'sales_invoices', 'number' => 'invoice_number'],
@@ -39,8 +41,11 @@ final class SourceDocuments
         'stock_transfer_receipt' => ['table' => 'stock_transfer_receipts', 'number' => 'receipt_number'],
         'bundle_explosion' => ['table' => 'bundle_explosions', 'number' => 'bex_number'],
         'purchase_order' => ['table' => 'purchase_orders', 'number' => 'po_number'],
+        'fixed_asset' => ['table' => 'fixed_assets', 'number' => 'asset_number'],
+        'fixed_asset_disposal' => ['table' => 'fixed_assets', 'number' => 'disposal_number'],
         // Opening entry of a cash/bank account: shows the account code.
         self::CASH_BANK_OPENING_BALANCE => ['table' => 'cash_bank_accounts', 'number' => 'code'],
+        'deferral_schedule' => ['table' => 'deferral_schedules', 'number' => 'schedule_number'],
     ];
 
     /**
@@ -48,7 +53,7 @@ final class SourceDocuments
      */
     public static function types(): array
     {
-        return array_keys(self::DOCUMENTS);
+        return [...array_keys(self::DOCUMENTS), self::DEFERRAL_RECOGNITION];
     }
 
     /**
@@ -69,6 +74,23 @@ final class SourceDocuments
         $out = [];
         foreach ($byType as $type => $ids) {
             $ids = array_keys($ids);
+            if ($type === 'fixed_asset_depreciation') {
+                $runIds = [];
+                foreach ($ids as $id) {
+                    $runIds[explode(':', (string) $id, 2)[0]] = true;
+                }
+                $numbers = DB::table('fixed_asset_depreciation_runs')->whereIn('id', array_keys($runIds))->pluck('run_number', 'id');
+                foreach ($ids as $id) {
+                    $runId = explode(':', (string) $id, 2)[0];
+                    $number = $numbers[$runId] ?? null;
+                    if ($number !== null && $number !== '') {
+                        $out[$type.':'.$id] = (string) $number;
+                    }
+                }
+
+                continue;
+            }
+
             if (isset(self::DOCUMENTS[$type])) {
                 $doc = self::DOCUMENTS[$type];
                 foreach (DB::table($doc['table'])->whereIn('id', $ids)->get(['id', $doc['number'].' as number']) as $row) {
@@ -81,6 +103,7 @@ final class SourceDocuments
             $application = match ($type) {
                 'sales_credit_note_apply' => ['sales_credit_notes', 'credit_note_number'],
                 'purchase_debit_note_apply' => ['purchase_debit_notes', 'debit_note_number'],
+                self::DEFERRAL_RECOGNITION => ['deferral_schedules', 'schedule_number'],
                 default => null,
             };
             if ($application !== null) {

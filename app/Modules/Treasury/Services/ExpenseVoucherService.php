@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Services;
 
+use App\Modules\Accounting\Budget\Services\BudgetCheckService;
 use App\Modules\Accounting\Enums\AccountType;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Services\ExchangeRateService;
+use App\Modules\Deferral\Enums\DeferralKind;
+use App\Modules\Deferral\Enums\DeferralLineStatus;
+use App\Modules\Deferral\Models\DeferralSchedule;
+use App\Modules\Deferral\Services\DeferralScheduleService;
+use App\Modules\Deferral\Support\DeferralAccountRules;
 use App\Modules\Inventory\Purchasing\LandedCost\Services\LandedCostService;
 use App\Modules\Inventory\Purchasing\LandedCost\Services\LandedCostSources;
 use App\Modules\Treasury\Enums\TreasuryDocumentStatus;
@@ -31,6 +37,8 @@ class ExpenseVoucherService
         private readonly ExchangeRateService $exchangeRateService,
         private readonly DocumentNumberService $numbers,
         private readonly CashBankAccountService $cashBankAccounts,
+        private readonly DeferralScheduleService $deferrals,
+        private readonly DeferralAccountRules $deferralAccounts,
     ) {}
 
     /**
@@ -40,7 +48,12 @@ class ExpenseVoucherService
     public function paginate(array $filters, int $perPage): LengthAwarePaginator
     {
         $query = ExpenseVoucher::query()
-            ->with(['cashBankAccount:id,code,name,currency_id', 'cashBankAccount.currency:id,code,symbol', 'supplier:id,name'])
+            ->with([
+                'cashBankAccount:id,code,name,currency_id',
+                'cashBankAccount.currency:id,code,symbol',
+                'supplier:id,name',
+                'recurringTemplate:id,template_number,name',
+            ])
             ->orderByDesc('voucher_date')
             ->orderByDesc('created_at');
         if (! empty($filters['status'])) {
@@ -54,7 +67,14 @@ class ExpenseVoucherService
     public function find(string $id): ExpenseVoucher
     {
         return ExpenseVoucher::query()
-            ->with(['cashBankAccount.currency:id,code,symbol', 'supplier:id,name', 'lines.account:id,code,name'])
+            ->with([
+                'cashBankAccount.currency:id,code,symbol',
+                'supplier:id,name',
+                'recurringTemplate:id,template_number,name',
+                'lines.account:id,code,name',
+                'lines.deferralRecognitionAccount:id,code,name',
+                'lines.deferralSchedule:id,schedule_number,status,source_line_id',
+            ])
             ->findOrFail($id);
     }
 
@@ -64,11 +84,15 @@ class ExpenseVoucherService
     public function create(array $data, ?string $userId): ExpenseVoucher
     {
         return DB::transaction(function () use ($data, $userId): ExpenseVoucher {
-            $voucher = ExpenseVoucher::query()->create([
+            $attributes = [
                 ...$this->header($data, null),
                 'status' => TreasuryDocumentStatus::Draft,
                 'created_by' => $userId,
-            ]);
+            ];
+            if (! empty($data['branch_id'])) {
+                $attributes['branch_id'] = (int) $data['branch_id'];
+            }
+            $voucher = ExpenseVoucher::query()->create($attributes);
             $this->replaceLines($voucher, (array) ($data['lines'] ?? []));
 
             return $this->find((string) $voucher->id);
@@ -100,7 +124,7 @@ class ExpenseVoucherService
 
     public function post(ExpenseVoucher $voucher, ?string $userId): ExpenseVoucher
     {
-        return DB::transaction(function () use ($voucher, $userId): ExpenseVoucher {
+        $posted = DB::transaction(function () use ($voucher, $userId): ExpenseVoucher {
             $locked = $this->lockDraft($voucher);
             if (! ExpenseVoucherLine::query()->where('expense_voucher_id', $locked->id)->exists() || ! Decimal::isPositive($locked->total)) {
                 abort(422, 'Add at least one expense line before posting.', ['X-Error-Code' => 'EXPENSE_VOUCHER_NO_LINES']);
@@ -117,9 +141,14 @@ class ExpenseVoucherService
                 'posted_by' => $userId,
                 'posted_at' => now(),
             ]);
+            $this->openDeferralSchedules($locked, $userId);
 
             return $this->find((string) $locked->id);
         });
+        // Over-budget is only a warning: checked after the commit so it can never block or roll back the post.
+        app(BudgetCheckService::class)->notifyAfterPost(BudgetCheckService::SOURCE_EXPENSE_VOUCHER, (string) $posted->id, (string) ($posted->voucher_number ?? ''));
+
+        return $posted;
     }
 
     public function reverse(ExpenseVoucher $voucher, ?string $userId): ExpenseVoucher
@@ -130,6 +159,7 @@ class ExpenseVoucherService
                 abort(422, 'Only a posted expense voucher can be reversed.', ['X-Error-Code' => 'TREASURY_DOCUMENT_NOT_POSTED']);
             }
             LandedCostService::assertNotUsed('expense_voucher', (string) $locked->id);
+            $this->cancelDeferralSchedules($locked, $userId);
             $this->journalPostingService->reverse(ExpenseVoucher::REFERENCE_TYPE, (string) $locked->id, $userId);
             $locked->update(['status' => TreasuryDocumentStatus::Reversed]);
 
@@ -192,11 +222,29 @@ class ExpenseVoucherService
         $taxTotal = '0';
         foreach (array_values($rows) as $index => $row) {
             $account = Account::query()->find((int) ($row['account_id'] ?? 0));
-            $isClearing = $account !== null && (int) $account->id === app(LandedCostSources::class)->clearingAccountId();
-            if ($account === null || ($account->type !== AccountType::Expense && ! $isClearing) || ! $account->isPostable()) {
+            $spread = isset($row['deferral_start_date']) && $row['deferral_start_date'] !== null && $row['deferral_start_date'] !== '';
+            if (! $account instanceof Account) {
                 abort(422, 'Line '.($index + 1).': choose an active, non-group expense account.', [
                     'X-Error-Code' => 'EXPENSE_VOUCHER_ACCOUNT_INVALID',
                 ]);
+            }
+            $recognitionId = null;
+            if ($spread) {
+                if ($account->type !== AccountType::Asset || ! $account->isPostable()) {
+                    abort(422, 'Line '.($index + 1).': a spread line must use an active prepaid asset account.', [
+                        'X-Error-Code' => 'EXPENSE_VOUCHER_ACCOUNT_INVALID',
+                    ]);
+                }
+                $recognition = Account::query()->find((int) ($row['deferral_recognition_account_id'] ?? 0));
+                if (! $recognition instanceof Account) {
+                    abort(422, 'Line '.($index + 1).': choose the expense account that will recognise this prepayment.', [
+                        'X-Error-Code' => 'DEFERRAL_ACCOUNT_INVALID',
+                    ]);
+                }
+                $this->deferralAccounts->assertAccounts(DeferralKind::PrepaidExpense, $account, $recognition, (int) $voucher->currency_id);
+                $recognitionId = (int) $recognition->id;
+            } else {
+                $this->assertLineAccount($account, $index);
             }
             $amount = PriceMath::normalize($row['amount'] ?? 0);
             if (! Decimal::isPositive($amount)) {
@@ -216,6 +264,10 @@ class ExpenseVoucherService
                 'tax_rate' => $rate,
                 'tax_amount' => $tax,
                 'sort_order' => $index + 1,
+                'deferral_start_date' => $spread ? substr((string) $row['deferral_start_date'], 0, 10) : null,
+                'deferral_end_date' => $spread ? substr((string) $row['deferral_end_date'], 0, 10) : null,
+                'deferral_recognition_account_id' => $recognitionId,
+                'deferral_method' => $spread ? (string) ($row['deferral_method'] ?? 'straight_line_monthly') : null,
             ]);
 
             $subtotal = Decimal::add($subtotal, $amount);
@@ -227,5 +279,67 @@ class ExpenseVoucherService
             'tax_total' => PriceMath::normalize($taxTotal),
             'total' => PriceMath::normalize(Decimal::add($subtotal, $taxTotal)),
         ]);
+    }
+
+    public function assertLineAccount(Account $account, int $index): void
+    {
+        $isClearing = (int) $account->id === app(LandedCostSources::class)->clearingAccountId();
+        if (($account->type !== AccountType::Expense && ! $isClearing) || ! $account->isPostable()) {
+            abort(422, 'Line '.($index + 1).': choose an active, non-group expense account.', [
+                'X-Error-Code' => 'EXPENSE_VOUCHER_ACCOUNT_INVALID',
+            ]);
+        }
+    }
+
+    private function openDeferralSchedules(ExpenseVoucher $voucher, ?string $userId): void
+    {
+        $voucher->load('lines.account');
+        foreach ($voucher->lines as $line) {
+            if ($line->deferral_start_date === null || $line->deferral_end_date === null) {
+                continue;
+            }
+            $label = trim((string) ($line->description ?: $line->account?->name));
+            $schedule = $this->deferrals->createFromSource([
+                'kind' => DeferralKind::PrepaidExpense->value,
+                'name' => mb_substr(($voucher->voucher_number ?? 'Expense').' — '.$label, 0, 255),
+                'branch_id' => (int) $voucher->branch_id,
+                'deferral_account_id' => (int) $line->account_id,
+                'recognition_account_id' => (int) $line->deferral_recognition_account_id,
+                'currency_id' => (int) $voucher->currency_id,
+                'exchange_rate' => (string) $voucher->exchange_rate,
+                'total_amount' => (string) $line->amount,
+                'start_date' => $line->deferral_start_date->toDateString(),
+                'end_date' => $line->deferral_end_date->toDateString(),
+                'method' => $line->deferral_method ?: 'straight_line_monthly',
+                'posting_day' => 'period_end',
+                'auto_post' => true,
+            ], $userId, [
+                'type' => 'expense_voucher',
+                'id' => (string) $voucher->id,
+                'line_id' => (int) $line->id,
+                'supplier_id' => $voucher->supplier_id,
+            ]);
+            $this->deferrals->activate($schedule, $userId);
+        }
+    }
+
+    private function cancelDeferralSchedules(ExpenseVoucher $voucher, ?string $userId): void
+    {
+        $schedules = DeferralSchedule::query()
+            ->where('source_type', 'expense_voucher')
+            ->where('source_id', $voucher->id)
+            ->get();
+        foreach ($schedules as $schedule) {
+            if ($schedule->lines()->where('status', DeferralLineStatus::Posted->value)->exists()) {
+                abort(422, 'Reverse the posted recognition lines before reversing this voucher.', [
+                    'X-Error-Code' => 'DEFERRAL_HAS_POSTED_LINES',
+                ]);
+            }
+        }
+        foreach ($schedules as $schedule) {
+            if ($schedule->status->value !== 'cancelled') {
+                $this->deferrals->cancel($schedule, 'Source voucher reversed', $userId);
+            }
+        }
     }
 }

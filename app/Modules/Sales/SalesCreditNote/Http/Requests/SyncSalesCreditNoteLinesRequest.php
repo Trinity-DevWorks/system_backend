@@ -24,6 +24,8 @@ class SyncSalesCreditNoteLinesRequest extends FormRequest
             'lines.*.quantity' => ['nullable', 'numeric', 'min:0'],
             'lines.*.line_total' => ['nullable', 'numeric', 'min:0'],
             'lines.*.restock' => ['sometimes', 'boolean'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
             'lines.*.warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'lines.*.description' => ['nullable', 'string', 'max:500'],
         ];

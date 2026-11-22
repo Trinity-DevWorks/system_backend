@@ -13,7 +13,7 @@ readonly class StockRevaluationLineResponseData
     public static function fromModel(StockRevaluationLine $line): array
     {
         $line->loadMissing([
-            'item:id,item_code,name,is_active,track_inventory,track_lots',
+            'item:id,item_code,name,is_active,track_inventory,track_lots,track_serials',
             'lot:id,lot_number,expiry_date',
         ]);
 
@@ -70,6 +70,7 @@ readonly class StockRevaluationLineResponseData
             'is_active' => (bool) $item->is_active,
             'track_inventory' => (bool) $item->track_inventory,
             'track_lots' => (bool) $item->track_lots,
+            'track_serials' => (bool) $item->track_serials,
         ];
     }
 }

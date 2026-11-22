@@ -32,10 +32,17 @@ class AnalyticsReportRequest extends FormRequest
             'group_by' => ['nullable', Rule::in(['item', 'customer', 'salesman', 'branch', 'category'])],
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'item_id' => ['nullable', 'uuid', 'exists:items,id'],
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'user_id' => ['nullable', 'uuid', 'exists:users,id'],
+            'supplier_id' => ['nullable', 'uuid', 'exists:suppliers,id'],
+            'source' => ['nullable', 'string', 'max:32'],
+            'field' => ['nullable', 'string', 'max:32'],
             'days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'include_expired' => ['nullable', 'boolean'],
             'account_from' => ['nullable', 'string', 'max:32'],
             'account_to' => ['nullable', 'string', 'max:32'],
+            'budget_id' => ['nullable', 'uuid', 'exists:budgets,id'],
+            'level' => ['nullable', 'integer', 'min:1', 'max:10'],
             // Table controls (sales analysis): search, sort and server pagination.
             'search' => ['nullable', 'string', 'max:255'],
             // Each report keeps only the sort keys it supports (unknown keys fall back to its default).

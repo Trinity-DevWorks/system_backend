@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\CompanySetting\Http\Requests;
 
+use App\Modules\CompanySetting\Enums\BudgetWarningScope;
 use App\Modules\CompanySetting\Enums\DateFormat;
 use App\Modules\CompanySetting\Enums\NumberFormat;
 use App\Modules\CompanySetting\Enums\PreferredLanguage;
@@ -51,6 +52,9 @@ class UpdateCompanySettingRequest extends FormRequest
             'price_rounding_mode' => ['sometimes', 'required', Rule::enum(PriceRoundingMode::class)],
             'price_decimal_places' => ['sometimes', 'required', 'integer', 'min:0', 'max:6'],
             'fiscal_year_start_month' => ['sometimes', 'required', 'integer', 'min:1', 'max:12'],
+            'auto_depreciation' => ['sometimes', 'required', 'boolean'],
+            'budget_warnings_enabled' => ['sometimes', 'required', 'boolean'],
+            'budget_warning_scope' => ['sometimes', 'required', Rule::enum(BudgetWarningScope::class)],
         ];
     }
 

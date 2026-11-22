@@ -42,6 +42,7 @@ class SavePriceListRequest extends FormRequest
             'items.*.item_uom_id' => ['required', 'integer'],
             'items.*.min_quantity' => ['nullable', 'numeric', 'min:0'],
             'items.*.price' => ['required', 'numeric', 'min:0'],
+            'items.*.reason' => ['nullable', 'string', 'max:500'],
         ];
     }
 }

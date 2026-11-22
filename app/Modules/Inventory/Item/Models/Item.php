@@ -30,6 +30,8 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * @property string|null $parent_item_id variant child: the template item
  * @property bool $is_variant_parent template item; has no stock and is not sold itself
  * @property bool $is_landed_cost service item whose purchase cost is spread over received goods
+ * @property bool $is_fixed_asset non-stock item that becomes an asset card when purchased
+ * @property int|null $fixed_asset_category_id
  * @property string|null $weight kg per base unit
  * @property string|null $volume m3 per base unit
  */
@@ -54,11 +56,16 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'color',
     'track_inventory',
     'track_lots',
+    'track_serials',
+    'warranty_months',
+    'is_scale_item',
     'costing_method',
     'allow_sale',
     'allow_purchase',
     'allow_return',
     'is_landed_cost',
+    'is_fixed_asset',
+    'fixed_asset_category_id',
     'weight',
     'volume',
     'is_active',
@@ -78,10 +85,15 @@ class Item extends Model implements AuditableContract
         return [
             'is_variant_parent' => 'boolean',
             'is_landed_cost' => 'boolean',
+            'is_fixed_asset' => 'boolean',
+            'fixed_asset_category_id' => 'integer',
             'send_to_kitchen' => 'boolean',
             'qr_enabled' => 'boolean',
             'track_inventory' => 'boolean',
             'track_lots' => 'boolean',
+            'track_serials' => 'boolean',
+            'warranty_months' => 'integer',
+            'is_scale_item' => 'boolean',
             'allow_sale' => 'boolean',
             'allow_purchase' => 'boolean',
             'allow_return' => 'boolean',

@@ -14,7 +14,7 @@ readonly class StockMovementResponseData
     public static function fromModel(StockMovement $movement, ?string $quantityOnHand = null): array
     {
         $movement->loadMissing([
-            'item:id,item_code,name,base_uom_id,track_lots',
+            'item:id,item_code,name,base_uom_id,track_lots,track_serials',
             'item.baseUom:id,code,name',
             'warehouse:id,name,shortcut_name',
             'itemUom:id,uom_id',

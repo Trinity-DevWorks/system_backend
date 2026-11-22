@@ -28,6 +28,8 @@ class SyncSalesInvoiceLinesRequest extends FormRequest
             'lines.*.item_uom_id' => ['nullable', 'integer', Rule::exists('item_uoms', 'id')],
             'lines.*.warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'lines.*.lot_id' => ['nullable', 'integer', 'exists:inventory_lots,id'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
             'lines.*.unit_price' => ['required', 'numeric', 'min:0', 'max:9999999999.9999'],
             'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'lines.*.description' => ['nullable', 'string', 'max:500'],

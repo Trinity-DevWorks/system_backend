@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Purchasing\Services;
 
+use App\Modules\Accounting\Budget\Services\BudgetCheckService;
+use App\Modules\Accounting\FixedAsset\Services\FixedAssetService;
 use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
@@ -23,6 +25,7 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceLineQuantity;
 use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Services\InventoryLotService;
+use App\Modules\Inventory\Stock\Services\InventorySerialService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
@@ -54,6 +57,7 @@ class PurchaseInvoiceService
         private readonly SupplierItemService $supplierItemService,
         private readonly ExchangeRateService $exchangeRateService,
         private readonly JournalPostingService $journalPostingService,
+        private readonly FixedAssetService $fixedAssets,
     ) {}
 
     /**
@@ -223,7 +227,7 @@ class PurchaseInvoiceService
 
     public function post(PurchaseInvoice $invoice, ?string $userId): PurchaseInvoice
     {
-        return DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
+        $posted = DB::transaction(function () use ($invoice, $userId): PurchaseInvoice {
             $locked = PurchaseInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
             app(DocumentNumberService::class)->assign($locked, 'invoice_number', DocumentType::PurchaseInvoice, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->invoice_date);
             PurchaseInvoiceRules::assertPostable($locked);
@@ -297,6 +301,7 @@ class PurchaseInvoiceService
             }
 
             $this->journalPostingService->purchaseInvoice($locked, $userId);
+            $this->fixedAssets->createFromInvoice($locked, $userId);
 
             $locked->update([
                 'status' => PurchaseInvoiceStatus::Posted,
@@ -306,6 +311,10 @@ class PurchaseInvoiceService
 
             return $this->find($locked->id);
         });
+        // Over-budget is only a warning: checked after the commit so it can never block or roll back the post.
+        app(BudgetCheckService::class)->notifyAfterPost(BudgetCheckService::SOURCE_PURCHASE_INVOICE, (string) $posted->id, (string) ($posted->invoice_number ?? ''));
+
+        return $posted;
     }
 
     public function reverse(PurchaseInvoice $invoice, ?string $userId): PurchaseInvoice
@@ -330,6 +339,7 @@ class PurchaseInvoiceService
                 ]);
             }
             $this->warehouseService->assertDocumentVisible($locked);
+            $this->fixedAssets->assertInvoiceReversible($locked);
 
             if ($locked->goods_receipt_id === null) {
                 $this->stockMovementService->reverseReference(PurchaseInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
@@ -350,6 +360,7 @@ class PurchaseInvoiceService
             }
 
             $this->journalPostingService->reverse(PurchaseInvoice::REFERENCE_TYPE, (string) $locked->id, $userId);
+            $this->fixedAssets->deleteForInvoice($locked);
 
             $locked->update(['status' => PurchaseInvoiceStatus::Reversed]);
 
@@ -577,6 +588,11 @@ class PurchaseInvoiceService
                 PurchaseInvoiceRules::assertWarehouse($warehouseId);
             }
 
+            // Received on the goods receipt: the invoice only shows those serials.
+            $serialNumbers = $grnLine !== null
+                ? ($item->track_serials ? ($grnLine->serial_numbers ?? []) : null)
+                : app(InventorySerialService::class)->forLine($item, $row['serial_numbers'] ?? null, $qty['base_quantity'], $index + 1);
+
             if ($item->track_lots && $lotId === null && $invoice->goods_receipt_id === null) {
                 abort(422, 'Select a lot for this item.', ['X-Error-Code' => 'STOCK_LOT_REQUIRED']);
             }
@@ -594,6 +610,7 @@ class PurchaseInvoiceService
                 'item_uom_id' => $qty['item_uom_id'],
                 'warehouse_id' => $warehouseId,
                 'lot_id' => $lotId,
+                'serial_numbers' => $serialNumbers,
                 'sort_order' => $index + 1,
                 'quantity' => $qty['quantity'],
                 'base_quantity' => $qty['base_quantity'],
@@ -662,7 +679,7 @@ class PurchaseInvoiceService
             userId: $userId,
             lotId: $line->lot_id ? (int) $line->lot_id : null,
             valueDelta: $this->inboundValue($invoice, $line),
-        ));
+        )->withSerials($line->serial_numbers, 'supplier', $invoice->supplier_id !== null ? (string) $invoice->supplier_id : null));
     }
 
     /**

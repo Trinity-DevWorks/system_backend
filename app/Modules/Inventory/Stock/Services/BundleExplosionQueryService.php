@@ -51,7 +51,7 @@ class BundleExplosionQueryService
         $query = BundleExplosion::query()
             ->with([
                 'warehouse:id,name,shortcut_name,is_active',
-                'item:id,item_code,name,is_active,track_inventory,track_lots',
+                'item:id,item_code,name,is_active,track_inventory,track_lots,track_serials',
                 'createdByUser:id,name,email',
                 'postedByUser:id,name,email',
             ])

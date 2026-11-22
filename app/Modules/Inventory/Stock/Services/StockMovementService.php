@@ -25,6 +25,7 @@ class StockMovementService
         private readonly InstantLowStockNotifier $instantLowStockNotifier,
         private readonly InstantLotExpiryNotifier $instantLotExpiryNotifier,
         private readonly InventoryCostingService $inventoryCostingService,
+        private readonly InventorySerialService $inventorySerialService,
     ) {}
 
     /**
@@ -82,6 +83,9 @@ class StockMovementService
 
                 return $movement->load(['item.baseUom', 'warehouse', 'itemUom.uom', 'user', 'lot']);
             }
+
+            // Serial checks first: they name the units, which says more than "insufficient stock".
+            $this->inventorySerialService->apply($movement, $item, $data);
 
             $warehouseOnHand = StockBalance::onHandForWarehouse($item->id, $warehouse->id);
             $current = (string) $balance->quantity;
@@ -216,6 +220,7 @@ class StockMovementService
         $item = Item::query()->findOrFail($original->item_id);
         $warehouse = Warehouse::query()->findOrFail($original->warehouse_id);
         $this->warehouseService->assertVisible($warehouse);
+        $this->inventorySerialService->assertReversible($original);
 
         $reverseDelta = bcmul($originalDelta, '-1', 6);
         $warehouseOnHand = StockBalance::onHandForWarehouse((string) $item->id, (int) $warehouse->id);
@@ -256,6 +261,8 @@ class StockMovementService
         );
 
         $balance->update(['quantity' => $newQuantity]);
+
+        $this->inventorySerialService->reverse($original, $reverse);
 
         $this->instantLowStockNotifier->afterBalanceChanged(
             $item,

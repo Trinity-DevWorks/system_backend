@@ -28,7 +28,38 @@ readonly class StockMovementData
         public ?string $unitCost = null,
         public ?int $lotId = null,
         public ?string $valueDelta = null,
+        /** @var list<string> Serial numbers this movement adds or removes (serial-tracked items only). */
+        public array $serialNumbers = [],
+        /** customer | supplier — who the units came from or went to. */
+        public ?string $partyType = null,
+        public ?string $partyId = null,
     ) {}
+
+    /**
+     * Same movement, carrying the serial numbers of its line (and the customer / supplier involved).
+     *
+     * @param  list<string>|null  $serialNumbers
+     */
+    public function withSerials(?array $serialNumbers, ?string $partyType = null, ?string $partyId = null): self
+    {
+        return new self(
+            itemId: $this->itemId,
+            warehouseId: $this->warehouseId,
+            quantityDelta: $this->quantityDelta,
+            type: $this->type,
+            referenceType: $this->referenceType,
+            referenceId: $this->referenceId,
+            itemUomId: $this->itemUomId,
+            notes: $this->notes,
+            userId: $this->userId,
+            unitCost: $this->unitCost,
+            lotId: $this->lotId,
+            valueDelta: $this->valueDelta,
+            serialNumbers: array_values($serialNumbers ?? []),
+            partyType: $partyType,
+            partyId: $partyId,
+        );
+    }
 
     public static function forTransfer(
         string $itemId,

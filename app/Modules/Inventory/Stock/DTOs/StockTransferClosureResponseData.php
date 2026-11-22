@@ -43,6 +43,7 @@ readonly class StockTransferClosureResponseData
                     'item_id' => $line->item_id,
                     'item_name' => $line->item?->name,
                     'lot_id' => $line->lot_id,
+                    'serial_numbers' => $line->serial_numbers ?? [],
                     'lot_number' => $line->lot?->lot_number,
                     'outcome' => $line->outcome->value,
                     'quantity' => (string) $line->quantity,

@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $item_uom_id
  * @property int|null $warehouse_id
  * @property int|null $lot_id
+ * @property list<string>|null $serial_numbers
  * @property string $quantity
  * @property string $base_quantity
  * @property string $conversion_factor
@@ -29,7 +30,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $notes
  */
 #[Fillable([
-    'delivery_note_id', 'sales_order_line_id', 'item_id', 'item_uom_id', 'warehouse_id', 'lot_id', 'sort_order',
+    'delivery_note_id', 'sales_order_line_id', 'item_id', 'item_uom_id', 'warehouse_id', 'lot_id', 'serial_numbers', 'sort_order',
     'quantity', 'base_quantity', 'conversion_factor', 'invoiced_base_quantity', 'description', 'notes',
 ])]
 class DeliveryNoteLine extends Model
@@ -40,6 +41,7 @@ class DeliveryNoteLine extends Model
     protected function casts(): array
     {
         return [
+            'serial_numbers' => 'array',
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',
             'conversion_factor' => 'decimal:6',

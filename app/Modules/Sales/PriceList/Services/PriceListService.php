@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Sales\PriceList\Services;
 
 use App\Modules\Inventory\Item\Models\ItemUom;
+use App\Modules\Inventory\PriceChange\Services\PriceHistoryRecorder;
 use App\Modules\Sales\PriceList\Models\PriceList;
 use App\Modules\Sales\PriceList\Models\PriceListItem;
 use App\Support\Decimal;
@@ -17,6 +18,8 @@ class PriceListService
 {
     /** Stored precision for list prices and quantity breaks (matches item unit prices). */
     public const SCALE = 6;
+
+    public function __construct(private readonly PriceHistoryRecorder $history) {}
 
     /**
      * @return Collection<int, PriceList>
@@ -64,7 +67,7 @@ class PriceListService
             $list = PriceList::query()->create($this->headerAttributes($data));
             $this->applyDefault($list);
             if (array_key_exists('items', $data)) {
-                $this->syncItems($list, (array) $data['items']);
+                $this->syncItems($list, (array) $data['items'], PriceHistoryRecorder::contextFrom($data));
             }
 
             return $this->find((int) $list->id);
@@ -80,7 +83,7 @@ class PriceListService
             $list->update($this->headerAttributes($data, $list));
             $this->applyDefault($list);
             if (array_key_exists('items', $data)) {
-                $this->syncItems($list, (array) $data['items']);
+                $this->syncItems($list, (array) $data['items'], PriceHistoryRecorder::contextFrom($data));
             }
 
             return $this->find((int) $list->id);
@@ -89,20 +92,35 @@ class PriceListService
 
     public function delete(PriceList $list): void
     {
-        // Customers, groups and branches using it fall back to the next list (FK nullOnDelete).
-        $list->delete();
+        DB::transaction(function () use ($list): void {
+            $context = PriceHistoryRecorder::contextFrom([]);
+            foreach ($list->items()->get() as $row) {
+                $this->history->recordPriceListItem(
+                    (string) $row->item_id,
+                    (int) $row->item_uom_id,
+                    (int) $row->price_list_id,
+                    (string) $row->min_quantity,
+                    (string) $row->price,
+                    null,
+                    $context,
+                );
+            }
+            // Customers, groups and branches using it fall back to the next list (FK nullOnDelete).
+            $list->delete();
+        });
     }
 
     /**
-     * Replace all prices of a list.
+     * Replace all prices of a list. History is written for prices that actually change.
      *
      * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $context
      */
-    public function syncItems(PriceList $list, array $rows): void
+    public function syncItems(PriceList $list, array $rows, array $context = []): void
     {
+        $context = $context === [] ? PriceHistoryRecorder::contextFrom([]) : $context;
         $seen = [];
-        $insert = [];
-        $now = now();
+        $desired = [];
 
         $uomIds = array_values(array_unique(array_map(static fn (array $r): int => (int) $r['item_uom_id'], $rows)));
         $uoms = ItemUom::query()->whereIn('id', $uomIds)->get(['id', 'item_id'])->keyBy('id');
@@ -132,21 +150,76 @@ class PriceListService
                 ]);
             }
             $seen[$key] = true;
-
-            $insert[] = [
-                'price_list_id' => $list->id,
+            $rowContext = $context;
+            $rowContext['reason'] = PriceHistoryRecorder::reason($row['reason'] ?? null) ?? ($context['reason'] ?? null);
+            $desired[$key] = [
                 'item_id' => $itemId,
                 'item_uom_id' => $uomId,
                 'min_quantity' => $minQty,
                 'price' => $price,
-                'created_at' => $now,
-                'updated_at' => $now,
+                'context' => $rowContext,
             ];
         }
 
-        PriceListItem::query()->where('price_list_id', $list->id)->delete();
-        foreach (array_chunk($insert, 500) as $chunk) {
-            PriceListItem::query()->insert($chunk);
+        $existing = PriceListItem::query()->where('price_list_id', $list->id)->get();
+        $byKey = [];
+        foreach ($existing as $row) {
+            $byKey[$row->item_id.'|'.$row->item_uom_id.'|'.Decimal::round((string) $row->min_quantity, self::SCALE)] = $row;
+        }
+
+        foreach ($byKey as $key => $row) {
+            if (isset($desired[$key])) {
+                continue;
+            }
+            $this->history->recordPriceListItem(
+                (string) $row->item_id,
+                (int) $row->item_uom_id,
+                (int) $list->id,
+                (string) $row->min_quantity,
+                (string) $row->price,
+                null,
+                $context,
+            );
+            $row->delete();
+        }
+
+        foreach ($desired as $key => $row) {
+            $current = $byKey[$key] ?? null;
+            if ($current instanceof PriceListItem) {
+                if (Decimal::cmp((string) $current->price, $row['price'], self::SCALE) === 0) {
+                    continue;
+                }
+                $old = (string) $current->price;
+                $current->update(['price' => $row['price']]);
+                $this->history->recordPriceListItem(
+                    $row['item_id'],
+                    $row['item_uom_id'],
+                    (int) $list->id,
+                    $row['min_quantity'],
+                    $old,
+                    $row['price'],
+                    $row['context'],
+                );
+
+                continue;
+            }
+
+            PriceListItem::query()->create([
+                'price_list_id' => $list->id,
+                'item_id' => $row['item_id'],
+                'item_uom_id' => $row['item_uom_id'],
+                'min_quantity' => $row['min_quantity'],
+                'price' => $row['price'],
+            ]);
+            $this->history->recordPriceListItem(
+                $row['item_id'],
+                $row['item_uom_id'],
+                (int) $list->id,
+                $row['min_quantity'],
+                null,
+                $row['price'],
+                $row['context'],
+            );
         }
     }
 

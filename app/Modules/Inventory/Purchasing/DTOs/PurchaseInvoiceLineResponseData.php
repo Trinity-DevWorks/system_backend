@@ -51,6 +51,7 @@ readonly class PurchaseInvoiceLineResponseData
             'item_uom_id' => $line->item_uom_id,
             'warehouse_id' => $line->warehouse_id,
             'lot_id' => $line->lot_id,
+            'serial_numbers' => $line->serial_numbers ?? [],
             'sort_order' => $line->sort_order,
             'quantity' => (string) $line->quantity,
             'base_quantity' => (string) $line->base_quantity,
@@ -76,6 +77,7 @@ readonly class PurchaseInvoiceLineResponseData
                 'name' => $line->item->name,
                 'track_inventory' => (bool) $line->item->track_inventory,
                 'track_lots' => (bool) $line->item->track_lots,
+                'track_serials' => (bool) $line->item->track_serials,
             ] : null,
             'warehouse' => $line->warehouse ? [
                 'id' => $line->warehouse->id,

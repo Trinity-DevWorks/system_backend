@@ -6,6 +6,9 @@ namespace App\Modules\Accounting\Services;
 
 use App\Modules\Accounting\Enums\AccountRole;
 use App\Modules\Accounting\Enums\JournalEntryStatus;
+use App\Modules\Accounting\FixedAsset\Models\DepreciationRun;
+use App\Modules\Accounting\FixedAsset\Models\FixedAsset;
+use App\Modules\Accounting\FixedAsset\Models\FixedAssetCategory;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Models\JournalEntryLine;
@@ -15,6 +18,9 @@ use App\Modules\Accounting\Support\SourceDocuments;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Currency\Services\ExchangeRateService;
+use App\Modules\Deferral\Enums\DeferralKind;
+use App\Modules\Deferral\Models\DeferralSchedule;
+use App\Modules\Deferral\Models\DeferralScheduleLine;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Purchasing\LandedCost\Models\LandedCost;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
@@ -179,10 +185,11 @@ class JournalPostingService
             ->foreign($this->account(AccountRole::VatInput), $invoice->tax_total, $currencyId, $rate, null, null, $label);
 
         $lines = PurchaseInvoiceLine::query()->where('purchase_invoice_id', $id)->orderBy('id')->get();
-        $lineItems = Item::query()->whereIn('id', $lines->pluck('item_id')->unique()->all())->get(['id', 'track_inventory', 'is_landed_cost'])->keyBy('id');
+        $lineItems = Item::query()->whereIn('id', $lines->pluck('item_id')->unique()->all())->get(['id', 'track_inventory', 'is_landed_cost', 'is_fixed_asset', 'fixed_asset_category_id'])->keyBy('id');
 
         $nonStock = '0';
         $landed = '0';
+        $fixedAssets = [];
         foreach ($lines as $line) {
             $lineItem = $lineItems->get((string) $line->item_id);
             if ($lineItem === null || $lineItem->track_inventory) {
@@ -191,11 +198,27 @@ class JournalPostingService
             // Freight / customs bills wait on the clearing account until a landed cost puts them on stock.
             if ($lineItem->is_landed_cost) {
                 $landed = JournalMath::add($landed, $line->line_subtotal);
+            } elseif ($lineItem->is_fixed_asset) {
+                $categoryId = (int) $lineItem->fixed_asset_category_id;
+                if ($categoryId === 0) {
+                    abort(422, 'This fixed-asset item has no category.', ['X-Error-Code' => 'FIXED_ASSET_ACCOUNT_INVALID']);
+                }
+                $fixedAssets[$categoryId] = JournalMath::add($fixedAssets[$categoryId] ?? '0', (string) $line->line_subtotal);
             } else {
                 $nonStock = JournalMath::add($nonStock, $line->line_subtotal);
             }
         }
         $builder->foreign($this->account(AccountRole::NonStockPurchase), $nonStock, $currencyId, $rate, null, null, $label);
+        if ($fixedAssets !== []) {
+            $categories = FixedAssetCategory::query()->with('assetAccount')->whereIn('id', array_keys($fixedAssets))->get()->keyBy('id');
+            foreach ($fixedAssets as $categoryId => $amount) {
+                $account = $categories->get($categoryId)?->assetAccount;
+                if ($account === null || ! $account->isPostable()) {
+                    abort(422, 'The fixed-asset category has no posting account.', ['X-Error-Code' => 'FIXED_ASSET_ACCOUNT_INVALID']);
+                }
+                $builder->foreign($account, $amount, $currencyId, $rate, null, null, $label);
+            }
+        }
         if (JournalMath::isPositive($landed)) {
             $builder->foreign($this->account(AccountRole::LandedCostClearing), $landed, $currencyId, $rate, null, null, $label);
         }
@@ -1063,19 +1086,183 @@ class JournalPostingService
         }
     }
 
+    public function mappedAccount(AccountRole $role): Account
+    {
+        return $this->account($role);
+    }
+
+    public function fixedAssetOpening(FixedAsset $asset, ?string $userId): ?JournalEntry
+    {
+        $id = (string) $asset->id;
+        if (! $this->shouldPost(FixedAsset::REFERENCE_TYPE, $id)) {
+            return null;
+        }
+        $asset->loadMissing(['category.assetAccount', 'category.accumulatedAccount']);
+        $category = $asset->category;
+        if ($category?->assetAccount === null || $category->accumulatedAccount === null) {
+            abort(422, 'The fixed-asset category has no posting account.', ['X-Error-Code' => 'FIXED_ASSET_ACCOUNT_INVALID']);
+        }
+        $label = 'Fixed asset '.$asset->asset_number;
+        $net = JournalMath::sub((string) $asset->cost, (string) $asset->opening_accumulated);
+        $builder = $this->builder()
+            ->primary($category->assetAccount, (string) $asset->cost, null, null, $label)
+            ->primary($category->accumulatedAccount, JournalMath::neg((string) $asset->opening_accumulated), null, null, $label)
+            ->primary($this->account(AccountRole::OpeningBalanceEquity), JournalMath::neg($net), null, null, $label);
+
+        return $this->create(FixedAsset::REFERENCE_TYPE, $id, Carbon::parse($asset->posted_at ?? now())->toDateString(), $label, (int) $asset->branch_id, $builder, $userId);
+    }
+
+    /**
+     * One journal entry per branch. Source ids are "{run}:{branch}" because an entry has one branch
+     * and the source unique key allows one post event per source.
+     *
+     * @param  array<int, array<string, array{expense: Account, accumulated: Account, amount: string}>>  $byBranch
+     */
+    public function depreciationRun(DepreciationRun $run, array $byBranch, ?string $userId): void
+    {
+        if (! $this->enabled()) {
+            return;
+        }
+        $date = $run->period_month->copy()->endOfMonth()->toDateString();
+        $label = 'Depreciation '.$run->run_number;
+        foreach ($byBranch as $branchId => $splits) {
+            $builder = $this->builder();
+            foreach ($splits as $split) {
+                $builder->primary($split['expense'], $split['amount'], null, null, $label);
+                $builder->primary($split['accumulated'], JournalMath::neg($split['amount']), null, null, $label);
+            }
+            $this->create(DepreciationRun::REFERENCE_TYPE, $run->id.':'.$branchId, $date, $label, (int) $branchId, $builder, $userId);
+        }
+    }
+
+    public function reverseDepreciationRun(string $runId, ?string $userId): void
+    {
+        if (! $this->enabled()) {
+            return;
+        }
+        $entries = JournalEntry::query()
+            ->where('source_type', DepreciationRun::REFERENCE_TYPE)
+            ->where('source_event', JournalEntry::EVENT_POST)
+            ->where('status', JournalEntryStatus::Posted)
+            ->where(function ($query) use ($runId): void {
+                $query->where('source_id', $runId)->orWhere('source_id', 'like', $runId.':%');
+            })
+            ->lockForUpdate()
+            ->get();
+        foreach ($entries as $entry) {
+            $this->journalEntryService->reverseEntry($entry, $userId, $entry->entry_date?->toDateString());
+        }
+    }
+
+    public function fixedAssetDisposal(
+        FixedAsset $asset,
+        string $date,
+        string $catchUp,
+        string $proceeds,
+        ?Account $settlement,
+        ?string $partyType,
+        ?string $partyId,
+        ?string $userId,
+    ): ?JournalEntry {
+        $id = (string) $asset->id;
+        if (! $this->shouldPost(FixedAsset::DISPOSAL_REFERENCE, $id)) {
+            return null;
+        }
+        $asset->loadMissing(['category.assetAccount', 'category.accumulatedAccount', 'category.expenseAccount', 'category.disposalGainAccount', 'category.disposalLossAccount']);
+        $category = $asset->category;
+        if ($category?->assetAccount === null || $category->accumulatedAccount === null || $category->expenseAccount === null || $category->disposalLossAccount === null || $category->disposalGainAccount === null) {
+            abort(422, 'The fixed-asset category has no posting account.', ['X-Error-Code' => 'FIXED_ASSET_ACCOUNT_INVALID']);
+        }
+        $accumulated = JournalMath::add((string) $asset->accumulated_depreciation, '0');
+        $book = JournalMath::sub((string) $asset->cost, $accumulated);
+        if (JournalMath::isNegative($book)) {
+            $book = '0';
+        }
+        $label = 'Disposal '.$asset->disposal_number;
+        $builder = $this->builder();
+        if (JournalMath::isPositive($catchUp)) {
+            $builder->primary($category->expenseAccount, $catchUp, null, null, $label);
+            $builder->primary($category->accumulatedAccount, JournalMath::neg($catchUp), null, null, $label);
+        }
+        $builder
+            ->primary($category->accumulatedAccount, $accumulated, null, null, $label)
+            ->primary($category->disposalLossAccount, $book, null, null, $label)
+            ->primary($category->assetAccount, JournalMath::neg((string) $asset->cost), null, null, $label);
+        if ($settlement !== null && JournalMath::isPositive($proceeds)) {
+            $builder->primary($settlement, $proceeds, $partyType, $partyId, $label);
+            $builder->primary($category->disposalGainAccount, JournalMath::neg($proceeds), null, null, $label);
+        }
+
+        return $this->create(FixedAsset::DISPOSAL_REFERENCE, $id, $date, $label, (int) $asset->branch_id, $builder, $userId);
+    }
+
+    /**
+     * Recognition keeps the historical rate and the schedule's pre-allocated primary
+     * amounts, so the two lines match exactly and no rounding line is created.
+     */
+    public function deferralRecognition(
+        DeferralSchedule $schedule,
+        DeferralScheduleLine $line,
+        ?string $userId,
+        ?string $date = null,
+        ?string $amount = null,
+        ?string $amountPrimary = null,
+    ): ?JournalEntry {
+        $sourceId = $line->recognitionSourceId((string) $schedule->id);
+        if (! $this->shouldPost(SourceDocuments::DEFERRAL_RECOGNITION, $sourceId)) {
+            return null;
+        }
+
+        $schedule->loadMissing(['deferralAccount', 'recognitionAccount']);
+        $deferral = $schedule->deferralAccount;
+        $recognition = $schedule->recognitionAccount;
+        if ($deferral === null || $recognition === null) {
+            abort(422, 'The schedule is missing an account.', ['X-Error-Code' => 'DEFERRAL_ACCOUNT_INVALID']);
+        }
+
+        $document = JournalMath::store($amount ?? (string) $line->amount);
+        $primary = JournalMath::store($amountPrimary ?? (string) $line->amount_primary);
+        $currencyId = (int) $schedule->currency_id;
+        $rate = (string) $schedule->exchange_rate;
+        $label = 'Deferral '.($schedule->schedule_number ?? '').' — '.$line->period_start->toDateString().'..'.$line->period_end->toDateString();
+        $builder = $this->builder();
+        if ($schedule->kind === DeferralKind::PrepaidExpense) {
+            $builder->exact($recognition, $primary, $currencyId, $rate, $document, $label);
+            $builder->exact($deferral, JournalMath::neg($primary), $currencyId, $rate, JournalMath::neg($document), $label);
+        } else {
+            $builder->exact($deferral, $primary, $currencyId, $rate, $document, $label);
+            $builder->exact($recognition, JournalMath::neg($primary), $currencyId, $rate, JournalMath::neg($document), $label);
+        }
+
+        return $this->create(
+            SourceDocuments::DEFERRAL_RECOGNITION,
+            $sourceId,
+            $date ?? $line->posting_date->toDateString(),
+            $label,
+            (int) $schedule->branch_id,
+            $builder,
+            $userId,
+        );
+    }
+
+    public function reverseDeferralRecognition(DeferralSchedule $schedule, DeferralScheduleLine $line, ?string $userId, ?string $date = null): void
+    {
+        $this->reverse(SourceDocuments::DEFERRAL_RECOGNITION, $line->recognitionSourceId((string) $schedule->id), $userId, $date);
+    }
+
     private function shouldPost(string $sourceType, string $sourceId): bool
     {
         return $this->enabled() && ! $this->hasEntry($sourceType, $sourceId);
     }
 
-    private function create(string $sourceType, string $sourceId, string $date, string $description, ?int $branchId, JournalBuilder $builder, ?string $userId, string $event = JournalEntry::EVENT_POST): void
+    private function create(string $sourceType, string $sourceId, string $date, string $description, ?int $branchId, JournalBuilder $builder, ?string $userId, string $event = JournalEntry::EVENT_POST): ?JournalEntry
     {
         $lines = $builder->lines($this->account(AccountRole::Rounding));
         if ($lines === []) {
-            return;
+            return null;
         }
 
-        $this->journalEntryService->createPosted([
+        return $this->journalEntryService->createPosted([
             'entry_date' => $date,
             'source_type' => $sourceType,
             'source_id' => $sourceId,

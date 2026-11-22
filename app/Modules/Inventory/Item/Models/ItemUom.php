@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use OwenIt\Auditing\Auditable;
+use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 #[Fillable([
     'item_id',
@@ -22,8 +24,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'is_default_sale',
     'is_default_purchase',
 ])]
-class ItemUom extends Model
+class ItemUom extends Model implements AuditableContract
 {
+    use Auditable;
+
     /**
      * @return array<string, string>
      */

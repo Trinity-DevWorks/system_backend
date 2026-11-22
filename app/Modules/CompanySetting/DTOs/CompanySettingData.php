@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\CompanySetting\DTOs;
 
+use App\Modules\CompanySetting\Enums\BudgetWarningScope;
 use App\Modules\CompanySetting\Enums\DateFormat;
 use App\Modules\CompanySetting\Enums\NumberFormat;
 use App\Modules\CompanySetting\Enums\PreferredLanguage;
@@ -28,6 +29,9 @@ readonly class CompanySettingData
         public PriceRoundingMode $priceRoundingMode,
         public int $priceDecimalPlaces,
         public int $fiscalYearStartMonth,
+        public bool $budgetWarningsEnabled,
+        public BudgetWarningScope $budgetWarningScope,
+        public bool $autoDepreciation,
     ) {}
 
     public static function fromUpdateRequest(UpdateCompanySettingRequest $request, CompanySetting $settings): self
@@ -71,6 +75,15 @@ readonly class CompanySettingData
             fiscalYearStartMonth: array_key_exists('fiscal_year_start_month', $data)
                 ? (int) $data['fiscal_year_start_month']
                 : (int) ($settings->fiscal_year_start_month ?? 1),
+            budgetWarningsEnabled: array_key_exists('budget_warnings_enabled', $data)
+                ? (bool) $data['budget_warnings_enabled']
+                : (bool) $settings->budget_warnings_enabled,
+            budgetWarningScope: array_key_exists('budget_warning_scope', $data)
+                ? BudgetWarningScope::from((string) $data['budget_warning_scope'])
+                : $settings->budget_warning_scope,
+            autoDepreciation: array_key_exists('auto_depreciation', $data)
+                ? (bool) $data['auto_depreciation']
+                : (bool) $settings->auto_depreciation,
         );
     }
 
@@ -87,7 +100,10 @@ readonly class CompanySettingData
      *     inventory_costing_method: string,
      *     price_rounding_mode: string,
      *     price_decimal_places: int,
-     *     fiscal_year_start_month: int
+     *     fiscal_year_start_month: int,
+     *     budget_warnings_enabled: bool,
+     *     budget_warning_scope: string,
+     *     auto_depreciation: bool
      * }
      */
     public function toArray(): array
@@ -105,6 +121,9 @@ readonly class CompanySettingData
             'price_rounding_mode' => $this->priceRoundingMode->value,
             'price_decimal_places' => $this->priceDecimalPlaces,
             'fiscal_year_start_month' => $this->fiscalYearStartMonth,
+            'budget_warnings_enabled' => $this->budgetWarningsEnabled,
+            'budget_warning_scope' => $this->budgetWarningScope->value,
+            'auto_depreciation' => $this->autoDepreciation,
         ];
     }
 

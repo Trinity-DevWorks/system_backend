@@ -38,6 +38,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Daily low-stock / purchasing-alert digest emails + in-app notifications (Phase 1).
         $schedule->command('notifications:low-stock-digest')->dailyAt('07:00')->withoutOverlapping();
         $schedule->command('notifications:lot-expiry-digest')->dailyAt('07:15')->withoutOverlapping();
+        $schedule->command('fixed-assets:depreciate')->monthlyOn(1, '03:00')->withoutOverlapping();
+        $schedule->command('accounting:run-periodic')->dailyAt((string) config('accounting.recurring.run_hour', '01:00'))->withoutOverlapping()->onOneServer();
+        $schedule->command('prices:apply-scheduled')->dailyAt('00:20')->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(HandleCors::class);
@@ -117,11 +120,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (HttpExceptionInterface $e, Request $request) use ($wantsEnvelope) {
             if ($wantsEnvelope($request)) {
                 $code = $e->getHeaders()['X-Error-Code'] ?? $e->getHeaders()['x-error-code'] ?? null;
+                // Optional JSON values for the translated message (e.g. which serial numbers).
+                $params = $e->getHeaders()['X-Error-Params'] ?? null;
+                $params = is_string($params) ? json_decode($params, true) : null;
 
                 return ApiResponse::error(
                     $e->getMessage() !== '' ? $e->getMessage() : 'Request failed.',
                     $e->getStatusCode(),
-                    null,
+                    is_array($params) ? ['params' => $params] : null,
                     [],
                     null,
                     null,

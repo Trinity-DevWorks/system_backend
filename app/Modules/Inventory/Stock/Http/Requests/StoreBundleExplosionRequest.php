@@ -40,6 +40,8 @@ class StoreBundleExplosionRequest extends FormRequest
             'lines.*.theoretical_quantity' => ['nullable', 'numeric', 'min:0'],
             'lines.*.lot_id' => ['nullable', 'integer', 'exists:inventory_lots,id'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

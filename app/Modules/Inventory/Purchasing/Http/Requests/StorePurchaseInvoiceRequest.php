@@ -53,6 +53,8 @@ class StorePurchaseInvoiceRequest extends FormRequest
             'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'lines.*.description' => ['nullable', 'string', 'max:500'],
             'lines.*.notes' => ['nullable', 'string'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

@@ -23,8 +23,9 @@ class SalesQuotationPdfService
     {
         DocumentPdfSupport::assertPrintableStatus(
             $quotation->status,
-            [SalesQuotationStatus::Sent, SalesQuotationStatus::Accepted, SalesQuotationStatus::Converted],
-            'Only sent, accepted, or converted sales quotations can be printed.',
+            // Drafts too: printing or emailing is how a quotation reaches the customer (emailing marks it sent).
+            [SalesQuotationStatus::Draft, SalesQuotationStatus::Sent, SalesQuotationStatus::Accepted, SalesQuotationStatus::Converted],
+            'Only draft, sent, accepted, or converted sales quotations can be printed.',
             'SALES_QUOTATION_PDF_NOT_ALLOWED',
         );
 

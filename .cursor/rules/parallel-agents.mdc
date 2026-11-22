@@ -1,0 +1,72 @@
+---
+description: Several agents may work on this project at the same time. Coordinate through plans/AGENTS.md and never undo another agent's work.
+alwaysApply: true
+---
+
+# Parallel Agents (backend)
+
+More than one agent may be implementing a different plan in this repository at the same time.
+Each agent owns one plan file in `../plans/` (for example `plans/budgets.md`, `plans/fixed-assets.md`).
+
+## Before you start and when you finish
+
+- Read `../plans/AGENTS.md`. Add or update **your own row only**: plan, branch, status, shared files you touched, open TODOs.
+- Update it again whenever you touch a new shared file and when your plan is done.
+- Tick the checkboxes in your plan file as tasks are completed. Write a short note under any task you skipped or changed.
+
+## Never undo another agent's work
+
+- Re-read a file right before editing it. Another agent may have changed it since you last read it.
+- Never revert, delete, rename or "clean up" code, migrations, tests or translations that your plan did not add.
+- If another agent's change breaks your work, **do not fix their code**. Note it in `plans/AGENTS.md` under "Open TODOs" and continue.
+
+## Shared files: add, don't rewrite
+
+These files are edited by most plans:
+
+- `config/rbac.php`, `config/modules.php`, `config/chart_of_accounts.php`
+- `routes/tenant.php`, `routes/console.php`, `bootstrap/app.php`
+- `app/Providers/AppServiceProvider.php` (morph map)
+- `app/Modules/Accounting/Enums/AccountRole.php`, `app/Support/DocumentType.php`, `app/Modules/Accounting/Support/SourceDocuments.php`
+- `app/Modules/Accounting/Services/JournalPostingService.php`
+- `app/Modules/Notification/Services/DomainNotificationPublisher.php`
+- `app/Modules/CompanySetting/*` (model, DTOs, requests)
+- `app/Modules/Inventory/Purchasing/Services/PurchaseInvoiceService.php`, `app/Modules/Treasury/Services/ExpenseVoucherService.php`
+- `app/Modules/Reports/Http/Controllers/AnalyticsReportController.php`, `AnalyticsReportRequest.php`, `lang/*/reports.php`
+- `docs/api-error-codes.md`
+
+Rules for them:
+
+- Only **add** your own block (a new method, a new array entry, a new route group, a new section) next to related entries.
+- Do not reorder, reformat, rename or refactor existing code in these files.
+- Keep each change small and self-contained, with a one-line comment naming your feature, so merges stay easy.
+- When two plans need the same place (for example both change the non-stock loop in `JournalPostingService::purchaseInvoice()`), add your branch of logic without changing the other plan's lines.
+
+## Migrations and the database
+
+- Every plan uses its **own migration files with unique timestamps**. Never edit another plan's migration.
+- To change an existing table, add a new migration in your plan. Do not edit shared older migrations while other agents are active.
+- Locally use only additive commands: `php artisan tenants:migrate`, `php artisan tenants:sync-rbac`. **Never** run `migrate:fresh`, `tenants:migrate-fresh` or anything that drops data.
+
+## Tests
+
+- All agents share the test database (`system_testing`). Two test runs at the same time cause random failures.
+- **Never run tests while another agent is running tests.** If you can, use your own test database (set `DB_DATABASE` in your worktree's `.env.testing`).
+- Run test folders one at a time (`php artisan test tests/Feature/<Folder>`), never the whole suite in one process.
+- A failure in another plan's area is not yours to fix: note it in `plans/AGENTS.md`.
+
+## Formatting and tooling
+
+- Run Pint **only on files you changed**: `vendor/bin/pint <paths>`. Never `pint --dirty` (it reformats other agents' uncommitted files).
+- Run PHPStan on your own module paths.
+
+## Cross-plan dependencies
+
+- If your plan needs something another plan adds (for example budget warnings skipping fixed-asset lines), and it is not there yet, do **not** build it yourself.
+- Leave `// TODO(<plan-name>): <what is needed>` at the exact spot, and list it in `plans/AGENTS.md` under "Open TODOs". It is resolved after both plans are merged.
+
+## Git
+
+- Work on your own branch (or git worktree) per plan. Do not commit to another agent's branch.
+- Commit messages start with the plan name, for example `fixed-assets: A5 depreciation run`.
+- Do not push, rebase or merge other branches unless the user asks.

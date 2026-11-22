@@ -38,6 +38,7 @@ class UpdateItemUomRequest extends FormRequest
             'is_base' => ['sometimes', 'boolean'],
             'is_default_sale' => ['sometimes', 'boolean'],
             'is_default_purchase' => ['sometimes', 'boolean'],
+            'reason' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }
 

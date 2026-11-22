@@ -37,6 +37,8 @@ class StorePurchaseDebitNoteRequest extends FormRequest
             'lines' => ['sometimes', 'array'],
             'lines.*.purchase_invoice_line_id' => ['required', 'integer', 'distinct'],
             'lines.*.quantity' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
             'lines.*.line_total' => ['nullable', 'numeric', 'min:0'],
             'lines.*.warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'lines.*.description' => ['nullable', 'string', 'max:500'],

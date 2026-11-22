@@ -11,6 +11,7 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Models\InventoryLot;
+use App\Modules\Inventory\Stock\Services\InventorySerialService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Sales\DeliveryNote\Enums\DeliveryNoteStatus;
 use App\Modules\Sales\DeliveryNote\Models\DeliveryNote;
@@ -76,7 +77,7 @@ class DeliveryNoteService
                 'warehouse:id,name,shortcut_name',
                 'salesOrder:id,order_number',
                 'postedByUser:id,name',
-                'lines.item:id,item_code,name,track_lots,track_inventory',
+                'lines.item:id,item_code,name,track_lots,track_serials,track_inventory',
                 'lines.itemUom.uom:id,code,name',
                 'lines.lot:id,lot_number,expiry_date',
             ])
@@ -141,13 +142,13 @@ class DeliveryNoteService
         $order->loadMissing('customer');
 
         $lines = [];
-        foreach (SalesOrderLine::query()->where('sales_order_id', $order->id)->with(['item:id,item_code,name,track_lots'])->orderBy('id')->get() as $line) {
+        foreach (SalesOrderLine::query()->where('sales_order_id', $order->id)->with(['item:id,item_code,name,track_lots,track_serials'])->orderBy('id')->get() as $line) {
             $qty = $line->undeliveredQuantity();
             if (Decimal::isPositive($qty)) {
                 $lines[] = [
                     'sales_order_line_id' => (int) $line->id,
                     'item_id' => (string) $line->item_id,
-                    'item' => $line->item ? ['id' => (string) $line->item->id, 'item_code' => $line->item->item_code, 'name' => $line->item->name, 'track_lots' => (bool) $line->item->track_lots] : null,
+                    'item' => $line->item ? ['id' => (string) $line->item->id, 'item_code' => $line->item->item_code, 'name' => $line->item->name, 'track_lots' => (bool) $line->item->track_lots, 'track_serials' => (bool) $line->item->track_serials] : null,
                     'item_uom_id' => $line->item_uom_id,
                     'quantity' => Decimal::round($qty, 6),
                     'description' => $line->description,
@@ -437,6 +438,8 @@ class DeliveryNoteService
                 $lotId = null;
             }
 
+            $serialNumbers = app(InventorySerialService::class)->forLine($item, $row['serial_numbers'] ?? null, $qty['base_quantity'], $index + 1);
+
             DeliveryNoteLine::query()->create([
                 'delivery_note_id' => $note->id,
                 'sales_order_line_id' => $orderLineId,
@@ -444,6 +447,7 @@ class DeliveryNoteService
                 'item_uom_id' => $qty['item_uom_id'],
                 'warehouse_id' => $warehouseId,
                 'lot_id' => $lotId,
+                'serial_numbers' => $serialNumbers,
                 'sort_order' => $index + 1,
                 'quantity' => $qty['quantity'],
                 'base_quantity' => $qty['base_quantity'],
@@ -477,6 +481,11 @@ class DeliveryNoteService
                         'X-Error-Code' => 'SALES_INVOICE_BUNDLE_LOT_NOT_SUPPORTED',
                     ]);
                 }
+                if ($child->track_serials) {
+                    abort(422, 'Bundles with serial-numbered components cannot be delivered. Explode the bundle first.', [
+                        'X-Error-Code' => 'SALES_INVOICE_BUNDLE_SERIAL_NOT_SUPPORTED',
+                    ]);
+                }
                 $this->stockMovementService->post(StockMovementData::forSaleBundleComponent(
                     itemId: (string) $child->id,
                     warehouseId: $warehouseId,
@@ -506,7 +515,7 @@ class DeliveryNoteService
             userId: $userId,
             lotId: $line->lot_id ? (int) $line->lot_id : null,
             referenceType: DeliveryNote::REFERENCE_TYPE,
-        ));
+        )->withSerials($line->serial_numbers, 'customer', (string) $note->customer_id));
     }
 
     private function catalogPrice(DeliveryNoteLine $line): string

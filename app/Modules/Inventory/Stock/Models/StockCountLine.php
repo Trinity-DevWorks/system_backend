@@ -11,6 +11,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property list<string>|null $serial_numbers
+ */
 #[Fillable([
     'stock_count_id',
     'item_id',
@@ -19,6 +22,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'variance_quantity',
     'unit_cost',
     'lot_id',
+    'serial_numbers',
     'notes',
 ])]
 class StockCountLine extends Model implements AuditableContract
@@ -31,6 +35,7 @@ class StockCountLine extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
+            'serial_numbers' => 'array',
             'theoretical_quantity' => 'decimal:6',
             'counted_quantity' => 'decimal:6',
             'variance_quantity' => 'decimal:6',

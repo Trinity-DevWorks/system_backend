@@ -28,6 +28,7 @@ class OpeningStockService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly InventorySerialService $inventorySerialService,
         private readonly JournalPostingService $journalPostingService,
     ) {}
 
@@ -193,7 +194,7 @@ class OpeningStockService
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
                     openingStockId: (string) $locked->id,
                     valueDelta: $inboundValue,
-                ));
+                )->withSerials($line->serial_numbers));
             }
 
             $this->journalPostingService->openingStock($locked, $userId);
@@ -271,6 +272,7 @@ class OpeningStockService
                 'item_uom_id' => $itemUomId,
                 'unit_cost' => $this->normalizeUnitCost($row['unit_cost'] ?? null),
                 'lot_id' => $lotId,
+                'serial_numbers' => $this->inventorySerialService->forLine($item, $row['serial_numbers'] ?? null, $baseQuantity, count($normalized) + 1),
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }

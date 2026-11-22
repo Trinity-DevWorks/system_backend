@@ -8,6 +8,8 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\ItemVariant\Models\ItemAttribute;
 use App\Modules\Inventory\ItemVariant\Models\ItemAttributeValue;
+use App\Modules\Inventory\PriceChange\Enums\PriceChangeSource;
+use App\Modules\Inventory\PriceChange\Services\PriceHistoryRecorder;
 use App\Modules\Inventory\Stock\Models\StockMovement;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,8 @@ use Illuminate\Support\Str;
 class ItemVariantService
 {
     public const MAX_COMBINATIONS = 200;
+
+    public function __construct(private readonly PriceHistoryRecorder $history) {}
 
     /**
      * @return array{attributes: list<array<string, mixed>>, variants: list<array<string, mixed>>}
@@ -187,6 +191,8 @@ class ItemVariantService
             'color' => $parent->color,
             'track_inventory' => $parent->track_inventory,
             'track_lots' => $parent->track_lots,
+            'track_serials' => $parent->track_serials,
+            'warranty_months' => $parent->warranty_months,
             'costing_method' => $parent->costing_method,
             'allow_sale' => $parent->allow_sale,
             'allow_purchase' => $parent->allow_purchase,
@@ -196,7 +202,7 @@ class ItemVariantService
         $child->forceFill(['parent_item_id' => $parent->id])->save();
 
         foreach ($units as $unit) {
-            ItemUom::query()->create([
+            $copied = ItemUom::query()->create([
                 'item_id' => $child->id,
                 'uom_id' => $unit->uom_id,
                 'conversion_factor' => $unit->conversion_factor,
@@ -208,6 +214,13 @@ class ItemVariantService
                 'is_base' => $unit->is_base,
                 'is_default_sale' => $unit->is_default_sale,
                 'is_default_purchase' => $unit->is_default_purchase,
+            ]);
+            $this->history->recordItemUom($copied, null, [
+                'source' => PriceChangeSource::VariantGenerate->value,
+                'source_id' => (string) $parent->id,
+                'reason' => null,
+                'effective_at' => null,
+                'changed_by' => null,
             ]);
         }
 

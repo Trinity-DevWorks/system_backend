@@ -66,7 +66,7 @@ class StockBalanceService
     {
         $query = StockBalance::query()
             ->with([
-                'item:id,item_code,name,base_uom_id,track_inventory,track_lots,is_active',
+                'item:id,item_code,name,base_uom_id,track_inventory,track_lots,track_serials,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
                 'lot:id,lot_number,expiry_date',
@@ -110,7 +110,7 @@ class StockBalanceService
 
         $query = StockBalance::query()
             ->with([
-                'item:id,item_code,name,base_uom_id,track_inventory,track_lots,is_active',
+                'item:id,item_code,name,base_uom_id,track_inventory,track_lots,track_serials,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
                 'lot:id,lot_number,expiry_date',
@@ -197,7 +197,7 @@ class StockBalanceService
 
         if ($models->isNotEmpty()) {
             $models->load([
-                'item:id,item_code,name,base_uom_id,track_inventory,track_lots,is_active',
+                'item:id,item_code,name,base_uom_id,track_inventory,track_lots,track_serials,is_active',
                 'item.baseUom:id,code,name',
                 'warehouse:id,name,shortcut_name,is_active',
             ]);

@@ -12,6 +12,7 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\StockMovement;
+use App\Modules\Inventory\Stock\Services\InventorySerialService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Sales\DeliveryNote\Models\DeliveryNote;
@@ -43,6 +44,7 @@ class SalesCreditNoteService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly JournalPostingService $journalPostingService,
+        private readonly InventorySerialService $inventorySerialService,
     ) {}
 
     /**
@@ -149,6 +151,8 @@ class SalesCreditNoteService
                 'creditable_total' => ProportionalCredit::money($creditable),
                 'warehouse_id' => $line->warehouse_id,
                 'lot_id' => $line->lot_id,
+                'serial_numbers' => $line->serial_numbers ?? [],
+                'track_serials' => (bool) ($line->item?->track_serials),
                 'track_inventory' => (bool) ($line->item?->track_inventory),
                 'allow_return' => (bool) ($line->item?->allow_return ?? true),
                 'item' => $line->item ? [
@@ -489,7 +493,7 @@ class SalesCreditNoteService
     {
         $invoice = $this->postedInvoice((string) $note->sales_invoice_id);
         $this->warehouseService->assertDocumentVisible($invoice);
-        $invoice->load('lines');
+        $invoice->load('lines.item');
         $usage = $this->postedUsage((string) $invoice->id);
         $sources = $invoice->lines->keyBy('id');
         $seen = [];
@@ -583,6 +587,7 @@ class SalesCreditNoteService
         }
 
         return [
+            'serial_numbers' => $this->returnSerials($note, $source, $row, $base),
             'sales_credit_note_id' => $note->id,
             'sales_invoice_line_id' => $source->id,
             'item_id' => $source->item_id,
@@ -797,7 +802,25 @@ class SalesCreditNoteService
             userId: $userId,
             lotId: $lotId,
             valueDelta: $valuation['value'],
-        ));
+        )->withSerials($line->serial_numbers, 'customer', (string) $invoice->customer_id));
+    }
+
+    /**
+     * Serials coming back on a return line: picked from the ones sold on the invoice line.
+     *
+     * @param  array<string, mixed>  $row
+     * @return list<string>|null
+     */
+    private function returnSerials(SalesCreditNote $note, SalesInvoiceLine $source, array $row, string $baseQuantity): ?array
+    {
+        $item = $source->item ?? Item::query()->findOrFail($source->item_id);
+        if (! $item->track_serials || $note->type !== SalesCreditNoteType::Return) {
+            return null;
+        }
+        $chosen = $this->inventorySerialService->forLine($item, $row['serial_numbers'] ?? null, $baseQuantity);
+        InventorySerialService::assertSubset($source->serial_numbers ?? [], $chosen ?? [], $item->name);
+
+        return $chosen;
     }
 
     private function postBundleReturn(SalesCreditNote $note, SalesCreditNoteLine $line, Item $bundle, int $warehouseId, ?string $userId): void
@@ -814,6 +837,9 @@ class SalesCreditNoteService
             }
             if ($child->track_lots) {
                 $this->fail('Lot-tracked bundle components cannot be returned on a credit note.', 'SALES_CREDIT_NOTE_BUNDLE_LOT_NOT_SUPPORTED');
+            }
+            if ($child->track_serials) {
+                $this->fail('Bundles with serial-numbered components cannot be returned on a credit note.', 'SALES_CREDIT_NOTE_BUNDLE_SERIAL_NOT_SUPPORTED');
             }
             $baseQty = bcmul((string) $line->base_quantity, (string) $component->quantity, 6);
             $valuation = $this->returnValuation(

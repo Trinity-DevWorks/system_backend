@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Models;
 
 use App\Modules\Branch\Support\HasDocumentBranch;
+use App\Modules\RecurringEntry\Models\RecurringTemplate;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Treasury\Enums\TreasuryDocumentStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -36,6 +37,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 #[Fillable([
     'branch_id', 'voucher_number', 'voucher_date', 'cash_bank_account_id', 'currency_id', 'exchange_rate', 'payee',
     'supplier_id', 'reference', 'notes', 'subtotal', 'tax_total', 'total', 'status', 'created_by', 'posted_by', 'posted_at',
+    'recurring_template_id',
 ])]
 class ExpenseVoucher extends Model implements AuditableContract
 {
@@ -93,5 +95,13 @@ class ExpenseVoucher extends Model implements AuditableContract
     public function lines(): HasMany
     {
         return $this->hasMany(ExpenseVoucherLine::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /**
+     * @return BelongsTo<RecurringTemplate, $this>
+     */
+    public function recurringTemplate(): BelongsTo
+    {
+        return $this->belongsTo(RecurringTemplate::class);
     }
 }

@@ -29,6 +29,7 @@ class StockCountService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly InventorySerialService $inventorySerialService,
         private readonly JournalPostingService $journalPostingService,
     ) {}
 
@@ -219,7 +220,7 @@ class StockCountService
                     userId: $userId,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
                     stockCountId: (string) $locked->id,
-                ));
+                )->withSerials($line->serial_numbers));
             }
 
             $this->journalPostingService->stockCount($locked, $userId);
@@ -316,6 +317,8 @@ class StockCountService
                 'variance_quantity' => $variance,
                 'unit_cost' => $this->normalizeUnitCost($row['unit_cost'] ?? null),
                 'lot_id' => $lotId,
+                // Serials of the difference: units found (surplus) or missing (shortage).
+                'serial_numbers' => $this->inventorySerialService->forLine($item, $row['serial_numbers'] ?? null, $variance, count($normalized) + 1),
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }

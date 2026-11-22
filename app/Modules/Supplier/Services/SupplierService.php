@@ -88,7 +88,7 @@ class SupplierService
     public function names(): Collection
     {
         return Supplier::query()
-            ->select(['id', 'supplier_code', 'name', 'is_active', 'created_at', 'updated_at'])
+            ->select(['id', 'supplier_code', 'name', 'phone', 'is_active', 'created_at', 'updated_at'])
             ->orderBy('name')
             ->get();
     }

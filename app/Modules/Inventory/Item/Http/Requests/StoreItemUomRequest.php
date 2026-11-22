@@ -30,6 +30,7 @@ class StoreItemUomRequest extends FormRequest
             'is_base' => ['nullable', 'boolean'],
             'is_default_sale' => ['nullable', 'boolean'],
             'is_default_purchase' => ['nullable', 'boolean'],
+            'reason' => ['nullable', 'string', 'max:500'],
         ];
     }
 

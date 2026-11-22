@@ -113,6 +113,7 @@ class ProductionService
                 'yield_quantity' => Decimal::round($recipe->yield_quantity, 6),
                 'item_uom_id' => $itemUomId,
                 'lot_id' => $this->resolveProduceLotId($item, $data),
+                'serial_numbers' => app(InventorySerialService::class)->forLine($item, $data['serial_numbers'] ?? null, $baseQuantity),
                 'notes' => $this->normalizeNotes($data['notes'] ?? null),
                 'created_by' => $userId,
             ]);
@@ -192,6 +193,13 @@ class ProductionService
 
             if (array_key_exists('lot_id', $data) || array_key_exists('lot_number', $data) || array_key_exists('expiry_date', $data)) {
                 $updates['lot_id'] = $this->resolveProduceLotId($item, $data);
+            }
+
+            // Serials of the produced units; dropped when the item changes.
+            if (array_key_exists('serial_numbers', $data)) {
+                $updates['serial_numbers'] = app(InventorySerialService::class)->forLine($item, $data['serial_numbers'], $updates['base_quantity']);
+            } elseif (isset($updates['item_id'])) {
+                $updates['serial_numbers'] = null;
             }
 
             $document->update($updates);
@@ -286,7 +294,7 @@ class ProductionService
                     userId: $userId,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
                     productionId: (string) $locked->id,
-                ));
+                )->withSerials($line->serial_numbers));
 
                 $consumedValue = bcadd(
                     $consumedValue,
@@ -314,7 +322,7 @@ class ProductionService
                 lotId: $locked->lot_id ? (int) $locked->lot_id : null,
                 productionId: (string) $locked->id,
                 valueDelta: bccomp($producedBase, '0', 6) > 0 ? $consumedValue : null,
-            ));
+            )->withSerials($locked->serial_numbers));
 
             $this->journalPostingService->production($locked, $userId);
 
@@ -442,6 +450,7 @@ class ProductionService
                 'theoretical_quantity' => $theoretical,
                 'item_uom_id' => $itemUomId,
                 'lot_id' => $lotId,
+                'serial_numbers' => app(InventorySerialService::class)->forLine($item, $row['serial_numbers'] ?? null, $baseQuantity, count($normalized) + 1),
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }

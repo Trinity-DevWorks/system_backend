@@ -28,7 +28,10 @@ readonly class CompanySettingResponseData
         public string $priceRoundingMode,
         public int $priceDecimalPlaces,
         public int $fiscalYearStartMonth,
+        public bool $budgetWarningsEnabled,
+        public string $budgetWarningScope,
         public ?string $chartTemplate,
+        public bool $autoDepreciation,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -53,7 +56,10 @@ readonly class CompanySettingResponseData
             priceRoundingMode: $settings->price_rounding_mode->value,
             priceDecimalPlaces: (int) $settings->price_decimal_places,
             fiscalYearStartMonth: (int) ($settings->fiscal_year_start_month ?? 1),
+            budgetWarningsEnabled: (bool) $settings->budget_warnings_enabled,
+            budgetWarningScope: $settings->budget_warning_scope->value,
             chartTemplate: $settings->chart_template !== null ? (string) $settings->chart_template : null,
+            autoDepreciation: (bool) $settings->auto_depreciation,
             createdAt: (string) $settings->created_at,
             updatedAt: (string) $settings->updated_at,
         );
@@ -80,7 +86,10 @@ readonly class CompanySettingResponseData
             'price_rounding_mode' => $this->priceRoundingMode,
             'price_decimal_places' => $this->priceDecimalPlaces,
             'fiscal_year_start_month' => $this->fiscalYearStartMonth,
+            'budget_warnings_enabled' => $this->budgetWarningsEnabled,
+            'budget_warning_scope' => $this->budgetWarningScope,
             'chart_template' => $this->chartTemplate,
+            'auto_depreciation' => $this->autoDepreciation,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];

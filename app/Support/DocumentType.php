@@ -33,9 +33,14 @@ enum DocumentType: string
     case Production = 'production';
     case BundleExplosion = 'bundle_explosion';
     case StockRevaluation = 'stock_revaluation';
+    case PriceChange = 'price_change';
     case JournalEntry = 'journal_entry';
+    case FixedAsset = 'fixed_asset';
+    case AssetDisposal = 'asset_disposal';
     case ExpenseVoucher = 'expense_voucher';
     case TreasuryTransfer = 'treasury_transfer';
+    case RecurringTemplate = 'recurring_template';
+    case DeferralSchedule = 'deferral_schedule';
     case OpeningSalesInvoice = 'opening_sales_invoice';
     case OpeningCreditNote = 'opening_credit_note';
     case OpeningPurchaseInvoice = 'opening_purchase_invoice';
@@ -67,9 +72,14 @@ enum DocumentType: string
             self::Production => 'PRD',
             self::BundleExplosion => 'BEX',
             self::StockRevaluation => 'SRV',
+            self::PriceChange => 'PCH',
             self::JournalEntry => 'JE',
+            self::FixedAsset => 'FA',
+            self::AssetDisposal => 'FAD',
             self::ExpenseVoucher => 'EXP',
             self::TreasuryTransfer => 'TRF',
+            self::RecurringTemplate => 'RT',
+            self::DeferralSchedule => 'DFS',
             self::OpeningSalesInvoice => 'OSI',
             self::OpeningCreditNote => 'OCN',
             self::OpeningPurchaseInvoice => 'OPI',
@@ -87,7 +97,9 @@ enum DocumentType: string
             self::PurchaseOrder, self::GoodsReceipt, self::LandedCost, self::PurchaseInvoice, self::PurchaseDebitNote,
             self::SupplierPayment, self::SupplierRefund,
             self::OpeningPurchaseInvoice, self::OpeningDebitNote => 'purchasing',
-            self::JournalEntry, self::ExpenseVoucher, self::TreasuryTransfer => 'accounting',
+            self::JournalEntry, self::ExpenseVoucher, self::TreasuryTransfer,
+            self::FixedAsset, self::AssetDisposal,
+            self::RecurringTemplate, self::DeferralSchedule => 'accounting',
             default => 'inventory',
         };
     }

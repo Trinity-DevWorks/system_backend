@@ -25,6 +25,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * @property ProductionStatus $status
  * @property Carbon|null $production_date
  * @property Carbon|null $posted_at
+ * @property list<string>|null $serial_numbers
  */
 #[Fillable([
     'branch_id',
@@ -39,6 +40,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'yield_quantity',
     'item_uom_id',
     'lot_id',
+    'serial_numbers',
     'notes',
     'created_by',
     'posted_by',
@@ -58,6 +60,7 @@ class Production extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
+            'serial_numbers' => 'array',
             'status' => ProductionStatus::class,
             'production_date' => 'date',
             'posted_at' => 'datetime',

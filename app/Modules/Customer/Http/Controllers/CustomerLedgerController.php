@@ -13,7 +13,7 @@ use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerLedgerEntry;
 use App\Modules\Customer\Services\CustomerLedgerService;
 use App\Support\Decimal;
-use App\Support\Export\LedgerStatementDocument;
+use App\Support\Export\LedgerStatementBuilder;
 use App\Support\Export\TabularExportService;
 use App\Support\OpeningDocumentService;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +26,7 @@ class CustomerLedgerController extends Controller
     public function __construct(
         private readonly CustomerLedgerService $ledgerService,
         private readonly TabularExportService $tabularExportService,
+        private readonly LedgerStatementBuilder $statementBuilder,
     ) {}
 
     public function index(Request $request, Customer $customer): JsonResponse
@@ -72,44 +73,11 @@ class CustomerLedgerController extends Controller
         $validated = $request->validated();
         app()->setLocale((string) ($validated['locale'] ?? 'en'));
 
-        $currencyId = isset($validated['currency_id']) ? (int) $validated['currency_id'] : null;
-        $dateFrom = isset($validated['date_from']) ? (string) $validated['date_from'] : null;
-        $dateTo = isset($validated['date_to']) ? (string) $validated['date_to'] : null;
-        $statement = $this->ledgerService->fullStatement($customer, $currencyId, $dateFrom, $dateTo);
-
-        $entries = [];
-        foreach ($statement['entries'] as $entry) {
-            $type = $entry->reference_type instanceof \BackedEnum ? $entry->reference_type->value : (string) $entry->reference_type;
-            $key = $entry->reference_id !== null ? $type.'|'.$entry->reference_id : null;
-            $entries[] = CustomerLedgerEntryResponseData::fromModel(
-                $entry,
-                $key !== null ? ($statement['document_numbers'][$key] ?? null) : null,
-                $statement['running_balances'][(int) $entry->id] ?? null,
-                isset($statement['reversed'][(int) $entry->id]),
-            )->toArray();
-        }
-
-        $currencyLabel = null;
-        if ($currencyId !== null) {
-            foreach ($statement['summaries'] as $summary) {
-                if ((int) $summary['currency_id'] === $currencyId) {
-                    $currencyLabel = $summary['currency_code'];
-
-                    break;
-                }
-            }
-        }
-
-        $document = LedgerStatementDocument::make(
-            partyKind: 'customer',
-            partyName: (string) $customer->name,
-            partyCode: $customer->customer_code !== null ? (string) $customer->customer_code : null,
-            currencyLabel: $currencyLabel !== null ? (string) $currencyLabel : null,
-            dateFrom: $dateFrom,
-            dateTo: $dateTo,
-            showCurrency: $currencyId === null,
-            entries: $entries,
-            summaries: $statement['summaries'],
+        $document = $this->statementBuilder->build(
+            $customer,
+            isset($validated['currency_id']) ? (int) $validated['currency_id'] : null,
+            isset($validated['date_from']) ? (string) $validated['date_from'] : null,
+            isset($validated['date_to']) ? (string) $validated['date_to'] : null,
         );
 
         return $this->tabularExportService->download($document, (string) $validated['format']);

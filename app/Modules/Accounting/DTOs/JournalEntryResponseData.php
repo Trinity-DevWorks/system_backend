@@ -40,6 +40,11 @@ final class JournalEntryResponseData
             'posted_at' => $entry->posted_at?->toIso8601String(),
             'created_at' => (string) $entry->created_at,
             'updated_at' => (string) $entry->updated_at,
+            'recurring_template' => $entry->relationLoaded('recurringTemplate') && $entry->recurringTemplate !== null ? [
+                'id' => (string) $entry->recurringTemplate->id,
+                'template_number' => $entry->recurringTemplate->template_number,
+                'name' => $entry->recurringTemplate->name,
+            ] : null,
         ];
     }
 

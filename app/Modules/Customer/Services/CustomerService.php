@@ -96,7 +96,7 @@ class CustomerService
     public function names(): Collection
     {
         return Customer::query()
-            ->select(['id', 'customer_code', 'name', 'status', 'is_system', 'created_at', 'updated_at'])
+            ->select(['id', 'customer_code', 'name', 'phone', 'status', 'is_system', 'created_at', 'updated_at'])
             ->orderBy('name')
             ->get();
     }

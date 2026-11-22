@@ -14,6 +14,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property list<string>|null $serial_numbers
+ */
 #[Fillable([
     'purchase_invoice_id',
     'goods_receipt_line_id',
@@ -22,6 +25,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'item_uom_id',
     'warehouse_id',
     'lot_id',
+    'serial_numbers',
     'sort_order',
     'quantity',
     'base_quantity',
@@ -46,6 +50,7 @@ class PurchaseInvoiceLine extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
+            'serial_numbers' => 'array',
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',
             'conversion_factor' => 'decimal:6',

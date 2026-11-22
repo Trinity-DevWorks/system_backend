@@ -14,7 +14,7 @@ readonly class SalesInvoiceLineResponseData
     public static function fromModel(SalesInvoiceLine $line): array
     {
         $line->loadMissing([
-            'item:id,item_code,name,description,is_active,allow_sale,track_inventory,track_lots,item_type_id,vat_group_id',
+            'item:id,item_code,name,description,is_active,allow_sale,track_inventory,track_lots,track_serials,item_type_id,vat_group_id',
             'item.itemType:id,code',
             'item.vatGroup:id,percentage',
             'itemUom:id,uom_id,conversion_factor,selling_price,barcode',
@@ -34,6 +34,7 @@ readonly class SalesInvoiceLineResponseData
             'item_uom_id' => $line->item_uom_id,
             'warehouse_id' => $line->warehouse_id,
             'lot_id' => $line->lot_id,
+            'serial_numbers' => $line->serial_numbers ?? [],
             'sort_order' => (int) $line->sort_order,
             'quantity' => (string) $line->quantity,
             'base_quantity' => (string) $line->base_quantity,
@@ -112,6 +113,7 @@ readonly class SalesInvoiceLineResponseData
             'allow_sale' => (bool) $item->allow_sale,
             'track_inventory' => (bool) $item->track_inventory,
             'track_lots' => (bool) $item->track_lots,
+            'track_serials' => (bool) $item->track_serials,
             'item_type_code' => $item->itemType?->code,
             'vat_group_id' => $item->vat_group_id !== null ? (int) $item->vat_group_id : null,
             'vat_group' => $item->vatGroup

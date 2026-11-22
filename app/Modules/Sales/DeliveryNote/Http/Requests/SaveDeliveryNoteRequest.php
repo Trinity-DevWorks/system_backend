@@ -34,6 +34,8 @@ class SaveDeliveryNoteRequest extends FormRequest
             'lines.*.item_uom_id' => ['nullable', 'integer'],
             'lines.*.warehouse_id' => ['nullable', 'integer'],
             'lines.*.lot_id' => ['nullable', 'integer'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
             'lines.*.description' => ['nullable', 'string', 'max:500'],
             'lines.*.notes' => ['nullable', 'string', 'max:2000'],

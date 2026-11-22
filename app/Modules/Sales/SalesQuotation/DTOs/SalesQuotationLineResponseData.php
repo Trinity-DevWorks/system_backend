@@ -13,7 +13,7 @@ readonly class SalesQuotationLineResponseData
     public static function fromModel(SalesQuotationLine $line): array
     {
         $line->loadMissing([
-            'item:id,item_code,name,description,is_active,allow_sale,track_inventory,track_lots,item_type_id,vat_group_id',
+            'item:id,item_code,name,description,is_active,allow_sale,track_inventory,track_lots,track_serials,item_type_id,vat_group_id',
             'item.itemType:id,code',
             'item.vatGroup:id,percentage',
             'itemUom:id,uom_id,conversion_factor,selling_price,barcode',

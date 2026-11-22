@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Services;
 
+use App\Modules\Accounting\Budget\Services\BudgetCheckService;
 use App\Modules\Accounting\DTOs\JournalEntryData;
 use App\Modules\Accounting\DTOs\JournalLineData;
 use App\Modules\Accounting\Enums\JournalEntryStatus;
@@ -28,6 +29,7 @@ class JournalEntryService
         'postedByUser:id,name',
         'reversal:id,entry_number,reversal_of_id',
         'reversalOf:id,entry_number',
+        'recurringTemplate:id,template_number,name',
     ];
 
     public function __construct(
@@ -35,12 +37,12 @@ class JournalEntryService
     ) {}
 
     /**
-     * @param  array{search?: ?string, from?: ?string, to?: ?string, source_type?: ?string, status?: ?string, account_id?: ?int}  $filters
+     * @param  array{search?: ?string, from?: ?string, to?: ?string, source_type?: ?string, status?: ?string, account_id?: ?int, recurring_template_id?: ?string}  $filters
      */
     public function paginate(array $filters, int $perPage): LengthAwarePaginator
     {
         $query = JournalEntry::query()
-            ->with(['branch:id,name', 'createdByUser:id,name'])
+            ->with(['branch:id,name', 'createdByUser:id,name', 'recurringTemplate:id,template_number,name'])
             ->orderByDesc('entry_date')
             ->orderByDesc('created_at');
 
@@ -66,6 +68,9 @@ class JournalEntryService
         if (! empty($filters['account_id'])) {
             $accountId = (int) $filters['account_id'];
             $query->whereHas('lines', fn (Builder $q) => $q->where('account_id', $accountId));
+        }
+        if (! empty($filters['recurring_template_id'])) {
+            $query->where('recurring_template_id', $filters['recurring_template_id']);
         }
 
         return $query->paginate($perPage);
@@ -133,7 +138,7 @@ class JournalEntryService
 
     public function post(JournalEntry $entry, ?string $userId): JournalEntry
     {
-        return DB::transaction(function () use ($entry, $userId): JournalEntry {
+        $posted = DB::transaction(function () use ($entry, $userId): JournalEntry {
             $entry = $this->lockEditable($entry);
             $this->assertPeriodOpen($this->dateString($entry->entry_date));
             app(DocumentNumberService::class)->assign($entry, 'entry_number', DocumentType::JournalEntry, $entry->branch_id !== null ? (int) $entry->branch_id : null, $entry->entry_date);
@@ -163,6 +168,10 @@ class JournalEntryService
 
             return $this->load($entry->refresh());
         });
+        // Over-budget is only a warning: checked after the commit so it can never block or roll back the post.
+        app(BudgetCheckService::class)->notifyAfterPost(BudgetCheckService::SOURCE_JOURNAL_ENTRY, (string) $posted->id, (string) ($posted->entry_number ?? ''));
+
+        return $posted;
     }
 
     public function reverse(JournalEntry $entry, ?string $userId): JournalEntry

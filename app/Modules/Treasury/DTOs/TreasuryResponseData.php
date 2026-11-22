@@ -114,6 +114,11 @@ final class TreasuryResponseData
             'total' => (string) $v->total,
             'status' => $v->status->value,
             'posted_at' => $v->posted_at?->toIso8601String(),
+            'recurring_template' => $v->relationLoaded('recurringTemplate') && $v->recurringTemplate !== null ? [
+                'id' => (string) $v->recurringTemplate->id,
+                'template_number' => $v->recurringTemplate->template_number,
+                'name' => $v->recurringTemplate->name,
+            ] : null,
             'lines' => $v->relationLoaded('lines')
                 ? $v->lines->map(fn (ExpenseVoucherLine $l): array => [
                     'id' => (int) $l->id,
@@ -125,6 +130,15 @@ final class TreasuryResponseData
                     'vat_group_id' => $l->vat_group_id,
                     'tax_rate' => (string) $l->tax_rate,
                     'tax_amount' => (string) $l->tax_amount,
+                    'deferral_start_date' => $l->deferral_start_date?->toDateString(),
+                    'deferral_end_date' => $l->deferral_end_date?->toDateString(),
+                    'deferral_recognition_account_id' => $l->deferral_recognition_account_id !== null ? (int) $l->deferral_recognition_account_id : null,
+                    'deferral_method' => $l->deferral_method,
+                    'deferral_schedule' => $l->relationLoaded('deferralSchedule') && $l->deferralSchedule !== null ? [
+                        'id' => (string) $l->deferralSchedule->id,
+                        'schedule_number' => $l->deferralSchedule->schedule_number,
+                        'status' => $l->deferralSchedule->status->value,
+                    ] : null,
                 ])->values()->all()
                 : [],
             'created_at' => (string) $v->created_at,
