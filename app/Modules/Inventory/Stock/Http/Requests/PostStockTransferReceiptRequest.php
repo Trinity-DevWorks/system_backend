@@ -25,6 +25,8 @@ class PostStockTransferReceiptRequest extends FormRequest
             'lines.*.stock_transfer_line_id' => ['required', 'integer'],
             'lines.*.quantity' => ['required', 'numeric', 'min:0.000001', 'max:999999.999999'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

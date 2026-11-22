@@ -36,6 +36,7 @@ class StockTransferService
         private readonly StockTransferQueryService $stockTransferQueryService,
         private readonly DomainNotificationPublisher $notifications,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly InventorySerialService $inventorySerialService,
         private readonly JournalPostingService $journalPostingService,
     ) {}
 
@@ -216,7 +217,7 @@ class StockTransferService
                     notes: $lineNote,
                     userId: $userId,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
-                ));
+                )->withSerials($line->serial_numbers));
             }
 
             $locked->update([
@@ -274,12 +275,19 @@ class StockTransferService
                 $baseQty = $row['base_quantity'];
                 $lineNote = $row['notes'] ?? ($line->notes ? $referenceNote.' — '.$line->notes : $referenceNote);
                 $unitCost = $outCosts->get(self::costKey((string) $line->item_id, $line->lot_id ? (int) $line->lot_id : null));
+                $serials = $this->inventorySerialService->pickFromTransit(
+                    Item::query()->findOrFail($line->item_id),
+                    $line->serial_numbers,
+                    $row['serial_numbers'],
+                    $baseQty,
+                );
 
                 StockTransferReceiptLine::query()->create([
                     'stock_transfer_receipt_id' => $receipt->id,
                     'stock_transfer_line_id' => $line->id,
                     'item_id' => $line->item_id,
                     'lot_id' => $line->lot_id,
+                    'serial_numbers' => $serials,
                     'quantity' => $qty,
                     'base_quantity' => $baseQty,
                     'item_uom_id' => $line->item_uom_id,
@@ -297,7 +305,7 @@ class StockTransferService
                     userId: $userId,
                     unitCost: $unitCost !== null ? (string) $unitCost : null,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
-                ));
+                )->withSerials($serials));
 
                 $line->update([
                     'received_quantity' => bcadd((string) $line->received_quantity, $qty, 6),
@@ -350,12 +358,15 @@ class StockTransferService
                 $qty = $row['quantity'];
                 $baseQty = $row['base_quantity'];
                 $outcome = $row['outcome'];
+                $item = Item::query()->findOrFail($line->item_id);
+                $serials = $this->inventorySerialService->pickFromTransit($item, $line->serial_numbers, $row['serial_numbers'], $baseQty);
 
                 StockTransferClosureLine::query()->create([
                     'stock_transfer_closure_id' => $closure->id,
                     'stock_transfer_line_id' => $line->id,
                     'item_id' => $line->item_id,
                     'lot_id' => $line->lot_id,
+                    'serial_numbers' => $serials,
                     'outcome' => $outcome->value,
                     'quantity' => $qty,
                     'base_quantity' => $baseQty,
@@ -378,12 +389,13 @@ class StockTransferService
                         userId: $userId,
                         unitCost: $unitCost !== null ? (string) $unitCost : null,
                         lotId: $line->lot_id ? (int) $line->lot_id : null,
-                    ));
+                    )->withSerials($serials));
                     $line->update([
                         'returned_quantity' => bcadd((string) $line->returned_quantity, $qty, 6),
                         'returned_base_quantity' => bcadd((string) $line->returned_base_quantity, $baseQty, 6),
                     ]);
                 } else {
+                    $this->inventorySerialService->writeOffInTransit($item, $serials ?? [], StockTransferClosure::REFERENCE_TYPE, (string) $closure->id, $userId);
                     $line->update([
                         'written_off_quantity' => bcadd((string) $line->written_off_quantity, $qty, 6),
                         'written_off_base_quantity' => bcadd((string) $line->written_off_base_quantity, $baseQty, 6),
@@ -434,6 +446,7 @@ class StockTransferService
                 ...$resolved,
                 'item_id' => $itemId,
                 'lot_id' => $lotId,
+                'serial_numbers' => $this->inventorySerialService->forLine($item, $row['serial_numbers'] ?? null, $resolved['base_quantity'], count($normalized) + 1),
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }
@@ -445,6 +458,7 @@ class StockTransferService
                 'stock_transfer_id' => $transfer->id,
                 'item_id' => $line['item_id'],
                 'lot_id' => $line['lot_id'],
+                'serial_numbers' => $line['serial_numbers'],
                 'quantity' => $line['quantity'],
                 'base_quantity' => $line['base_quantity'],
                 'item_uom_id' => $line['item_uom_id'],
@@ -456,7 +470,7 @@ class StockTransferService
     /**
      * @param  Collection<int, StockTransferLine>  $lines
      * @param  list<array{stock_transfer_line_id?:int,quantity?:numeric,notes?:?string}>  $input
-     * @return list<array{line:StockTransferLine,quantity:string,base_quantity:string,notes:?string}>
+     * @return list<array{line:StockTransferLine,quantity:string,base_quantity:string,serial_numbers:mixed,notes:?string}>
      */
     private function normalizeReceiptLines(Collection $lines, array $input): array
     {
@@ -508,6 +522,7 @@ class StockTransferService
                 'line' => $line,
                 'quantity' => $qty,
                 'base_quantity' => StockTransferLineQuantity::baseForQuantity($line, $qty),
+                'serial_numbers' => $row['serial_numbers'] ?? null,
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }
@@ -524,7 +539,7 @@ class StockTransferService
     /**
      * @param  Collection<int, StockTransferLine>  $lines
      * @param  list<array{stock_transfer_line_id?:int,outcome?:string,quantity?:numeric,stock_adjustment_reason_id?:int,notes?:?string}>  $input
-     * @return list<array{line:StockTransferLine,outcome:StockTransferClosureOutcome,quantity:string,base_quantity:string,reason_id:int,notes:?string}>
+     * @return list<array{line:StockTransferLine,outcome:StockTransferClosureOutcome,quantity:string,base_quantity:string,reason_id:int,serial_numbers:mixed,notes:?string}>
      */
     private function normalizeCloseLines(Collection $lines, array $input): array
     {
@@ -585,6 +600,7 @@ class StockTransferService
                 'quantity' => $qty,
                 'base_quantity' => StockTransferLineQuantity::baseForQuantity($line, $qty),
                 'reason_id' => (int) $reason->id,
+                'serial_numbers' => $row['serial_numbers'] ?? null,
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }
@@ -644,7 +660,7 @@ class StockTransferService
                 userId: $userId,
                 unitCost: $unitCost !== null ? (string) $unitCost : null,
                 lotId: $line->lot_id ? (int) $line->lot_id : null,
-            ));
+            )->withSerials($this->inventorySerialService->stillInTransit((string) $line->item_id, $line->serial_numbers)));
         }
     }
 

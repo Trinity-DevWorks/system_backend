@@ -9,6 +9,7 @@ use App\Modules\Accounting\FixedAsset\Models\DepreciationRun;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Deferral\Models\DeferralSchedule;
 use App\Modules\Deferral\Models\DeferralScheduleLine;
+use App\Modules\DocumentEmail\Models\DocumentEmail;
 use App\Modules\Inventory\Purchasing\Models\GoodsReceipt;
 use App\Modules\Inventory\Purchasing\Models\PurchaseOrder;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
@@ -514,6 +515,31 @@ class DomainNotificationPublisher
      *
      * @param  list<array<string, mixed>>  $warnings
      */
+    /** Tells the sender that their document email could not be delivered, with the mail server's reason. */
+    public function documentEmailFailed(DocumentEmail $email): void
+    {
+        if ($email->user_id === null) {
+            return;
+        }
+        $this->dispatcher->dispatch(
+            'documents.email_failed',
+            [
+                'params' => [
+                    'document' => (string) ($email->document_number ?? $email->document_type),
+                    'to' => implode(', ', $email->to),
+                    'reason' => (string) $email->error,
+                ],
+                'mail_lines' => [
+                    'The email for :document to :to could not be sent: :reason',
+                ],
+                'action_path' => null,
+                'resource_type' => $email->document_type,
+                'resource_id' => $email->document_id,
+            ],
+            RecipientQuery::users([$email->user_id]),
+        );
+    }
+
     public function budgetExceeded(string $documentLabel, array $warnings): void
     {
         if ($warnings === []) {

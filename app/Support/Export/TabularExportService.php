@@ -6,6 +6,7 @@ namespace App\Support\Export;
 
 use App\Modules\CompanySetting\Support\TenantDisplayFormat;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Barryvdh\DomPDF\PDF as DomPdf;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -25,20 +26,26 @@ final class TabularExportService
 
     private function pdf(TabularDocument $document): Response
     {
+        return $this->renderPdf($document)->download($document->filename.'.pdf');
+    }
+
+    /**
+     * The PDF itself (e.g. to attach to an email). Language follows app()->getLocale().
+     */
+    public function renderPdf(TabularDocument $document): DomPdf
+    {
         $arabic = app()->getLocale() === 'ar';
         $forPdf = $arabic ? $this->arabicPdfDocument($document) : $document;
         $companyName = (string) (tenant('name') ?? config('app.name', 'Company'));
         $generatedAt = TenantDisplayFormat::dateTime(now()) ?: now()->format('Y-m-d H:i');
 
-        $pdf = Pdf::loadView('exports.tabular', [
+        return Pdf::loadView('exports.tabular', [
             'document' => $forPdf,
             'arabic' => $arabic,
             'dir' => 'ltr',
             'companyName' => $arabic ? ArabicPdfText::shape($companyName) : $companyName,
             'generatedAt' => $arabic ? ArabicPdfText::shape($generatedAt) : $generatedAt,
         ])->setPaper('a4', 'landscape');
-
-        return $pdf->download($document->filename.'.pdf');
     }
 
     /**

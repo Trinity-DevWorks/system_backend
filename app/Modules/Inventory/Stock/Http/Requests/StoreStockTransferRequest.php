@@ -27,6 +27,8 @@ class StoreStockTransferRequest extends FormRequest
             'lines.*.quantity' => ['required', 'numeric', 'min:0.000001', 'max:999999.999999'],
             'lines.*.item_uom_id' => ['nullable', 'integer', Rule::exists('item_uoms', 'id')],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

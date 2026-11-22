@@ -7,6 +7,8 @@ use App\Modules\Inventory\Item\DTOs\ItemUomResponseData;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemBarcode;
 use App\Modules\Inventory\Item\Models\ItemUom;
+use App\Modules\Inventory\Item\Support\InStoreBarcode;
+use App\Modules\Inventory\ScaleBarcode\Services\ScaleBarcodeService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -28,16 +30,28 @@ class ItemBarcodeService
     }
 
     /**
-     * Resolve a scanned barcode to an item UOM (item_barcodes row or item_uoms.barcode).
+     * Resolve a scanned barcode to an item UOM (item_barcodes row or item_uoms.barcode). An exact
+     * barcode always wins; otherwise the scale label formats of the branch are tried
+     * (ScaleBarcodeService), which adds a `scale` block with the quantity / label price.
      *
-     * @return array{source: string, item: array<string, mixed>, item_uom: array<string, mixed>}|null
+     * @return array<string, mixed>|null
      */
-    public function lookup(string $barcode): ?array
+    public function lookup(string $barcode, ?int $branchId = null): ?array
     {
         $normalized = trim($barcode);
         if ($normalized === '') {
             return null;
         }
+
+        return $this->exactLookup($normalized)
+            ?? app(ScaleBarcodeService::class)->resolve($normalized, $branchId);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function exactLookup(string $normalized): ?array
+    {
 
         $extra = ItemBarcode::query()
             ->where('barcode', $normalized)
@@ -110,6 +124,54 @@ class ItemBarcodeService
                 'is_primary' => $data['is_primary'],
             ]);
         });
+    }
+
+    /**
+     * Adds the next free in-store EAN-13 (200…) to the item. It is the unit's primary barcode
+     * when the unit has none yet.
+     */
+    public function generate(Item $item, ?int $itemUomId): ItemBarcode
+    {
+        return DB::transaction(function () use ($item, $itemUomId): ItemBarcode {
+            // One generator at a time, so two users never get the same number.
+            DB::statement('SELECT pg_advisory_xact_lock(?)', [crc32('in_store_barcode')]);
+
+            $next = $this->lastInStoreSequence() + 1;
+            $barcode = InStoreBarcode::forSequence($next);
+            // Skip numbers somebody typed in by hand.
+            while ($this->barcodeTaken($barcode)) {
+                $barcode = InStoreBarcode::forSequence(++$next);
+            }
+
+            $hasBarcode = ItemBarcode::query()
+                ->where('item_id', $item->id)
+                ->where('item_uom_id', $itemUomId)
+                ->exists();
+
+            return $this->store($item, [
+                'barcode' => $barcode,
+                'item_uom_id' => $itemUomId,
+                'is_primary' => ! $hasBarcode,
+            ]);
+        });
+    }
+
+    private function lastInStoreSequence(): int
+    {
+        $last = 0;
+        $codes = ItemBarcode::query()->where('barcode', 'like', InStoreBarcode::PREFIX.'%')->pluck('barcode')
+            ->merge(ItemUom::query()->where('barcode', 'like', InStoreBarcode::PREFIX.'%')->pluck('barcode'));
+        foreach ($codes as $code) {
+            $last = max($last, InStoreBarcode::sequenceOf((string) $code) ?? 0);
+        }
+
+        return $last;
+    }
+
+    private function barcodeTaken(string $barcode): bool
+    {
+        return ItemBarcode::query()->where('barcode', $barcode)->exists()
+            || ItemUom::query()->where('barcode', $barcode)->exists();
     }
 
     /**

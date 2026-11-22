@@ -41,6 +41,8 @@ class StoreGoodsReceiptRequest extends FormRequest
             'lines.*.item_uom_id' => ['nullable', 'integer', 'exists:item_uoms,id'],
             'lines.*.unit_cost' => ['nullable', 'numeric', 'min:0'],
             'lines.*.lot_id' => ['nullable', 'integer', 'exists:inventory_lots,id'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
             'lines.*.lot_number' => ['nullable', 'string', 'max:64'],
             'lines.*.expiry_date' => ['nullable', 'date'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],

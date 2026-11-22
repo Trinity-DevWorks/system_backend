@@ -18,7 +18,7 @@ readonly class BundleExplosionResponseData
     {
         $document->loadMissing([
             'warehouse:id,name,shortcut_name,is_active',
-            'item:id,item_code,name,is_active,track_inventory,track_lots',
+            'item:id,item_code,name,is_active,track_inventory,track_lots,track_serials',
             'createdByUser:id,name,email',
             'postedByUser:id,name,email',
         ]);
@@ -83,6 +83,7 @@ readonly class BundleExplosionResponseData
             'is_active' => (bool) $item->is_active,
             'track_inventory' => (bool) $item->track_inventory,
             'track_lots' => (bool) $item->track_lots,
+            'track_serials' => (bool) $item->track_serials,
         ];
     }
 

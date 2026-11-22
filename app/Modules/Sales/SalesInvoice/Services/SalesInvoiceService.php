@@ -18,6 +18,7 @@ use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Models\InventoryLot;
 use App\Modules\Inventory\Stock\Models\StockBalance;
+use App\Modules\Inventory\Stock\Services\InventorySerialService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\Stock\Services\StockReservationService;
 use App\Modules\PaymentMethod\Enums\PaymentMethodType;
@@ -27,6 +28,7 @@ use App\Modules\Sales\CustomerReceipt\Enums\CustomerReceiptStatus;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
 use App\Modules\Sales\CustomerReceipt\Services\CustomerReceiptService;
+use App\Modules\Sales\DeliveryNote\Models\DeliveryNoteLine;
 use App\Modules\Sales\DeliveryNote\Services\DeliveryNoteInvoicing;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
@@ -682,6 +684,11 @@ class SalesInvoiceService
                 app(DeliveryNoteInvoicing::class)->assertLinkable($deliveryLineId, (string) $invoice->customer_id, (string) $item->id, $qty['item_uom_id']);
             }
 
+            // Units already left on the delivery note: the invoice just shows its serials.
+            $serialNumbers = $deliveryLineId !== null
+                ? ($item->track_serials ? (DeliveryNoteLine::query()->find($deliveryLineId)?->serial_numbers ?? []) : null)
+                : app(InventorySerialService::class)->forLine($item, $row['serial_numbers'] ?? null, $qty['base_quantity'], $index + 1);
+
             SalesInvoiceLine::query()->create([
                 'sales_invoice_id' => $invoice->id,
                 'sales_order_line_id' => isset($row['sales_order_line_id']) && $row['sales_order_line_id'] !== null && $row['sales_order_line_id'] !== ''
@@ -692,6 +699,7 @@ class SalesInvoiceService
                 'item_uom_id' => $qty['item_uom_id'],
                 'warehouse_id' => $warehouseId,
                 'lot_id' => $lotId,
+                'serial_numbers' => $serialNumbers,
                 'sort_order' => $index + 1,
                 'quantity' => $qty['quantity'],
                 'base_quantity' => $qty['base_quantity'],
@@ -774,7 +782,7 @@ class SalesInvoiceService
             notes: $line->notes ? $note.' — '.$line->notes : $note,
             userId: $userId,
             lotId: $line->lot_id ? (int) $line->lot_id : null,
-        ));
+        )->withSerials($line->serial_numbers, 'customer', (string) $invoice->customer_id));
     }
 
     private function postBundleComponents(
@@ -803,6 +811,11 @@ class SalesInvoiceService
             if ($child->track_lots) {
                 abort(422, 'Lot-tracked bundle components cannot be sold on an invoice. Explode the bundle first.', [
                     'X-Error-Code' => 'SALES_INVOICE_BUNDLE_LOT_NOT_SUPPORTED',
+                ]);
+            }
+            if ($child->track_serials) {
+                abort(422, 'Bundles with serial-numbered components cannot be sold on an invoice. Explode the bundle first.', [
+                    'X-Error-Code' => 'SALES_INVOICE_BUNDLE_SERIAL_NOT_SUPPORTED',
                 ]);
             }
 

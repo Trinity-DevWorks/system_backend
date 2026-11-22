@@ -31,6 +31,8 @@ use App\Modules\Customer\Models\CustomerBalance;
 use App\Modules\Customer\Models\CustomerContact;
 use App\Modules\Customer\Models\CustomerGroup;
 use App\Modules\Deferral\Models\DeferralSchedule;
+use App\Modules\DocumentEmail\Models\EmailSetting;
+use App\Modules\DocumentEmail\Models\EmailTemplate;
 use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
@@ -49,8 +51,10 @@ use App\Modules\Inventory\Purchasing\Models\PurchaseOrderLine;
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNote;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefund;
+use App\Modules\Inventory\ScaleBarcode\Models\ScaleBarcodeFormat;
 use App\Modules\Inventory\Stock\Models\BundleExplosion;
 use App\Modules\Inventory\Stock\Models\BundleExplosionLine;
+use App\Modules\Inventory\Stock\Models\InventorySerial;
 use App\Modules\Inventory\Stock\Models\ItemWarehouseReplenishment;
 use App\Modules\Inventory\Stock\Models\OpeningStock;
 use App\Modules\Inventory\Stock\Models\OpeningStockLine;
@@ -225,6 +229,10 @@ class AppServiceProvider extends ServiceProvider
             'company_setting' => CompanySetting::class,
             'document_number_setting' => DocumentNumberSetting::class,
             'print_setting' => PrintSetting::class,
+            'email_setting' => EmailSetting::class,
+            'email_template' => EmailTemplate::class,
+            'scale_barcode_format' => ScaleBarcodeFormat::class,
+            'inventory_serial' => InventorySerial::class,
             'item_attribute' => ItemAttribute::class,
             'item_attribute_value' => ItemAttributeValue::class,
         ]);

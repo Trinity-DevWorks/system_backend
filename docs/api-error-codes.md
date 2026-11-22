@@ -118,6 +118,9 @@ Inventory:
 - `ITEM_DELETE_REFERENCED_BY_BUNDLE` (HTTP 409)
 - `ITEM_LOTS_ENABLE_HAS_STOCK` (HTTP 422)
 - `ITEM_LOTS_DISABLE_HAS_STOCK` (HTTP 422)
+- `ITEM_SERIALS_LOTS_EXCLUSIVE` (HTTP 422)
+- `ITEM_SERIALS_ENABLE_HAS_STOCK` (HTTP 422)
+- `ITEM_SERIALS_DISABLE_HAS_STOCK` (HTTP 422)
 - `ITEM_UOM_ALREADY_EXISTS` (HTTP 422)
 - `ITEM_UOM_NOT_CONFIGURED` (HTTP 422)
 - `ITEM_INACTIVE` (HTTP 422)
@@ -167,6 +170,18 @@ Stock:
 - `STOCK_LOT_MISMATCH` (HTTP 422)
 - `STOCK_LOT_NOT_FOUND` (HTTP 422)
 - `STOCK_LOT_EXPIRY_MISMATCH` (HTTP 422)
+- `STOCK_SERIAL_NOT_TRACKED` (HTTP 422)
+- `STOCK_SERIAL_COUNT_MISMATCH` (HTTP 422)
+- `STOCK_SERIAL_WHOLE_QUANTITY` (HTTP 422)
+- `STOCK_SERIAL_DUPLICATE` (HTTP 422)
+- `STOCK_SERIAL_TOO_LONG` (HTTP 422)
+- `STOCK_SERIAL_ALREADY_IN_STOCK` (HTTP 422)
+- `STOCK_SERIAL_NOT_AVAILABLE` (HTTP 422)
+- `STOCK_SERIAL_MOVED_SINCE` (HTTP 422)
+- `STOCK_SERIAL_NOT_ON_SOURCE` (HTTP 422)
+- `STOCK_SERIAL_NOT_IN_TRANSIT` (HTTP 422)
+- `PURCHASE_DEBIT_NOTE_BUNDLE_SERIAL_NOT_SUPPORTED` (HTTP 422)
+- `SALES_INVOICE_BUNDLE_SERIAL_NOT_SUPPORTED` (HTTP 422)
 - `STOCK_TRANSFER_NOT_DRAFT` (HTTP 422)
 - `STOCK_TRANSFER_SAME_WAREHOUSE` (HTTP 422)
 - `STOCK_TRANSFER_WAREHOUSE_INACTIVE` (HTTP 422)
@@ -305,6 +320,7 @@ Sales credit notes:
 - `SALES_CREDIT_NOTE_WAREHOUSE_REQUIRED` (HTTP 422)
 - `SALES_CREDIT_NOTE_BUNDLE_EMPTY` (HTTP 422)
 - `SALES_CREDIT_NOTE_BUNDLE_LOT_NOT_SUPPORTED` (HTTP 422)
+- `SALES_CREDIT_NOTE_BUNDLE_SERIAL_NOT_SUPPORTED` (HTTP 422)
 - `SALES_CREDIT_NOTE_TYPE_INVALID` (HTTP 422)
 - `SALES_INVOICE_HAS_CREDIT_NOTES` (HTTP 422)
 - `CUSTOMER_CREDIT_LIMIT_EXCEEDED` (HTTP 422) — posting an invoice / confirming an order would put the customer's balance (per currency) above the credit limit; needs `credit_limit_override,edit`. A limit of 0 means no limit.
@@ -544,3 +560,41 @@ Old open balances of customers/suppliers are opening documents (`is_opening = tr
 | `DEPRECIATION_NOT_LATEST` | 422 | Only the latest depreciation run can be undone. |
 | `DEPRECIATION_BRANCH_REQUIRED` | 422 | Undoing depreciation needs the branch whose run is undone. |
 | `DEPRECIATION_NOTHING_DUE` | 422 | No asset has depreciation due for that month. |
+
+## Document emails
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `EMAIL_NOT_CONFIGURED` | 422 | The mail server or sender address is missing (Settings → Email). |
+| `EMAIL_SENDING_DISABLED` | 422 | The mailbox is filled in but "Send emails" is turned off (Settings → Email). |
+| `EMAIL_DOCUMENT_NOT_SENDABLE` | 422 | The document can't be emailed in its current status (same rule as printing: no drafts or cancelled documents). |
+| `EMAIL_TEST_FAILED` | 422 | The test email was refused; `message` holds the mail server's reason. |
+| `EMAIL_HOST_NOT_ALLOWED` | 422 | The port is not a mail port (25, 465, 587, 2525) or the server address is internal. |
+| `EMAIL_NO_RECIPIENT` | 422 | No recipient address was given. |
+
+## Scale barcodes (weighed / priced items)
+
+Translated messages take `params` from the response `data.params` (see `X-Error-Params`).
+Warnings that don't block the line come back in `data.scale.warnings` (`SCALE_LABEL_PRICE_DIFFERS`, `SCALE_LABEL_BEST_BEFORE_PASSED`).
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `SCALE_BARCODE_UNKNOWN_PLU` | 404 | A scale format read the label, but no item sold at the scale has that PLU / GTIN (`plu`). |
+| `SCALE_BARCODE_ITEM_NOT_SOLD` | 422 | The item on the label is not for sale (`item`). |
+| `SCALE_BARCODE_ITEM_UNIT_MISSING` | 422 | The item has no unit matching the format (`item`, `unit`). |
+| `SCALE_BARCODE_NO_UNIT_PRICE` | 422 | A price label needs the item's selling price to work out the weight (`item`). |
+| `SCALE_BARCODE_UNKNOWN_CURRENCY` | 422 | The GS1 393n currency on the label is not set up (`currency`). |
+| `SCALE_BARCODE_NO_RATE` | 422 | No exchange rate from the primary currency to the label currency (`currency`). |
+| `SCALE_BARCODE_ZERO_VALUE` | 422 | The label weight / price / count is zero. |
+| `SCALE_BARCODE_WEIGHTS_DISAGREE` | 422 | The label prints a kg and a lb weight that don't match (`kg`, `lb`). |
+| `SCALE_BARCODE_EXPIRED` | 422 | The label's expiry date (GS1 AI 17) has passed (`date`). |
+| `SCALE_BARCODE_UNKNOWN_LOT` | 422 | The label's lot (GS1 AI 10) doesn't exist for this lot-tracked item (`lot`, `item`). |
+| `SCALE_BARCODE_FORMAT_ENGINE_MISMATCH` | 422 | GS1 symbologies need the GS1 reader; EAN / UPC / custom layouts need fixed positions. |
+| `SCALE_BARCODE_FORMAT_UNIT_REQUIRED` | 422 | Weight and count formats need a unit. |
+| `SCALE_BARCODE_FORMAT_POSITIONS_INVALID` | 422 | Positions missing, overlapping or past the end of the barcode. |
+| `SCALE_BARCODE_FORMAT_PRICE_CHECK_INVALID` | 422 | A price check digit only works with a 4- or 5-digit price. |
+| `SCALE_BARCODE_PREFIX_RESERVED` | 422 | EAN-13 codes starting with 200 are this system's in-store barcodes. |
+| `SCALE_BARCODE_FORMAT_OVERLAP` | 422 | Another active format reads the same codes in a shared branch (`format`). |
+| `ITEM_SCALE_NOT_SOLD` | 422 | Only items that are sold can be sold at the scale. |
+| `ITEM_SCALE_PLU_REQUIRED` | 422 | Items sold at the scale need a PLU made of digits only. |
+| `ITEM_SCALE_NO_SERIALS` | 422 | Items sold at the scale can't track serial numbers. |

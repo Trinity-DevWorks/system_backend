@@ -191,6 +191,8 @@ class ItemVariantService
             'color' => $parent->color,
             'track_inventory' => $parent->track_inventory,
             'track_lots' => $parent->track_lots,
+            'track_serials' => $parent->track_serials,
+            'warranty_months' => $parent->warranty_months,
             'costing_method' => $parent->costing_method,
             'allow_sale' => $parent->allow_sale,
             'allow_purchase' => $parent->allow_purchase,

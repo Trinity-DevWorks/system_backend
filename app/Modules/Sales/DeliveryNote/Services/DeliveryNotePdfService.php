@@ -10,6 +10,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use Barryvdh\DomPDF\PDF;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -23,6 +24,16 @@ class DeliveryNotePdfService
     ) {}
 
     public function download(DeliveryNote $note, ?string $locale = null): Response
+    {
+        return $this->render($note, $locale)->download($this->downloadFilename($note));
+    }
+
+    public function downloadFilename(DeliveryNote $note): string
+    {
+        return DocumentPdfOptions::sanitizeFilename($note->delivery_number ?? '', 'delivery-note');
+    }
+
+    public function render(DeliveryNote $note, ?string $locale = null): PDF
     {
         DocumentPdfSupport::assertPrintableStatus(
             $note->status,
@@ -44,7 +55,7 @@ class DeliveryNotePdfService
 
         $title = $options->isArabic() ? $money->text('إشعار تسليم') : 'DELIVERY NOTE';
 
-        $pdf = $this->renderer->render('document-pdf.document', [
+        return $this->renderer->render('document-pdf.document', [
             'documentTitle' => $title,
             'documentNumber' => $money->dash($note->delivery_number),
             'statusWatermark' => DocumentPdfSupport::watermark($note->status),
@@ -58,7 +69,5 @@ class DeliveryNotePdfService
             'totals' => [],
             'notes' => $money->text($note->notes),
         ], $options);
-
-        return $pdf->download(DocumentPdfOptions::sanitizeFilename($note->delivery_number ?? '', 'delivery-note'));
     }
 }

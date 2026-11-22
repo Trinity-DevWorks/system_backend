@@ -46,6 +46,7 @@ readonly class StockTransferReceiptResponseData
                     'item_id' => $line->item_id,
                     'item_name' => $line->item?->name,
                     'lot_id' => $line->lot_id,
+                    'serial_numbers' => $line->serial_numbers ?? [],
                     'lot_number' => $line->lot?->lot_number,
                     'quantity' => (string) $line->quantity,
                     'base_quantity' => (string) $line->base_quantity,

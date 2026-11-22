@@ -239,7 +239,7 @@ class BundleExplosionService
                     userId: $userId,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
                     bundleExplosionId: (string) $locked->id,
-                ));
+                )->withSerials($line->serial_numbers));
             }
 
             $locked->update([
@@ -354,6 +354,7 @@ class BundleExplosionService
                 'base_quantity' => $baseQuantity,
                 'theoretical_quantity' => $theoretical,
                 'lot_id' => $lotId,
+                'serial_numbers' => app(InventorySerialService::class)->forLine($item, $row['serial_numbers'] ?? null, $baseQuantity, count($normalized) + 1),
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
         }

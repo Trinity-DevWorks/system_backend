@@ -18,6 +18,7 @@ use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNoteA
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNoteLine;
 use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
+use App\Modules\Inventory\Stock\Services\InventorySerialService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Supplier\Enums\LedgerReferenceType;
 use App\Modules\Supplier\Services\SupplierLedgerService;
@@ -40,6 +41,7 @@ class PurchaseDebitNoteService
         private readonly StockMovementService $stockMovementService,
         private readonly JournalPostingService $journalPostingService,
         private readonly FixedAssetService $fixedAssets,
+        private readonly InventorySerialService $inventorySerialService,
     ) {}
 
     /**
@@ -146,6 +148,8 @@ class PurchaseDebitNoteService
                 'creditable_total' => ProportionalCredit::money($creditable),
                 'warehouse_id' => $line->warehouse_id,
                 'lot_id' => $line->lot_id,
+                'serial_numbers' => $line->serial_numbers ?? [],
+                'track_serials' => (bool) ($line->item?->track_serials),
                 'track_inventory' => (bool) ($line->item?->track_inventory),
                 'allow_return' => (bool) ($line->item?->allow_return ?? true),
                 'item' => $line->item ? [
@@ -487,7 +491,7 @@ class PurchaseDebitNoteService
     {
         $invoice = $this->postedInvoice((string) $note->purchase_invoice_id);
         $this->warehouseService->assertDocumentVisible($invoice);
-        $invoice->load('lines.goodsReceiptLine');
+        $invoice->load(['lines.goodsReceiptLine', 'lines.item']);
         $usage = $this->postedUsage((string) $invoice->id);
         $sources = $invoice->lines->keyBy('id');
         $seen = [];
@@ -593,6 +597,7 @@ class PurchaseDebitNoteService
             'discount_percent' => $source->discount_percent,
             'tax_rate' => $source->tax_rate,
             'lot_id' => $source->lot_id ?? $source->goodsReceiptLine?->lot_id,
+            'serial_numbers' => $this->returnSerials($note, $source, $row, $base),
             'description' => $this->nullableString($row['description'] ?? $source->description),
             ...$amounts,
         ];
@@ -781,7 +786,26 @@ class PurchaseDebitNoteService
             notes: 'PDN '.$note->debit_note_number,
             userId: $userId,
             lotId: $line->lot_id ? (int) $line->lot_id : null,
-        ));
+        )->withSerials($line->serial_numbers, 'supplier', (string) $note->supplier_id));
+    }
+
+    /**
+     * Serials going back to the supplier: picked from those received on the invoice line.
+     *
+     * @param  array<string, mixed>  $row
+     * @return list<string>|null
+     */
+    private function returnSerials(PurchaseDebitNote $note, PurchaseInvoiceLine $source, array $row, string $baseQuantity): ?array
+    {
+        $item = $source->item ?? Item::query()->findOrFail($source->item_id);
+        if (! $item->track_serials || $note->type !== PurchaseDebitNoteType::Return) {
+            return null;
+        }
+        $chosen = $this->inventorySerialService->forLine($item, $row['serial_numbers'] ?? null, $baseQuantity);
+        $received = $source->serial_numbers ?? $source->goodsReceiptLine?->serial_numbers ?? [];
+        InventorySerialService::assertSubset($received, $chosen ?? [], $item->name);
+
+        return $chosen;
     }
 
     private function postBundleReturn(PurchaseDebitNote $note, PurchaseDebitNoteLine $line, Item $bundle, int $warehouseId, ?string $userId): void
@@ -797,6 +821,9 @@ class PurchaseDebitNoteService
             }
             if ($child->track_lots) {
                 $this->fail('Lot-tracked bundle components cannot be returned on a debit note.', 'PURCHASE_DEBIT_NOTE_BUNDLE_LOT_NOT_SUPPORTED');
+            }
+            if ($child->track_serials) {
+                $this->fail('Bundles with serial-numbered components cannot be returned on a debit note.', 'PURCHASE_DEBIT_NOTE_BUNDLE_SERIAL_NOT_SUPPORTED');
             }
             $baseQty = bcmul((string) $line->base_quantity, (string) $component->quantity, 6);
             $this->stockMovementService->post(StockMovementData::forPurchaseReturn(

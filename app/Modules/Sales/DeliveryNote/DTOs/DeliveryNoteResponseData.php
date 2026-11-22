@@ -48,7 +48,7 @@ final class DeliveryNoteResponseData
                 'sales_order_line_id' => $l->sales_order_line_id,
                 'item_id' => (string) $l->item_id,
                 'item' => $l->relationLoaded('item') && $l->item !== null
-                    ? ['id' => (string) $l->item->id, 'item_code' => $l->item->item_code, 'name' => $l->item->name, 'track_lots' => (bool) $l->item->track_lots]
+                    ? ['id' => (string) $l->item->id, 'item_code' => $l->item->item_code, 'name' => $l->item->name, 'track_lots' => (bool) $l->item->track_lots, 'track_serials' => (bool) $l->item->track_serials]
                     : null,
                 'item_uom_id' => $l->item_uom_id,
                 'uom' => $l->relationLoaded('itemUom') && $l->itemUom?->uom !== null
@@ -56,6 +56,7 @@ final class DeliveryNoteResponseData
                     : null,
                 'warehouse_id' => $l->warehouse_id,
                 'lot_id' => $l->lot_id,
+                'serial_numbers' => $l->serial_numbers ?? [],
                 'lot' => $l->relationLoaded('lot') && $l->lot !== null
                     ? ['id' => (int) $l->lot->id, 'lot_number' => $l->lot->lot_number, 'expiry_date' => $l->lot->expiry_date?->toDateString()]
                     : null,

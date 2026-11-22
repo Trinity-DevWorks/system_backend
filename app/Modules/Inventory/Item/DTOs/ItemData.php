@@ -40,7 +40,24 @@ readonly class ItemData
         public ?string $volume = null,
         public bool $isFixedAsset = false,
         public ?int $fixedAssetCategoryId = null,
+        public bool $trackSerials = false,
+        public ?int $warrantyMonths = null,
+        public bool $isScaleItem = false,
     ) {
+        if ($this->isScaleItem) {
+            if (! $this->allowSale) {
+                abort(422, 'Only items that are sold can be sold at the scale.', ['X-Error-Code' => 'ITEM_SCALE_NOT_SOLD']);
+            }
+            if ($this->pluCode === null || preg_match('/^\d{1,20}$/', $this->pluCode) !== 1) {
+                abort(422, 'Items sold at the scale need a PLU made of digits only.', ['X-Error-Code' => 'ITEM_SCALE_PLU_REQUIRED']);
+            }
+            if ($this->trackSerials) {
+                abort(422, 'Items sold at the scale cannot track serial numbers.', ['X-Error-Code' => 'ITEM_SCALE_NO_SERIALS']);
+            }
+        }
+        if ($this->trackSerials && $this->trackLots) {
+            abort(422, 'An item can track lots or serial numbers, not both.', ['X-Error-Code' => 'ITEM_SERIALS_LOTS_EXCLUSIVE']);
+        }
         if ($this->isLandedCost && $this->trackInventory) {
             abort(422, 'Only items that do not track stock can be landed-cost items.', ['X-Error-Code' => 'ITEM_LANDED_COST_MUST_BE_SERVICE']);
         }
@@ -101,6 +118,9 @@ readonly class ItemData
             volume: self::normalizeMeasure($data['volume'] ?? null),
             isFixedAsset: (bool) ($data['is_fixed_asset'] ?? false),
             fixedAssetCategoryId: isset($data['fixed_asset_category_id']) ? (int) $data['fixed_asset_category_id'] : null,
+            trackSerials: $trackInventory && (bool) ($data['track_serials'] ?? false),
+            warrantyMonths: self::normalizeWarranty($data['warranty_months'] ?? null),
+            isScaleItem: (bool) ($data['is_scale_item'] ?? false),
         );
     }
 
@@ -186,6 +206,15 @@ readonly class ItemData
             fixedAssetCategoryId: array_key_exists('fixed_asset_category_id', $data)
                 ? ($data['fixed_asset_category_id'] !== null ? (int) $data['fixed_asset_category_id'] : null)
                 : ($item->fixed_asset_category_id !== null ? (int) $item->fixed_asset_category_id : null),
+            trackSerials: $trackInventory && (array_key_exists('track_serials', $data)
+                ? (bool) $data['track_serials']
+                : (bool) $item->track_serials),
+            warrantyMonths: array_key_exists('warranty_months', $data)
+                ? self::normalizeWarranty($data['warranty_months'])
+                : ($item->warranty_months !== null ? (int) $item->warranty_months : null),
+            isScaleItem: array_key_exists('is_scale_item', $data)
+                ? (bool) $data['is_scale_item']
+                : (bool) $item->is_scale_item,
         );
     }
 
@@ -214,6 +243,9 @@ readonly class ItemData
             'color' => $this->color,
             'track_inventory' => $this->trackInventory,
             'track_lots' => $this->trackLots,
+            'track_serials' => $this->trackSerials,
+            'warranty_months' => $this->warrantyMonths,
+            'is_scale_item' => $this->isScaleItem,
             'costing_method' => $this->costingMethod,
             'allow_sale' => $this->allowSale,
             'allow_purchase' => $this->allowPurchase,
@@ -365,5 +397,15 @@ readonly class ItemData
         $normalized = strtoupper(trim((string) $value));
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    private static function normalizeWarranty(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $months = (int) $value;
+
+        return $months > 0 ? $months : null;
     }
 }

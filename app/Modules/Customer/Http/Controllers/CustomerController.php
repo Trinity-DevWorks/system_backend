@@ -48,6 +48,7 @@ class CustomerController extends Controller
                 'id' => $c->id,
                 'customer_code' => (string) ($c->customer_code ?? ''),
                 'name' => $c->name,
+                'phone' => $c->phone,
                 'status' => $c->status instanceof CustomerStatus
                     ? $c->status->value
                     : (string) ($c->status ?? CustomerStatus::Active->value),

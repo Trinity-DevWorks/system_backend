@@ -19,7 +19,7 @@ readonly class ProductionResponseData
     {
         $document->loadMissing([
             'warehouse:id,name,shortcut_name,is_active',
-            'item:id,item_code,name,is_active,track_inventory,track_lots',
+            'item:id,item_code,name,is_active,track_inventory,track_lots,track_serials',
             'recipe:id,item_id,yield_quantity,uom_id',
             'recipe.uom:id,code,name',
             'itemUom:id,uom_id,conversion_factor',
@@ -45,6 +45,7 @@ readonly class ProductionResponseData
             'yield_quantity' => (string) $document->yield_quantity,
             'item_uom_id' => $document->item_uom_id,
             'lot_id' => $document->lot_id,
+            'serial_numbers' => $document->serial_numbers ?? [],
             'lot' => $lot ? [
                 'id' => $lot->id,
                 'lot_number' => $lot->lot_number,
@@ -113,6 +114,7 @@ readonly class ProductionResponseData
             'is_active' => (bool) $item->is_active,
             'track_inventory' => (bool) $item->track_inventory,
             'track_lots' => (bool) $item->track_lots,
+            'track_serials' => (bool) $item->track_serials,
         ];
     }
 

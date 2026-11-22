@@ -13,7 +13,7 @@ readonly class PurchaseOrderLineResponseData
     public static function fromModel(PurchaseOrderLine $line, ?string $orderExchangeRate = null): array
     {
         $line->loadMissing([
-            'item:id,item_code,name,is_active,allow_purchase,track_inventory,track_lots',
+            'item:id,item_code,name,is_active,allow_purchase,track_inventory,track_lots,track_serials',
             'itemUom:id,uom_id,conversion_factor',
             'itemUom.uom:id,code,name',
         ]);
@@ -73,7 +73,7 @@ readonly class PurchaseOrderLineResponseData
     }
 
     /**
-     * @return array{id:string,item_code:?string,name:string,is_active:bool,allow_purchase:bool,track_inventory:bool,track_lots:bool}|null
+     * @return array{id:string,item_code:?string,name:string,is_active:bool,allow_purchase:bool,track_inventory:bool,track_lots:bool,track_serials:bool}|null
      */
     private static function itemBrief(?Item $item): ?array
     {
@@ -89,6 +89,7 @@ readonly class PurchaseOrderLineResponseData
             'allow_purchase' => (bool) $item->allow_purchase,
             'track_inventory' => (bool) $item->track_inventory,
             'track_lots' => (bool) $item->track_lots,
+            'track_serials' => (bool) $item->track_serials,
         ];
     }
 }

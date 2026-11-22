@@ -13,7 +13,7 @@ readonly class BundleExplosionLineResponseData
     public static function fromModel(BundleExplosionLine $line): array
     {
         $line->loadMissing([
-            'item:id,item_code,name,is_active,track_inventory,track_lots,base_uom_id',
+            'item:id,item_code,name,is_active,track_inventory,track_lots,track_serials,base_uom_id',
             'item.baseUom:id,code,name',
             'lot:id,lot_number,expiry_date',
         ]);
@@ -29,6 +29,7 @@ readonly class BundleExplosionLineResponseData
             'base_quantity' => (string) $line->base_quantity,
             'theoretical_quantity' => (string) $line->theoretical_quantity,
             'lot_id' => $line->lot_id,
+            'serial_numbers' => $line->serial_numbers ?? [],
             'lot' => $lot ? [
                 'id' => $lot->id,
                 'lot_number' => $lot->lot_number,
@@ -68,6 +69,7 @@ readonly class BundleExplosionLineResponseData
             'is_active' => (bool) $item->is_active,
             'track_inventory' => (bool) $item->track_inventory,
             'track_lots' => (bool) $item->track_lots,
+            'track_serials' => (bool) $item->track_serials,
             'base_uom' => $item->baseUom ? [
                 'id' => $item->baseUom->id,
                 'code' => $item->baseUom->code,

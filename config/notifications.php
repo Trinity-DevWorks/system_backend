@@ -169,6 +169,13 @@ return [
             'mail_subject' => 'Depreciation posted for :month',
             'permission' => ['resource' => 'depreciation_runs', 'action' => 'view'],
         ],
+        // Sent only to the person who sent the email (in-app; mail would go through the same broken mailbox).
+        'documents.email_failed' => [
+            'severity' => 'error',
+            'default_channels' => ['database'],
+            'mail_subject' => 'Email for :document was not sent',
+            'permission' => null,
+        ],
         'accounting.budget_exceeded' => [
             'severity' => 'warning',
             'default_channels' => ['database'],

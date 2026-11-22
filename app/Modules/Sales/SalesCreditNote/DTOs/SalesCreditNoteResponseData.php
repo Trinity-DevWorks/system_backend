@@ -100,6 +100,7 @@ readonly class SalesCreditNoteResponseData
             'item_uom_id' => $line->item_uom_id,
             'warehouse_id' => $line->warehouse_id,
             'lot_id' => $line->lot_id,
+            'serial_numbers' => $line->serial_numbers ?? [],
             'quantity' => (string) $line->quantity,
             'base_quantity' => (string) $line->base_quantity,
             'conversion_factor' => (string) $line->conversion_factor,

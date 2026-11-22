@@ -21,6 +21,7 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseOrderLineQuantity;
 use App\Modules\Inventory\Purchasing\Support\PurchaseOrderRules;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Services\InventoryLotService;
+use App\Modules\Inventory\Stock\Services\InventorySerialService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\Inventory\Stock\Support\StockAdjustmentQuantity;
@@ -40,6 +41,7 @@ class GoodsReceiptService
         private readonly WarehouseService $warehouseService,
         private readonly StockMovementService $stockMovementService,
         private readonly InventoryLotService $inventoryLotService,
+        private readonly InventorySerialService $inventorySerialService,
         private readonly SupplierItemService $supplierItemService,
         private readonly DomainNotificationPublisher $notifications,
         private readonly JournalPostingService $journalPostingService,
@@ -241,7 +243,7 @@ class GoodsReceiptService
                         lotId: $line->lot_id ? (int) $line->lot_id : null,
                         goodsReceiptId: (string) $locked->id,
                         valueDelta: $inboundValue,
-                    ));
+                    )->withSerials($line->serial_numbers, 'supplier', $locked->supplier_id !== null ? (string) $locked->supplier_id : null));
                 }
 
                 if ($poLine !== null) {
@@ -538,6 +540,7 @@ class GoodsReceiptService
                 'purchase_order_line_id' => $poLineId,
                 'item_id' => (string) $poLine->item_id,
                 'lot_id' => $lotId,
+                'serial_numbers' => $this->inventorySerialService->forLine($item, $row['serial_numbers'] ?? null, $resolved['base_quantity'], count($normalized) + 1),
                 'unit_cost' => $this->normalizeUnitCost($row['unit_cost'] ?? $this->purchaseOrderUnitCost($poLine)),
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
@@ -592,6 +595,7 @@ class GoodsReceiptService
                 'purchase_order_line_id' => null,
                 'item_id' => $itemId,
                 'lot_id' => $lotId,
+                'serial_numbers' => $this->inventorySerialService->forLine($item, $row['serial_numbers'] ?? null, $resolved['base_quantity'], count($normalized) + 1),
                 'unit_cost' => $this->normalizeUnitCost($row['unit_cost'] ?? null),
                 'notes' => $this->normalizeNotes($row['notes'] ?? null),
             ];
@@ -617,6 +621,7 @@ class GoodsReceiptService
                 'item_uom_id' => $line['item_uom_id'],
                 'unit_cost' => $line['unit_cost'],
                 'lot_id' => $line['lot_id'],
+                'serial_numbers' => $line['serial_numbers'],
                 'notes' => $line['notes'],
             ]);
         }

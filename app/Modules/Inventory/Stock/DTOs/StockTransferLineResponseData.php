@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Stock\DTOs;
 
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\Models\StockTransferLine;
+use App\Modules\Inventory\Stock\Services\InventorySerialService;
 use App\Modules\Inventory\Stock\Support\StockTransferLineQuantity;
 use Illuminate\Support\Collection;
 
@@ -12,7 +13,7 @@ readonly class StockTransferLineResponseData
     public static function fromModel(StockTransferLine $line): array
     {
         $line->loadMissing([
-            'item:id,item_code,name,is_active,track_lots',
+            'item:id,item_code,name,is_active,track_lots,track_serials',
             'itemUom:id,uom_id,conversion_factor',
             'itemUom.uom:id,code,name',
             'lot:id,lot_number,expiry_date',
@@ -25,6 +26,11 @@ readonly class StockTransferLineResponseData
             'stock_transfer_id' => $line->stock_transfer_id,
             'item_id' => $line->item_id,
             'lot_id' => $line->lot_id,
+            'serial_numbers' => $line->serial_numbers ?? [],
+            // Units of this line still on their way: what a receipt or closure can pick from.
+            'serials_in_transit' => $line->item?->track_serials
+                ? app(InventorySerialService::class)->stillInTransit((string) $line->item_id, $line->serial_numbers)
+                : [],
             'lot' => $lot ? [
                 'id' => $lot->id,
                 'lot_number' => $lot->lot_number,
@@ -85,6 +91,7 @@ readonly class StockTransferLineResponseData
             'name' => $item->name,
             'is_active' => (bool) $item->is_active,
             'track_lots' => (bool) $item->track_lots,
+            'track_serials' => (bool) $item->track_serials,
         ];
     }
 }

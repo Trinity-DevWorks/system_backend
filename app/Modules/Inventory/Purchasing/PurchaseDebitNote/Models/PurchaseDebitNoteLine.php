@@ -13,6 +13,9 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property list<string>|null $serial_numbers
+ */
 #[Fillable([
     'purchase_debit_note_id',
     'purchase_invoice_line_id',
@@ -20,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'item_uom_id',
     'warehouse_id',
     'lot_id',
+    'serial_numbers',
     'quantity',
     'base_quantity',
     'conversion_factor',
@@ -43,6 +47,7 @@ class PurchaseDebitNoteLine extends Model
     protected function casts(): array
     {
         return [
+            'serial_numbers' => 'array',
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',
             'conversion_factor' => 'decimal:6',

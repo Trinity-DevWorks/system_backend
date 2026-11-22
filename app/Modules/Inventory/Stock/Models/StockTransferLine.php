@@ -10,10 +10,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
+/**
+ * @property list<string>|null $serial_numbers
+ */
 #[Fillable([
     'stock_transfer_id',
     'item_id',
     'lot_id',
+    'serial_numbers',
     'quantity',
     'base_quantity',
     'received_quantity',
@@ -35,6 +39,7 @@ class StockTransferLine extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
+            'serial_numbers' => 'array',
             'quantity' => 'decimal:6',
             'base_quantity' => 'decimal:6',
             'received_quantity' => 'decimal:6',

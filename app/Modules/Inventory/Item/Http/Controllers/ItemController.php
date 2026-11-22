@@ -36,6 +36,7 @@ class ItemController extends Controller
                     'name' => $item->name,
                     'track_inventory' => (bool) $item->track_inventory,
                     'track_lots' => (bool) $item->track_lots,
+                    'track_serials' => (bool) $item->track_serials,
                     'allow_sale' => (bool) $item->allow_sale,
                     'allow_purchase' => (bool) $item->allow_purchase,
                     'allow_return' => (bool) $item->allow_return,

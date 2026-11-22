@@ -42,6 +42,8 @@ class StoreStockCountRequest extends FormRequest
             'lines.*.lot_number' => ['nullable', 'string', 'max:64'],
             'lines.*.expiry_date' => ['nullable', 'date'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

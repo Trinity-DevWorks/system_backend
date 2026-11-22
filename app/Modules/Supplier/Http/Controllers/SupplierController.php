@@ -47,6 +47,7 @@ class SupplierController extends Controller
                 'id' => $s->id,
                 'supplier_code' => (string) ($s->supplier_code ?? ''),
                 'name' => $s->name,
+                'phone' => $s->phone,
                 'is_active' => (bool) $s->is_active,
                 'created_at' => (string) $s->created_at,
                 'updated_at' => (string) $s->updated_at,

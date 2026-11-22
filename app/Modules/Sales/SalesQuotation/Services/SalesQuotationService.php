@@ -157,8 +157,9 @@ class SalesQuotationService
     {
         return DB::transaction(function () use ($quotation, $userId): SalesQuotation {
             $locked = SalesQuotation::query()->whereKey($quotation->id)->lockForUpdate()->firstOrFail();
-            if ($locked->status !== SalesQuotationStatus::Sent) {
-                abort(422, 'Only a sent quotation can be accepted.', ['X-Error-Code' => 'SALES_QUOTATION_NOT_SENT']);
+            // The customer may accept without the quotation ever being marked sent (e.g. agreed in person).
+            if (! in_array($locked->status, [SalesQuotationStatus::Draft, SalesQuotationStatus::Sent], true)) {
+                abort(422, 'Only a draft or sent quotation can be accepted.', ['X-Error-Code' => 'SALES_QUOTATION_NOT_ACCEPTABLE']);
             }
             $locked->update([
                 'status' => SalesQuotationStatus::Accepted,

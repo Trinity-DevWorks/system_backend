@@ -120,11 +120,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (HttpExceptionInterface $e, Request $request) use ($wantsEnvelope) {
             if ($wantsEnvelope($request)) {
                 $code = $e->getHeaders()['X-Error-Code'] ?? $e->getHeaders()['x-error-code'] ?? null;
+                // Optional JSON values for the translated message (e.g. which serial numbers).
+                $params = $e->getHeaders()['X-Error-Params'] ?? null;
+                $params = is_string($params) ? json_decode($params, true) : null;
 
                 return ApiResponse::error(
                     $e->getMessage() !== '' ? $e->getMessage() : 'Request failed.',
                     $e->getStatusCode(),
-                    null,
+                    is_array($params) ? ['params' => $params] : null,
                     [],
                     null,
                     null,

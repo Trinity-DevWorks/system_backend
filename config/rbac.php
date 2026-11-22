@@ -60,6 +60,12 @@ return [
             'label' => 'Print Settings',
             'actions' => $viewEdit,
         ],
+        // The company mailbox (SMTP) and email templates. Emailing a document itself
+        // needs that document's `print` permission (statements: `view`).
+        'email_settings' => [
+            'label' => 'Email Settings',
+            'actions' => $viewEdit,
+        ],
         'company_settings' => [
             'label' => 'Company Settings Management',
             'actions' => $viewEdit,
@@ -124,6 +130,11 @@ return [
         ],
         'price_changes' => [
             'label' => 'Price Change Management',
+            'actions' => $crud,
+        ],
+        // Scale label layouts (weighed / priced items).
+        'scale_barcode_formats' => [
+            'label' => 'Scale Barcode Formats',
             'actions' => $crud,
         ],
         // Lets a role save a selling price that is below the item's current cost.

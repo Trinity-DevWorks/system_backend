@@ -14,7 +14,7 @@ readonly class GoodsReceiptLineResponseData
     public static function fromModel(GoodsReceiptLine $line): array
     {
         $line->loadMissing([
-            'item:id,item_code,name,is_active,allow_purchase,track_inventory,track_lots',
+            'item:id,item_code,name,is_active,allow_purchase,track_inventory,track_lots,track_serials',
             'itemUom:id,uom_id,conversion_factor',
             'itemUom.uom:id,code,name',
             'lot:id,lot_number,expiry_date',
@@ -34,6 +34,7 @@ readonly class GoodsReceiptLineResponseData
             'item_uom_id' => $line->item_uom_id,
             'unit_cost' => $line->unit_cost !== null ? (string) $line->unit_cost : null,
             'lot_id' => $line->lot_id,
+            'serial_numbers' => $line->serial_numbers ?? [],
             'lot' => $lot ? [
                 'id' => $lot->id,
                 'lot_number' => $lot->lot_number,
@@ -84,6 +85,7 @@ readonly class GoodsReceiptLineResponseData
             'allow_purchase' => (bool) $item->allow_purchase,
             'track_inventory' => (bool) $item->track_inventory,
             'track_lots' => (bool) $item->track_lots,
+            'track_serials' => (bool) $item->track_serials,
         ];
     }
 }

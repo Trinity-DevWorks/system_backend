@@ -25,6 +25,8 @@ class StoreProductionRequest extends FormRequest
             'production_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'lot_id' => ['nullable', 'integer', 'exists:inventory_lots,id'],
+            'serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'serial_numbers.*' => ['nullable', 'string', 'max:100'],
             'lot_number' => ['nullable', 'string', 'max:64'],
             'expiry_date' => ['nullable', 'date'],
             'lines' => ['sometimes', 'array'],
@@ -46,6 +48,8 @@ class StoreProductionRequest extends FormRequest
             'lines.*.lot_number' => ['nullable', 'string', 'max:64'],
             'lines.*.expiry_date' => ['nullable', 'date'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
+            'lines.*.serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'lines.*.serial_numbers.*' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

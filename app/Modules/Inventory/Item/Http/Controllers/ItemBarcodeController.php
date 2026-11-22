@@ -12,6 +12,7 @@ use App\Modules\Inventory\Item\Models\ItemBarcode;
 use App\Modules\Inventory\Item\Services\ItemBarcodeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ItemBarcodeController extends Controller
 {
@@ -26,7 +27,8 @@ class ItemBarcodeController extends Controller
             return ApiResponse::error('Barcode is required.', 422, null, ['barcode' => ['Barcode is required.']], null, null, 'BARCODE_REQUIRED');
         }
 
-        $result = $this->itemBarcodeService->lookup($barcode);
+        $branchId = $request->attributes->get('active_branch_id');
+        $result = $this->itemBarcodeService->lookup($barcode, is_numeric($branchId) ? (int) $branchId : null);
         if ($result === null) {
             return ApiResponse::error('No item found for this barcode.', 404, null, [], null, null, 'BARCODE_NOT_FOUND');
         }
@@ -49,6 +51,23 @@ class ItemBarcodeController extends Controller
         return ApiResponse::created(
             ItemBarcodeResponseData::fromModel($barcode),
             'Barcode created successfully.'
+        );
+    }
+
+    /** Adds the next in-store EAN-13 barcode (200…) to the item / unit. */
+    public function generate(Request $request, Item $item): JsonResponse
+    {
+        $data = $request->validate([
+            'item_uom_id' => ['nullable', 'integer', Rule::exists('item_uoms', 'id')->where('item_id', $item->id)],
+        ]);
+        $barcode = $this->itemBarcodeService->generate(
+            $item,
+            isset($data['item_uom_id']) ? (int) $data['item_uom_id'] : null,
+        );
+
+        return ApiResponse::created(
+            ItemBarcodeResponseData::fromModel($barcode),
+            'Barcode generated successfully.'
         );
     }
 

@@ -34,6 +34,9 @@ use App\Modules\Customer\Http\Controllers\CustomerGroupController;
 use App\Modules\Customer\Http\Controllers\CustomerLedgerController;
 use App\Modules\Deferral\Http\Controllers\DeferralReportController;
 use App\Modules\Deferral\Http\Controllers\DeferralScheduleController;
+use App\Modules\DocumentEmail\Http\Controllers\DocumentEmailController;
+use App\Modules\DocumentEmail\Http\Controllers\EmailSettingController;
+use App\Modules\DocumentEmail\Http\Controllers\EmailTemplateController;
 use App\Modules\DocumentNumbering\Http\Controllers\DocumentNumberSettingController;
 use App\Modules\DocumentNumbering\Http\Controllers\PrintSettingController;
 use App\Modules\Inventory\Item\Http\Controllers\BundleItemController;
@@ -53,8 +56,10 @@ use App\Modules\Inventory\Purchasing\LandedCost\Http\Controllers\LandedCostContr
 use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Http\Controllers\PurchaseDebitNoteController;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Http\Controllers\SupplierPaymentController;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Http\Controllers\SupplierRefundController;
+use App\Modules\Inventory\ScaleBarcode\Http\Controllers\ScaleBarcodeFormatController;
 use App\Modules\Inventory\Stock\Http\Controllers\BundleExplosionController;
 use App\Modules\Inventory\Stock\Http\Controllers\InventoryLotController;
+use App\Modules\Inventory\Stock\Http\Controllers\InventorySerialController;
 use App\Modules\Inventory\Stock\Http\Controllers\ItemWarehouseReplenishmentController;
 use App\Modules\Inventory\Stock\Http\Controllers\OpeningStockController;
 use App\Modules\Inventory\Stock\Http\Controllers\ProductionController;
@@ -220,6 +225,25 @@ Route::middleware([
                 ->middleware('check.permission:print_settings,view');
             Route::put('print-settings', [PrintSettingController::class, 'update'])
                 ->middleware('check.permission:print_settings,edit');
+
+            // Emailing documents: the company mailbox, the templates and the send itself.
+            Route::get('email-settings', [EmailSettingController::class, 'show'])
+                ->middleware('check.permission:email_settings,view');
+            Route::put('email-settings', [EmailSettingController::class, 'update'])
+                ->middleware('check.permission:email_settings,edit');
+            Route::post('email-settings/test', [EmailSettingController::class, 'test'])
+                ->middleware(['check.permission:email_settings,edit', 'throttle:10,1']);
+            Route::get('email-templates', [EmailTemplateController::class, 'index'])
+                ->middleware('check.permission:email_settings,view');
+            Route::put('email-templates/{type}/{locale}', [EmailTemplateController::class, 'update'])
+                ->middleware('check.permission:email_settings,edit');
+            Route::delete('email-templates/{type}/{locale}', [EmailTemplateController::class, 'destroy'])
+                ->middleware('check.permission:email_settings,edit');
+            // Permission is the document's own (print / view), checked in the controller.
+            Route::get('document-emails/defaults', [DocumentEmailController::class, 'defaults']);
+            Route::get('document-emails', [DocumentEmailController::class, 'index']);
+            Route::post('document-emails', [DocumentEmailController::class, 'store'])
+                ->middleware('throttle:30,1');
             Route::put('company-settings', [CompanySettingController::class, 'update'])
                 ->middleware('check.permission:company_settings,edit');
             Route::get('countries', [CountryController::class, 'index']);
@@ -375,6 +399,16 @@ Route::middleware([
                 ->middleware('check.permission:stock,view');
             Route::put('stock/inventory-lots/{inventory_lot}', [InventoryLotController::class, 'update'])
                 ->whereNumber('inventory_lot')
+                ->middleware('check.permission:stock,edit');
+            Route::get('stock/serials', [InventorySerialController::class, 'index'])
+                ->middleware('check.permission:stock,view');
+            Route::get('stock/serials/available', [InventorySerialController::class, 'available'])
+                ->middleware('check.permission:stock,view');
+            Route::get('stock/serials/{inventory_serial}', [InventorySerialController::class, 'show'])
+                ->whereNumber('inventory_serial')
+                ->middleware('check.permission:stock,view');
+            Route::put('stock/serials/{inventory_serial}', [InventorySerialController::class, 'update'])
+                ->whereNumber('inventory_serial')
                 ->middleware('check.permission:stock,edit');
             Route::get('stock/balances', [StockBalanceController::class, 'index'])
                 ->middleware('check.permission:stock,view');
@@ -632,11 +666,20 @@ Route::middleware([
                 ->middleware('check.permission:items,edit');
             Route::get('items/lookup-by-barcode', [ItemBarcodeController::class, 'lookup'])
                 ->middleware('check.permission:items,view');
+            Route::post('scale-barcode-formats/test', [ScaleBarcodeFormatController::class, 'test'])
+                ->middleware('check.permission:scale_barcode_formats,view');
+            Route::apiResource('scale-barcode-formats', ScaleBarcodeFormatController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:scale_barcode_formats,view'])
+                ->middlewareFor(['store'], ['check.permission:scale_barcode_formats,add'])
+                ->middlewareFor(['update'], ['check.permission:scale_barcode_formats,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:scale_barcode_formats,delete']);
             Route::get('items/{item}/invoice-line-setup', [ItemController::class, 'invoiceLineSetup'])
                 ->middleware('check.permission:items,view');
             Route::get('items/{item}/barcodes', [ItemBarcodeController::class, 'index'])
                 ->middleware('check.permission:items,view');
             Route::post('items/{item}/barcodes', [ItemBarcodeController::class, 'store'])
+                ->middleware('check.permission:items,edit');
+            Route::post('items/{item}/barcodes/generate', [ItemBarcodeController::class, 'generate'])
                 ->middleware('check.permission:items,edit');
             Route::put('items/{item}/barcodes/{item_barcode}', [ItemBarcodeController::class, 'update'])
                 ->middleware('check.permission:items,edit');

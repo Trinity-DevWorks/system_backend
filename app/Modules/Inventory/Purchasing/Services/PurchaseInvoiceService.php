@@ -25,6 +25,7 @@ use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceLineQuantity;
 use App\Modules\Inventory\Purchasing\Support\PurchaseInvoiceRules;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Services\InventoryLotService;
+use App\Modules\Inventory\Stock\Services\InventorySerialService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\Stock\Support\InventoryCostingMath;
 use App\Modules\PaymentTerm\Models\PaymentTerm;
@@ -587,6 +588,11 @@ class PurchaseInvoiceService
                 PurchaseInvoiceRules::assertWarehouse($warehouseId);
             }
 
+            // Received on the goods receipt: the invoice only shows those serials.
+            $serialNumbers = $grnLine !== null
+                ? ($item->track_serials ? ($grnLine->serial_numbers ?? []) : null)
+                : app(InventorySerialService::class)->forLine($item, $row['serial_numbers'] ?? null, $qty['base_quantity'], $index + 1);
+
             if ($item->track_lots && $lotId === null && $invoice->goods_receipt_id === null) {
                 abort(422, 'Select a lot for this item.', ['X-Error-Code' => 'STOCK_LOT_REQUIRED']);
             }
@@ -604,6 +610,7 @@ class PurchaseInvoiceService
                 'item_uom_id' => $qty['item_uom_id'],
                 'warehouse_id' => $warehouseId,
                 'lot_id' => $lotId,
+                'serial_numbers' => $serialNumbers,
                 'sort_order' => $index + 1,
                 'quantity' => $qty['quantity'],
                 'base_quantity' => $qty['base_quantity'],
@@ -672,7 +679,7 @@ class PurchaseInvoiceService
             userId: $userId,
             lotId: $line->lot_id ? (int) $line->lot_id : null,
             valueDelta: $this->inboundValue($invoice, $line),
-        ));
+        )->withSerials($line->serial_numbers, 'supplier', $invoice->supplier_id !== null ? (string) $invoice->supplier_id : null));
     }
 
     /**

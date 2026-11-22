@@ -25,6 +25,8 @@ class UpdateProductionRequest extends FormRequest
             'production_date' => ['sometimes', 'required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'lot_id' => ['nullable', 'integer', 'exists:inventory_lots,id'],
+            'serial_numbers' => ['nullable', 'array', 'max:5000'],
+            'serial_numbers.*' => ['nullable', 'string', 'max:100'],
             'lot_number' => ['nullable', 'string', 'max:64'],
             'expiry_date' => ['nullable', 'date'],
         ];

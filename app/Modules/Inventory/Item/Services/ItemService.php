@@ -6,6 +6,7 @@ use App\Modules\Inventory\Item\DTOs\ItemData;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Item\Support\ItemDeleteRules;
+use App\Modules\Inventory\Stock\Models\InventorySerial;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Support\ListPagination;
 use Illuminate\Database\Eloquent\Collection;
@@ -88,6 +89,7 @@ class ItemService
                 'vat_group_id',
                 'track_inventory',
                 'track_lots',
+                'track_serials',
                 'allow_sale',
                 'allow_purchase',
                 'allow_return',
@@ -137,7 +139,7 @@ class ItemService
     public function names(): Collection
     {
         return Item::query()
-            ->select(['id', 'item_code', 'name', 'item_type_id', 'base_uom_id', 'vat_group_id', 'track_inventory', 'track_lots', 'allow_sale', 'allow_purchase', 'allow_return', 'is_active'])
+            ->select(['id', 'item_code', 'name', 'item_type_id', 'base_uom_id', 'vat_group_id', 'track_inventory', 'track_lots', 'track_serials', 'allow_sale', 'allow_purchase', 'allow_return', 'is_active'])
             ->with(['itemType:id,code,name', 'baseUom:id,code,name', 'vatGroup:id,percentage'])
             ->orderBy('name')
             ->get();
@@ -182,6 +184,30 @@ class ItemService
                 if ($hasLottedQty) {
                     abort(422, 'Zero lotted stock before disabling lot tracking.', [
                         'X-Error-Code' => 'ITEM_LOTS_DISABLE_HAS_STOCK',
+                    ]);
+                }
+            }
+
+            if ($data->trackSerials && ! $item->track_serials) {
+                $hasStock = StockBalance::query()
+                    ->where('item_id', $item->id)
+                    ->where('quantity', '>', 0)
+                    ->exists();
+                if ($hasStock) {
+                    abort(422, 'Bring this item\'s stock to zero before turning on serial numbers, then receive the units again with their serials.', [
+                        'X-Error-Code' => 'ITEM_SERIALS_ENABLE_HAS_STOCK',
+                    ]);
+                }
+            }
+
+            if (! $data->trackSerials && $item->track_serials) {
+                $hasSerials = InventorySerial::query()
+                    ->where('item_id', $item->id)
+                    ->whereIn('status', [InventorySerial::STATUS_IN_STOCK, InventorySerial::STATUS_IN_TRANSIT])
+                    ->exists();
+                if ($hasSerials) {
+                    abort(422, 'This item has serial numbers in stock. Sell or remove them before turning serial numbers off.', [
+                        'X-Error-Code' => 'ITEM_SERIALS_DISABLE_HAS_STOCK',
                     ]);
                 }
             }
