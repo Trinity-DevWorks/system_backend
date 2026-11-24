@@ -44,6 +44,7 @@ class StoreItemRequest extends FormRequest
             'track_lots' => ['nullable', 'boolean'],
             'track_serials' => ['nullable', 'boolean'],
             'is_scale_item' => ['nullable', 'boolean'],
+            'shelf_life_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'warranty_months' => ['nullable', 'integer', 'min:0', 'max:600'],
             'costing_method' => ['nullable', Rule::enum(InventoryCostingMethod::class)],
             'allow_sale' => ['nullable', 'boolean'],

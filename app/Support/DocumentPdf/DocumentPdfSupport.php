@@ -62,6 +62,7 @@ final class DocumentPdfSupport
                 'unit_price' => isset($line->unit_price) ? $money->money($line->unit_price) : '—',
                 'discount' => isset($line->discount_amount) ? $money->money($line->discount_amount) : '—',
                 'line_total' => isset($line->line_total) ? $money->money($line->line_total) : '—',
+                'serials' => self::serialText($line),
             ];
             if ($includeTax) {
                 $row['tax'] = isset($line->tax_amount) ? $money->money($line->tax_amount) : '—';
@@ -70,6 +71,19 @@ final class DocumentPdfSupport
         }
 
         return $rows;
+    }
+
+    /**
+     * Serial numbers of a line, printed under its description ('' when the line has none).
+     */
+    public static function serialText(object $line): string
+    {
+        $serials = $line->serial_numbers ?? null;
+        if (! is_array($serials) || $serials === []) {
+            return '';
+        }
+
+        return implode(', ', array_map('strval', $serials));
     }
 
     /**
@@ -143,6 +157,7 @@ final class DocumentPdfSupport
                 'description' => $money->dash($description),
                 'qty' => $money->quantity($line->quantity ?? null),
                 'uom' => $money->dash($uom !== null ? (string) $uom : null),
+                'serials' => self::serialText($line),
             ];
             if ($includeUnitCost) {
                 $row['unit_cost'] = isset($line->unit_cost) ? $money->money($line->unit_cost) : '—';

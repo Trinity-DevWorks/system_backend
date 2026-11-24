@@ -43,6 +43,7 @@ readonly class ItemData
         public bool $trackSerials = false,
         public ?int $warrantyMonths = null,
         public bool $isScaleItem = false,
+        public ?int $shelfLifeDays = null,
     ) {
         if ($this->isScaleItem) {
             if (! $this->allowSale) {
@@ -121,6 +122,7 @@ readonly class ItemData
             trackSerials: $trackInventory && (bool) ($data['track_serials'] ?? false),
             warrantyMonths: self::normalizeWarranty($data['warranty_months'] ?? null),
             isScaleItem: (bool) ($data['is_scale_item'] ?? false),
+            shelfLifeDays: self::normalizeShelfLife($data['shelf_life_days'] ?? null),
         );
     }
 
@@ -215,6 +217,9 @@ readonly class ItemData
             isScaleItem: array_key_exists('is_scale_item', $data)
                 ? (bool) $data['is_scale_item']
                 : (bool) $item->is_scale_item,
+            shelfLifeDays: array_key_exists('shelf_life_days', $data)
+                ? self::normalizeShelfLife($data['shelf_life_days'])
+                : ($item->shelf_life_days !== null ? (int) $item->shelf_life_days : null),
         );
     }
 
@@ -246,6 +251,7 @@ readonly class ItemData
             'track_serials' => $this->trackSerials,
             'warranty_months' => $this->warrantyMonths,
             'is_scale_item' => $this->isScaleItem,
+            'shelf_life_days' => $this->shelfLifeDays,
             'costing_method' => $this->costingMethod,
             'allow_sale' => $this->allowSale,
             'allow_purchase' => $this->allowPurchase,
@@ -397,6 +403,16 @@ readonly class ItemData
         $normalized = strtoupper(trim((string) $value));
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    private static function normalizeShelfLife(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $days = (int) $value;
+
+        return $days > 0 ? $days : null;
     }
 
     private static function normalizeWarranty(mixed $value): ?int

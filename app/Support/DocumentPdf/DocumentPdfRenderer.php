@@ -189,6 +189,7 @@ final class DocumentPdfRenderer
             'reason' => 'Reason',
             'total_debit' => 'Total debit',
             'total_credit' => 'Total credit',
+            'serials' => 'Serial numbers',
         ];
 
         $ar = [
@@ -202,6 +203,7 @@ final class DocumentPdfRenderer
             'to_warehouse' => 'إلى المستودع',
             'code' => 'الرمز',
             'description' => 'الوصف',
+            'serials' => 'الأرقام التسلسلية',
             'qty' => 'الكمية',
             'uom' => 'الوحدة',
             'unit_price' => 'سعر الوحدة',

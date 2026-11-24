@@ -28,7 +28,14 @@
                 <tr>
                     <td>{{ $index + 1 }}</td>
                     @if ($show('code')) <td>{{ $line['code'] ?? '—' }}</td> @endif
-                    @if ($show('description')) <td>{{ $line['description'] ?? '—' }}</td> @endif
+                    @if ($show('description'))
+                        <td>
+                            {{ $line['description'] ?? '—' }}
+                            @if (!empty($line['serials']))
+                                <div class="line-serials">{{ $labels['serials'] ?? 'Serial numbers' }}: <span dir="ltr">{{ $line['serials'] }}</span></div>
+                            @endif
+                        </td>
+                    @endif
                     @if ($show('account')) <td>{{ $line['account'] ?? '—' }}</td> @endif
                     @if ($show('qty')) <td class="num">{{ $line['qty'] ?? '—' }}</td> @endif
                     @if ($show('uom')) <td>{{ $line['uom'] ?? '—' }}</td> @endif
