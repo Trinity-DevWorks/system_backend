@@ -126,9 +126,8 @@ class SeedScaleTestItems extends Command
                         $uoms->create($item, ['uom_id' => $ea->id, 'selling_price' => $price, 'cost_price' => bcmul($price, '0.6', 2), 'is_default_sale' => true]);
                     }
 
-                    $barcode = $gtin ?? null;
-                    if ($barcode !== null) {
-                        $barcodes->store($item, ['barcode' => $barcode, 'is_primary' => true, 'item_uom_id' => null]);
+                    if (is_string($gtin) && $gtin !== '') {
+                        $barcodes->store($item, ['barcode' => $gtin, 'is_primary' => true, 'item_uom_id' => null]);
                     } else {
                         $barcodes->generate($item, null);
                     }
