@@ -52,6 +52,8 @@ use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Models\PurchaseDebitNote;
 use App\Modules\Inventory\Purchasing\SupplierPayment\Models\SupplierPayment;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Models\SupplierRefund;
 use App\Modules\Inventory\ScaleBarcode\Models\ScaleBarcodeFormat;
+use App\Modules\Inventory\ScaleBarcode\Models\ScaleExportTemplate;
+use App\Modules\Inventory\ScaleBarcode\Models\ScaleLabelTemplate;
 use App\Modules\Inventory\Stock\Models\BundleExplosion;
 use App\Modules\Inventory\Stock\Models\BundleExplosionLine;
 use App\Modules\Inventory\Stock\Models\InventorySerial;
@@ -232,6 +234,8 @@ class AppServiceProvider extends ServiceProvider
             'email_setting' => EmailSetting::class,
             'email_template' => EmailTemplate::class,
             'scale_barcode_format' => ScaleBarcodeFormat::class,
+            'scale_export_template' => ScaleExportTemplate::class,
+            'scale_label_template' => ScaleLabelTemplate::class,
             'inventory_serial' => InventorySerial::class,
             'item_attribute' => ItemAttribute::class,
             'item_attribute_value' => ItemAttributeValue::class,

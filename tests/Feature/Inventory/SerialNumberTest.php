@@ -12,6 +12,8 @@ use App\Modules\Inventory\Stock\Services\InventorySerialService;
 use App\Modules\Inventory\Stock\Services\StockMovementService;
 use App\Modules\Inventory\UnitGroup\Models\UnitGroup;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Support\DocumentPdf\DocumentMoney;
+use App\Support\DocumentPdf\DocumentPdfSupport;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -155,6 +157,39 @@ class SerialNumberTest extends TestCase
         });
     }
 
+    public function test_a_restocked_return_clears_the_sale_and_reversing_it_restores_the_sale(): void
+    {
+        $this->tenant->run(function (): void {
+            $this->receive(['RT1'], 'grn-rt');
+            $this->sell(['RT1'], 'si-rt');
+
+            app(StockMovementService::class)->post(StockMovementData::forSalesReturn(
+                itemId: $this->itemId,
+                warehouseId: $this->warehouseId,
+                quantityDelta: '1',
+                salesCreditNoteId: $this->ref('scn-rt'),
+                unitCost: '100',
+                itemUomId: null,
+                notes: null,
+                userId: null,
+            )->withSerials(['RT1'], 'customer', $this->customerId));
+
+            $unit = InventorySerial::query()->where('serial_number', 'RT1')->firstOrFail();
+            $this->assertSame(InventorySerial::STATUS_IN_STOCK, $unit->status);
+            $this->assertNull($unit->customer_id);
+            $this->assertNull($unit->sold_ref_id);
+            $this->assertNull($unit->warranty_ends_on);
+            $this->assertSame(3, (int) $unit->movements()->count());
+
+            DB::transaction(fn () => app(StockMovementService::class)->reverseReference('sales_credit_note', $this->ref('scn-rt'), null));
+            $unit->refresh();
+            $this->assertSame(InventorySerial::STATUS_SOLD, $unit->status);
+            $this->assertSame($this->customerId, (string) $unit->customer_id);
+            $this->assertSame($this->ref('si-rt'), (string) $unit->sold_ref_id);
+            $this->assertNotNull($unit->warranty_ends_on);
+        });
+    }
+
     public function test_transfer_ships_in_transit_receives_part_and_writes_off_the_rest(): void
     {
         $this->tenant->run(function (): void {
@@ -223,6 +258,55 @@ class SerialNumberTest extends TestCase
     /**
      * @param  list<string>  $serials
      */
+    public function test_serial_reports_list_stock_sales_and_warranties(): void
+    {
+        $this->tenant->run(function (): void {
+            $this->receive(['R-1', 'R-2', 'R-3'], 'grn-r');
+            $this->sell(['R-1'], 'si-r');
+            InventorySerial::query()->where('serial_number', 'R-1')->update(['warranty_ends_on' => now()->addDays(10)->toDateString()]);
+        });
+        $token = $this->tenantBearerToken();
+
+        $stock = $this->asTenantRequest($token)->getJson($this->tenantUrl('reports/serials-in-stock?per_page=20'))->assertOk()->json('data');
+        $this->assertSame(['R-2', 'R-3'], array_column($stock['rows'], 'serial'));
+        $this->assertSame('Main', $stock['rows'][0]['warehouse']);
+        $this->assertSame(2, $stock['pagination']['total']);
+
+        $sold = $this->asTenantRequest($token)->getJson($this->tenantUrl('reports/serials-sold?per_page=20'))->assertOk()->json('data');
+        $this->assertSame(['R-1'], array_column($sold['rows'], 'serial'));
+        $this->assertSame('Serial Buyer', $sold['rows'][0]['customer']);
+
+        $soon = $this->asTenantRequest($token)->getJson($this->tenantUrl('reports/warranty-expiring?days=30&per_page=20'))->assertOk()->json('data');
+        $this->assertSame(['R-1'], array_column($soon['rows'], 'serial'));
+        $this->assertSame(10, $soon['rows'][0]['days_left']);
+        $later = $this->asTenantRequest($token)->getJson($this->tenantUrl('reports/warranty-expiring?days=5&per_page=20'))->assertOk()->json('data');
+        $this->assertSame([], $later['rows']);
+
+        $search = $this->asTenantRequest($token)->getJson($this->tenantUrl('reports/serials-in-stock?per_page=20&search=r-3'))->assertOk()->json('data');
+        $this->assertSame(['R-3'], array_column($search['rows'], 'serial'));
+    }
+
+    public function test_document_lines_print_their_serial_numbers(): void
+    {
+        $line = (object) ['serial_numbers' => ['SN-1', 'SN-2']];
+        $this->assertSame('SN-1, SN-2', DocumentPdfSupport::serialText($line));
+        $this->assertSame('', DocumentPdfSupport::serialText((object) ['serial_numbers' => null]));
+        $this->assertSame('', DocumentPdfSupport::serialText((object) []));
+
+        $this->tenant->run(function (): void {
+            $money = new DocumentMoney(false);
+            $rows = DocumentPdfSupport::quantityLines([(object) ['quantity' => '2', 'serial_numbers' => ['A1', 'B2']]], $money);
+            $this->assertSame('A1, B2', $rows[0]['serials']);
+
+            $html = view('document-pdf.partials.lines', [
+                'lines' => $rows,
+                'lineColumns' => ['description', 'qty'],
+                'labels' => ['description' => 'Description', 'qty' => 'Qty', 'serials' => 'Serial numbers'],
+            ])->render();
+            $this->assertStringContainsString('Serial numbers: <span dir="ltr">A1, B2</span>', $html);
+        });
+    }
+
     private function receive(array $serials, string $ref, ?string $quantity = null): void
     {
         app(StockMovementService::class)->post(StockMovementData::forPurchase(

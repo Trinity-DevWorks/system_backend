@@ -12,6 +12,7 @@ use App\Modules\Reports\Services\AccountingAnalyticsService;
 use App\Modules\Reports\Services\BudgetReportService;
 use App\Modules\Reports\Services\FixedAssetReportService;
 use App\Modules\Reports\Services\SalesProfitService;
+use App\Modules\Reports\Services\SerialReportService;
 use App\Modules\Reports\Services\StockAnalyticsService;
 use App\Modules\Reports\Support\AnalyticsReport;
 use App\Support\Export\TabularExportService;
@@ -28,6 +29,9 @@ class AnalyticsReportController extends Controller
         'sales-analysis' => ['sales_analysis_title', 'sales-analysis'],
         'sales-profitability' => ['sales_profitability_title', 'sales-profitability'],
         'lot-expiry' => ['lot_expiry_title', 'lot-expiry'],
+        'serials-in-stock' => ['serials_in_stock_title', 'serials-in-stock'],
+        'serials-sold' => ['serials_sold_title', 'serials-sold'],
+        'warranty-expiring' => ['warranty_expiring_title', 'warranty-expiring'],
         'dead-stock' => ['dead_stock_title', 'dead-stock'],
         'item-movement' => ['item_movement_title', 'item-movement'],
         'cash-flow' => ['cash_flow_title', 'cash-flow'],
@@ -49,6 +53,7 @@ class AnalyticsReportController extends Controller
         private readonly FixedAssetReportService $fixedAssets,
         private readonly PriceReportService $prices,
         private readonly BudgetReportService $budgets,
+        private readonly SerialReportService $serials,
         private readonly TabularExportService $tabularExportService,
     ) {}
 
@@ -90,6 +95,9 @@ class AnalyticsReportController extends Controller
             'sales-analysis' => $this->sales->analysis($from, $to, $request->textFilter('group_by'), $branch, $list),
             'sales-profitability' => $this->sales->profitability($from, $to, $branch, $list),
             'lot-expiry' => $this->stock->lotExpiry($request->intFilter('days'), $request->boolFilter('include_expired'), $warehouse, $list),
+            'serials-in-stock' => $this->serials->inStock($warehouse, $request->textFilter('item_id'), $list),
+            'serials-sold' => $this->serials->sold($from, $to, $warehouse, $request->textFilter('item_id'), $list),
+            'warranty-expiring' => $this->serials->warrantyExpiring($request->intFilter('days'), $request->boolFilter('include_expired'), $warehouse, $request->textFilter('item_id'), $list),
             'dead-stock' => $this->stock->deadStock($request->intFilter('days'), $warehouse, $list),
             'item-movement' => $this->itemMovement($request, $from, $to, $warehouse),
             'cash-flow' => $this->accounting->cashFlow($from, $to, $branch),

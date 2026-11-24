@@ -62,6 +62,7 @@ class UpdateItemRequest extends FormRequest
             'track_lots' => ['sometimes', 'boolean'],
             'track_serials' => ['sometimes', 'boolean'],
             'is_scale_item' => ['sometimes', 'boolean'],
+            'shelf_life_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'warranty_months' => ['nullable', 'integer', 'min:0', 'max:600'],
             'costing_method' => ['sometimes', 'nullable', Rule::enum(InventoryCostingMethod::class)],
             'allow_sale' => ['sometimes', 'boolean'],
