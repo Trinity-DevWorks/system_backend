@@ -10,6 +10,7 @@ use App\Modules\Branch\Models\Branch;
 use App\Modules\Branch\Support\DocumentBranchPayload;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
+use App\Services\PlanLimitService;
 use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Collection;
@@ -27,6 +28,7 @@ class BranchService
     public function __construct(
         private readonly BranchContextService $branchContext,
         private readonly DomainNotificationPublisher $notifications,
+        private readonly PlanLimitService $planLimits,
     ) {}
 
     public function list(): Collection
@@ -121,6 +123,8 @@ class BranchService
     public function create(BranchData $data): Branch
     {
         return DB::transaction(function () use ($data): Branch {
+            $this->planLimits->assertCanAdd('branches');
+
             $payload = $data->toArray();
 
             // First branch in a tenant must be the default.

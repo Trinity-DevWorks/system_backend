@@ -70,6 +70,11 @@ return [
             'label' => 'Company Settings Management',
             'actions' => $viewEdit,
         ],
+        // Read-only: the tenant's plan, limits and usage (managed from the central domain).
+        'subscription' => [
+            'label' => 'Subscription & Usage',
+            'actions' => ['view'],
+        ],
         'branches' => [
             'label' => 'Branch Management',
             'actions' => $crud,

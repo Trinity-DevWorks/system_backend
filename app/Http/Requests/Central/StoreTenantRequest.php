@@ -14,6 +14,16 @@ class StoreTenantRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->input('name'))) {
+            $this->merge(['name' => trim($this->input('name'))]);
+        }
+        if (is_string($this->input('domain'))) {
+            $this->merge(['domain' => strtolower(trim($this->input('domain')))]);
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -24,6 +34,7 @@ class StoreTenantRequest extends FormRequest
             'domain' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
+            ...TenantSubscriptionRules::rules(),
         ];
     }
 }

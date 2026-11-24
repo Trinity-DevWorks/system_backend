@@ -2,7 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Jobs\SyncCentralRbac;
 use App\Models\User;
+use App\Services\Central\PlanService;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -18,7 +20,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $admin = User::query()->firstOrCreate(
+        User::query()->firstOrCreate(
             ['email' => 'test@example.com'],
             [
                 'name' => 'Test User',
@@ -26,12 +28,16 @@ class DatabaseSeeder extends Seeder
                 'is_active' => true,
             ]
         );
-        // Platform administrator for the central API (not mass-assignable on purpose).
-        $admin->forceFill(['is_super_admin' => true])->save();
+
+        // Seeds the central permission catalog and makes role-less central users Super Admin.
+        SyncCentralRbac::dispatchSync();
 
         $this->call([
             ModuleSeeder::class,
             TenantSeeder::class,
         ]);
+
+        // Default "Unlimited" plan for every tenant without one (every tenant needs a plan).
+        app(PlanService::class)->ensureDefaultPlan();
     }
 }

@@ -7,6 +7,10 @@ namespace App\Providers;
 use App\Contracts\VirusScanner;
 use App\Models\Attachment;
 use App\Models\Audit;
+use App\Models\Central\CentralPermission;
+use App\Models\Central\CentralRole;
+use App\Models\Central\Plan;
+use App\Models\Central\PlatformBranding;
 use App\Models\DocumentNumberSetting;
 use App\Models\PrintSetting;
 use App\Models\Tenant;
@@ -235,6 +239,10 @@ class AppServiceProvider extends ServiceProvider
             'inventory_serial' => InventorySerial::class,
             'item_attribute' => ItemAttribute::class,
             'item_attribute_value' => ItemAttributeValue::class,
+            'central_role' => CentralRole::class,
+            'central_permission' => CentralPermission::class,
+            'platform_branding' => PlatformBranding::class,
+            'plan' => Plan::class,
         ]);
     }
 

@@ -100,6 +100,8 @@ class BootstrapTenantRbac implements ShouldQueue
                 $permissionService->invalidateCacheForUser($owner->fresh() ?? $owner);
             }
 
+            // Owner / Admin matrices changed for everyone holding those roles, not just the owner.
+            $permissionService->invalidateCacheForAllUsers();
             $permissionCatalogService->forget();
             TenantReferenceCache::forget('roles.list');
         });

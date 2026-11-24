@@ -1,8 +1,9 @@
 <?php
 
+use App\Http\Middleware\CheckCentralPermission;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\EnsureModule;
-use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\EnsureTenantActive;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ResolveActiveBranch;
 use App\Http\Responses\ApiResponse;
@@ -41,6 +42,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('fixed-assets:depreciate')->monthlyOn(1, '03:00')->withoutOverlapping();
         $schedule->command('accounting:run-periodic')->dailyAt((string) config('accounting.recurring.run_hour', '01:00'))->withoutOverlapping()->onOneServer();
         $schedule->command('prices:apply-scheduled')->dailyAt('00:20')->withoutOverlapping();
+        // Suspend tenants whose subscription end date has passed (central plans).
+        $schedule->command('tenants:expire-subscriptions')->dailyAt('00:10')->withoutOverlapping()->onOneServer();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(HandleCors::class);
@@ -49,9 +52,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // statefulApi() only if you add the SPA flow: GET /sanctum/csrf-cookie then POST with X-XSRF-TOKEN.
         $middleware->alias([
             'check.permission' => CheckPermission::class,
+            'check.central.permission' => CheckCentralPermission::class,
             'ensure.module' => EnsureModule::class,
+            'ensure.tenant.active' => EnsureTenantActive::class,
             'ensure.active' => EnsureUserIsActive::class,
-            'ensure.super_admin' => EnsureSuperAdmin::class,
             'resolve.branch' => ResolveActiveBranch::class,
         ]);
     })

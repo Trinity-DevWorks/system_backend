@@ -5,6 +5,7 @@ use App\Jobs\BootstrapTenantItemTypes;
 use App\Jobs\BootstrapTenantRbac;
 use App\Jobs\BootstrapTenantUnitCatalog;
 use App\Jobs\BootstrapTenantWalkInCustomer;
+use App\Jobs\SyncCentralRbac;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Accounting\FixedAsset\Services\DepreciationRunService;
@@ -21,6 +22,8 @@ use App\Modules\Rbac\Models\Role;
 use App\Modules\RecurringEntry\Enums\RecurringTemplateStatus;
 use App\Modules\RecurringEntry\Models\RecurringTemplate;
 use App\Modules\RecurringEntry\Services\RecurringGenerationService;
+use App\Services\Central\PlanService;
+use App\Services\Central\TenantSubscriptionService;
 use App\Services\ModuleEntitlementService;
 use App\Support\TenantClock;
 use Illuminate\Foundation\Inspiring;
@@ -149,6 +152,33 @@ Artisan::command('tenants:sync-rbac', function () {
 
     $this->info("Done. {$count} tenant(s) processed.");
 })->purpose('Sync permission catalog (including audits) for all existing tenants');
+
+Artisan::command('central:sync-rbac', function () {
+    SyncCentralRbac::dispatchSync();
+
+    $this->info('Synced central RBAC catalog and Super Admin role.');
+})->purpose('Sync central permission catalog, Super Admin role, and assign it to central users without a role');
+
+/*
+|--------------------------------------------------------------------------
+| Subscription plans
+|--------------------------------------------------------------------------
+| central:sync-plans — creates the "Unlimited" plan if no plan exists and puts every
+| tenant without a plan on it (run once after deploying plans; safe to repeat).
+| tenants:expire-subscriptions — suspends active tenants whose subscription ended;
+| daily schedule in bootstrap/app.php.
+*/
+Artisan::command('central:sync-plans', function () {
+    $plan = app(PlanService::class)->ensureDefaultPlan();
+
+    $this->info("Every tenant has a plan (default: {$plan->name}).");
+})->purpose('Create the default plan when none exists and assign it to tenants without a plan');
+
+Artisan::command('tenants:expire-subscriptions', function () {
+    $expired = app(TenantSubscriptionService::class)->expireDue();
+
+    $this->info($expired === [] ? 'No expired subscriptions.' : 'Suspended: '.implode(', ', $expired));
+})->purpose('Suspend active tenants whose subscription end date has passed');
 
 /*
 |--------------------------------------------------------------------------

@@ -8,6 +8,7 @@ use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Warehouse\DTOs\WarehouseData;
 use App\Modules\Warehouse\Enums\WarehouseDefaultKind;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Services\PlanLimitService;
 use App\Support\ListPagination;
 use App\Support\TenantReferenceCache;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,6 +23,7 @@ class WarehouseService
 
     public function __construct(
         private readonly BranchContextService $branchContext,
+        private readonly PlanLimitService $planLimits,
     ) {}
 
     /**
@@ -226,6 +228,7 @@ class WarehouseService
     {
         return DB::transaction(function () use ($data): Warehouse {
             $this->assertWritableBranch($data->branchId);
+            $this->planLimits->assertCanAdd('warehouses');
             $this->enforceSingleDefaults($data);
 
             $created = Warehouse::query()->create($data->toArray());

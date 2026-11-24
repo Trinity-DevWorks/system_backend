@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\AssignedModuleController;
+use App\Http\Controllers\Tenant\SubscriptionController;
 use App\Modules\Accounting\Budget\Http\Controllers\BudgetCheckController;
 use App\Modules\Accounting\Budget\Http\Controllers\BudgetController;
 use App\Modules\Accounting\FixedAsset\Http\Controllers\DepreciationRunController;
@@ -134,6 +135,7 @@ Route::middleware([
     'api',
     InitializeTenancyByDomain::class,
     PreventAccessFromCentralDomains::class,
+    'ensure.tenant.active',
 ])->group(function () {
     Route::get('/', function () {
         return response()->json([
@@ -205,6 +207,9 @@ Route::middleware([
                 ->name('users.attachments.view');
             Route::apiResource('users.attachments', UserAttachmentController::class)
                 ->only(['index', 'store', 'show', 'destroy']);
+
+            Route::get('tenant/subscription', SubscriptionController::class)
+                ->middleware('check.permission:subscription,view');
 
             Route::get('company-profile', [CompanyProfileController::class, 'show'])
                 ->middleware('check.permission:company_profile,view');

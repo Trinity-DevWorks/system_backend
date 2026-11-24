@@ -38,8 +38,6 @@ Core/global:
 
 Auth:
 
-- `INVALID_CREDENTIALS` (HTTP 422) — also returned by central `/login` for non–super-admin accounts
-- `CENTRAL_FORBIDDEN` (HTTP 403) — central admin API called by a user who is not a super admin (`ensure.super_admin`)
 - `ACCOUNT_INACTIVE` (HTTP 403) — login rejected, or authenticated request by a deactivated user (`ensure.active`)
 - `PASSWORD_RESET_FAILED` (HTTP 422)
 - `PASSWORD_UNCHANGED` (HTTP 422) — new password matches the current password
@@ -48,6 +46,17 @@ Central tenant:
 
 - `TENANT_NOT_FOUND` (HTTP 404)
 - `TENANT_OWNER_CREATE_FAILED` (HTTP 500)
+- `TENANT_SUSPENDED` (HTTP 403) — every tenant-host route (login included) while central has suspended the tenant (`ensure.tenant.active`)
+
+Central admin (platform RBAC):
+
+- `CENTRAL_SUPER_ADMIN_EDIT_FORBIDDEN` (HTTP 422) — the Super Admin system role and its permission matrix cannot be edited
+- `CENTRAL_LAST_SUPER_ADMIN_PROTECTED` (HTTP 409) — demoting, deactivating, or deleting the last active Super Admin
+- `TENANT_DELETE_REQUIRES_SUSPENSION` (HTTP 409) — `DELETE tenants/{id}` on a tenant that is not suspended
+- `PLATFORM_LOGO_NOT_FOUND` (HTTP 404) — `GET branding/logo` when no platform logo is set
+- `PLAN_IN_USE` (HTTP 409) — `DELETE plans/{id}` while tenants are on the plan
+- `PLAN_LIMIT_REACHED` (HTTP 422, tenant host) — creating or re-activating a user, creating a branch or warehouse, or uploading a file past the tenant plan's limit; `data` carries `limit` (`users`, `branches`, `warehouses`, `storage_mb`), `max` and `used`
+- Central role and user rules reuse `ROLE_SYSTEM_DELETE_FORBIDDEN`, `ROLE_DELETE_HAS_ASSIGNED_USERS`, `USER_SELF_DELETE_FORBIDDEN`, `USER_SELF_DEACTIVATE_FORBIDDEN`, `PASSWORD_UNCHANGED`, and `CURRENT_PASSWORD_INVALID`
 
 RBAC:
 
@@ -397,6 +406,8 @@ Customer refunds:
 Purchase debit notes use the same set as sales credit notes with the `PURCHASE_DEBIT_NOTE_` prefix, plus `PURCHASE_INVOICE_HAS_DEBIT_NOTES`.
 
 Supplier refunds use the same set as customer refunds with the `SUPPLIER_REFUND_` prefix and `DEBIT_NOTE` in place of `CREDIT_NOTE`.
+
+Central admin API (central host, `/api` prefix, central Bearer token). Every route below requires `auth:sanctum` + `ensure.active` and `check.central.permission:<resource>,<action>` from `config/central_rbac.php`; a missing permission is `403 FORBIDDEN` in the envelope. Only `login`, `forgot-password`, `reset-password`, and `tenant/get-tenant-by-name/{name}` stay public. `GET/PUT auth/me` (any authenticated central user) returns `id`, `name`, `email`, `is_active`, `role` (`id`, `name`, `is_system`) and `permissions` (same matrix shape as tenant `auth/me`); PUT takes `name` and optional `current_password` + `password` + `password_confirmation` (`CURRENT_PASSWORD_INVALID`, `PASSWORD_UNCHANGED`; a password change revokes every token). Central `login` also returns `user.role` and `permissions`. `GET overview` (`overview,view`) returns `tenants` (`total`, `active`, `suspended`, `created_last_30_days`), `users` (`total`, `active`), `recent_tenants`, `modules` (`code`, `name`, `is_core`, `tenants_count`) and `generated_at`. `GET tenants` (`tenants,view`) is paginated (`page`, `per_page`, `search` on id/name/domain, `status=active|suspended`); each row has `id`, `name`, `status`, `suspended_at`, `suspension_reason`, `domains`, `primary_domain`, `modules`, `owner` (detail only), `created_at`, `updated_at`. `POST tenants` (`tenants,add`) takes `name`, `domain`, `email`, `password`, `password_confirmation` (reserved or taken subdomains are `422` on `domain`). `GET tenants/{id}` (`tenants,view`), `PUT tenants/{id}` (`tenants,edit`, `name`) and `PATCH tenants/{id}/status` (`tenants,edit`, `status=active|suspended`, optional `reason`; suspending revokes every tenant token) 404 with `TENANT_NOT_FOUND`. `DELETE tenants/{id}` (`tenants,delete`) takes `confirmation` (must equal the tenant id, otherwise `422` on `confirmation`), only works on a suspended tenant (`409 TENANT_DELETE_REQUIRES_SUSPENSION`), and permanently removes the tenant schema, its attachment files, domains, and module rows; the audit log keeps a `deleted` entry with the tenant's id, name, domains, and modules. `GET tenants/{id}/modules` (`tenant_modules,view`) returns `tenant_id`, `modules` and `available` (module catalog); modules are read-only and always equal the tenant's plan. `POST tenants` also requires `plan_id` (an active plan) and accepts `subscription_starts_at` (default today), `subscription_ends_at` (default one billing period later; send `null` for no end) and `trial_ends_at`. `PUT tenants/{id}/subscription` (`tenants,edit`) takes the same four fields, switches the plan, and re-syncs the modules. Tenant rows include `plan` (`id`, `name`), `subscription_starts_at`, `subscription_ends_at`, `trial_ends_at`. `plans` (`plans,*`; `?section=names`) take `name`, `description`, `price`, `currency` (3 letters), `billing_cycle` (`monthly|yearly`), `max_users`, `max_branches`, `max_warehouses`, `max_storage_mb` (null = unlimited), `is_active`, `sort_order`, `modules` (`core` always added); changing a plan's modules re-syncs every tenant on it. `GET overview` also returns `plans` (with `tenants_count`) and `expiring_tenants` (active, ending within `expiring_days`). `php artisan tenants:expire-subscriptions` (daily 00:10) suspends active tenants whose end date has passed; `php artisan central:sync-plans` puts tenants without a plan on the default Unlimited plan. On tenant hosts, `GET tenant/subscription` (`subscription,view`) returns `plan` (`id`, `name`, `price`, `currency`, `billing_cycle`), `limits`, `usage` (`users`, `branches`, `warehouses`, `storage_mb`), `subscription_starts_at`, `subscription_ends_at` and `trial_ends_at`. `GET modules` (`modules,view`) adds `tenants_count`. `users` (`users,*`: `name`, `email`, `password`, `password_confirmation`, `is_active`, `central_role_id`; `?section=names`), `roles` (`roles,*`; `?section=names`), `permissions`, `permissions/roles`, `roles/{id}/permissions` (`permissions,view|edit`) and `audits`, `audits/{id}`, `audits/export` (`audits,view|export`) mirror the tenant endpoints of the same name. `GET platform-settings` (`platform_settings,view`) returns `name`, `has_logo`, `logo_version`; `PUT platform-settings` (`platform_settings,edit`) takes `name` (max 80); `POST platform-settings/logo` takes `file` (png, jpg, webp, max 2 MB; SVG is rejected) and `DELETE platform-settings/logo` removes it. Public (no auth): `GET branding` returns the same payload and `GET branding/logo?v={logo_version}` streams the logo. Run `php artisan central:sync-rbac` after deploying (it seeds the catalog, the Super Admin role, and assigns it to central users without a role).
 
 ## Rules For New Endpoints
 

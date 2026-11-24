@@ -23,7 +23,6 @@ return new class extends Migration
             $table->string('password')->nullable();
             $table->boolean('is_active')->default(true);
             // Platform operators who may manage tenants via the central API. Never mass-assignable.
-            $table->boolean('is_super_admin')->default(false);
             $table->rememberToken();
             $table->timestamps();
             $table->softDeletes();

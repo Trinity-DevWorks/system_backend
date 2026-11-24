@@ -28,6 +28,7 @@ class AttachmentService
     public function __construct(
         private readonly VirusScanner $virusScanner,
         private readonly AuditWriter $auditWriter,
+        private readonly PlanLimitService $planLimits,
     ) {}
 
     /**
@@ -45,6 +46,7 @@ class AttachmentService
     public function store(Customer|Supplier|Salesman|Item|CompanyProfile|User $attachable, UploadedFile $file, ?string $uploadedByUserId): Attachment
     {
         $this->assertWithinQuota($attachable);
+        $this->planLimits->assertCanStore((int) $file->getSize());
 
         $disk = $this->attachmentDisk();
         $algo = (string) config('attachments.checksum_algo', 'sha256');

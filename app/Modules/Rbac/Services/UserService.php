@@ -10,6 +10,7 @@ use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Notification\Services\DomainNotificationPublisher;
 use App\Modules\Rbac\Models\Role;
 use App\Services\PermissionService;
+use App\Services\PlanLimitService;
 use App\Support\ListPagination;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -25,6 +26,7 @@ class UserService
         private readonly PermissionService $permissionService,
         private readonly BranchContextService $branchContext,
         private readonly DomainNotificationPublisher $notifications,
+        private readonly PlanLimitService $planLimits,
     ) {}
 
     /**
@@ -98,6 +100,10 @@ class UserService
     public function create(array $data): User
     {
         return DB::transaction(function () use ($data): User {
+            if ($data['is_active']) {
+                $this->planLimits->assertCanAdd('users');
+            }
+
             $user = User::query()->create([
                 'name' => $data['name'],
                 'email' => $data['email'],
@@ -142,6 +148,11 @@ class UserService
             }
 
             $this->assertOwnerProtection($user, $data['branch_assignments'], (bool) $data['is_active']);
+
+            // Re-activating a user takes a seat on the plan again.
+            if ($data['is_active'] && ! $user->is_active) {
+                $this->planLimits->assertCanAdd('users');
+            }
 
             $payload = [
                 'name' => $data['name'],
