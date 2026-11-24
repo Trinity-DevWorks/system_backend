@@ -68,18 +68,7 @@ jobs:
           touch .env
           php -r "file_put_contents('.env', 'APP_KEY='.PHP_EOL);"
           php artisan key:generate --force
-      # Feature tests build a test company, which needs the central tables (tenants, domains, ...).
-      - name: Migrate central database
-        run: php artisan migrate --force --no-interaction
-        env:
-          APP_ENV: testing
-          DB_CONNECTION: pgsql
-          DB_HOST: 127.0.0.1
-          DB_PORT: 5432
-          DB_DATABASE: system_testing
-          DB_USERNAME: postgres
-          DB_PASSWORD: admin
-
+      # Attachment feature tests need a local Postgres + tenant schema; skip in CI.
       - name: PHPUnit
         run: php artisan test
 
