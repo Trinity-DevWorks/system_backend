@@ -6,9 +6,11 @@ use App\Enums\AttachmentViewerCategory;
 use App\Models\Central\CentralRole;
 use App\Modules\Branch\Models\Branch;
 use App\Modules\Branch\Models\BranchUser;
+use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Rbac\Models\Role;
 use App\Modules\Salesman\Models\Salesman;
-use App\Notifications\ResetPasswordNotification;
+use App\Services\Central\PlatformEmailService;
+use App\Support\FrontendUrl;
 use Database\Factories\UserFactory;
 use Illuminate\Auth\Passwords\CanResetPassword;
 use Illuminate\Contracts\Auth\CanResetPassword as CanResetPasswordContract;
@@ -53,9 +55,30 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
         'remember_token',
     ];
 
+    /**
+     * "Forgot password?" on a tenant or the central host: the email always goes through the
+     * platform mailbox (central Settings → Email), never a tenant's own mailbox.
+     */
     public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void
     {
-        $this->notify(new ResetPasswordNotification($token));
+        $email = (string) $this->getEmailForPasswordReset();
+
+        app(PlatformEmailService::class)->sendPasswordReset(
+            to: $email,
+            name: (string) $this->name,
+            url: FrontendUrl::passwordReset(request(), $token, $email),
+            locale: self::passwordResetLocale(),
+        );
+    }
+
+    /** Tenant users get the company's language; central admins get English. */
+    public static function passwordResetLocale(): string
+    {
+        if (! tenancy()->initialized) {
+            return 'en';
+        }
+
+        return CompanySetting::singleton()->preferred_language->value;
     }
 
     /**

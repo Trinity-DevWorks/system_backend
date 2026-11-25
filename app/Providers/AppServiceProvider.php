@@ -11,6 +11,8 @@ use App\Models\Central\CentralPermission;
 use App\Models\Central\CentralRole;
 use App\Models\Central\Plan;
 use App\Models\Central\PlatformBranding;
+use App\Models\Central\PlatformEmailSetting;
+use App\Models\Central\PlatformEmailTemplate;
 use App\Models\DocumentNumberSetting;
 use App\Models\PrintSetting;
 use App\Models\Tenant;
@@ -243,6 +245,8 @@ class AppServiceProvider extends ServiceProvider
             'central_permission' => CentralPermission::class,
             'platform_branding' => PlatformBranding::class,
             'plan' => Plan::class,
+            'platform_email_setting' => PlatformEmailSetting::class,
+            'platform_email_template' => PlatformEmailTemplate::class,
         ]);
     }
 

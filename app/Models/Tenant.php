@@ -6,8 +6,10 @@ namespace App\Models;
 
 use App\Enums\TenantStatus;
 use App\Models\Central\Plan;
+use App\Models\Central\TenantUsageSnapshot;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
@@ -89,6 +91,14 @@ class Tenant extends BaseTenant implements AuditableContract, TenantWithDatabase
     public function plan(): BelongsTo
     {
         return $this->belongsTo(Plan::class, 'plan_id');
+    }
+
+    /**
+     * @return HasOne<TenantUsageSnapshot, $this>
+     */
+    public function usage(): HasOne
+    {
+        return $this->hasOne(TenantUsageSnapshot::class, 'tenant_id');
     }
 
     public function modules(): BelongsToMany

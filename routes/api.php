@@ -13,8 +13,10 @@ use App\Http\Controllers\Central\CentralUserController;
 use App\Http\Controllers\Central\ModuleController;
 use App\Http\Controllers\Central\PlanController;
 use App\Http\Controllers\Central\PlatformBrandingController;
+use App\Http\Controllers\Central\PlatformEmailController;
 use App\Http\Controllers\Central\TenantController;
 use App\Http\Controllers\Central\TenantModuleController;
+use App\Http\Controllers\Central\TenantUsageController;
 use App\Http\Controllers\Central\TenantUserController;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Rbac\Http\Controllers\ForgotPasswordController;
@@ -55,6 +57,14 @@ foreach (config('tenancy.central_domains') as $domain) {
             // action to config/central_rbac.php for the same resource.
             Route::get('/overview', CentralOverviewController::class)
                 ->middleware('check.central.permission:overview,view');
+
+            // Before tenants/{tenant} so "usage" is not taken as a tenant id.
+            Route::get('/tenants/usage', [TenantUsageController::class, 'index'])
+                ->middleware('check.central.permission:tenant_usage,view');
+            Route::post('/tenants/usage/refresh', [TenantUsageController::class, 'refreshAll'])
+                ->middleware(['check.central.permission:tenant_usage,edit', 'throttle:6,1']);
+            Route::post('/tenants/{tenant}/usage/refresh', [TenantUsageController::class, 'refresh'])
+                ->middleware('check.central.permission:tenant_usage,edit');
 
             Route::get('/tenants', [TenantController::class, 'index'])
                 ->middleware('check.central.permission:tenants,view');
@@ -139,6 +149,19 @@ foreach (config('tenancy.central_domains') as $domain) {
                 ->middleware('check.central.permission:platform_settings,edit');
             Route::delete('/platform-settings/logo', [PlatformBrandingController::class, 'destroyLogo'])
                 ->middleware('check.central.permission:platform_settings,edit');
+
+            Route::get('/platform-email', [PlatformEmailController::class, 'show'])
+                ->middleware('check.central.permission:platform_email,view');
+            Route::put('/platform-email', [PlatformEmailController::class, 'update'])
+                ->middleware('check.central.permission:platform_email,edit');
+            Route::post('/platform-email/test', [PlatformEmailController::class, 'test'])
+                ->middleware(['check.central.permission:platform_email,edit', 'throttle:10,1']);
+            Route::get('/platform-email/templates', [PlatformEmailController::class, 'templates'])
+                ->middleware('check.central.permission:platform_email,view');
+            Route::put('/platform-email/templates/{type}/{locale}', [PlatformEmailController::class, 'updateTemplate'])
+                ->middleware('check.central.permission:platform_email,edit');
+            Route::delete('/platform-email/templates/{type}/{locale}', [PlatformEmailController::class, 'resetTemplate'])
+                ->middleware('check.central.permission:platform_email,edit');
         });
     });
 }

@@ -26,11 +26,14 @@ return [
         // edit = send password-reset links and change the tenant owner.
         'tenant_users' => ['label' => 'Tenant Users', 'actions' => ['view', 'edit']],
         'plans' => ['label' => 'Subscription Plans', 'actions' => $crud],
+        // edit = recalculate usage now (it is also refreshed hourly).
+        'tenant_usage' => ['label' => 'Tenant Usage', 'actions' => ['view', 'edit']],
         'modules' => ['label' => 'Modules Catalog', 'actions' => ['view']],
         'users' => ['label' => 'Central Users', 'actions' => $crud],
         'roles' => ['label' => 'Central Roles', 'actions' => $crud],
         'permissions' => ['label' => 'Central Permissions', 'actions' => ['view', 'edit']],
         'audits' => ['label' => 'Central Audit Log', 'actions' => ['view', 'export']],
         'platform_settings' => ['label' => 'Platform Settings', 'actions' => ['view', 'edit']],
+        'platform_email' => ['label' => 'Platform Email', 'actions' => ['view', 'edit']],
     ],
 ];

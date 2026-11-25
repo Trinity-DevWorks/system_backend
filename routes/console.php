@@ -24,6 +24,7 @@ use App\Modules\RecurringEntry\Models\RecurringTemplate;
 use App\Modules\RecurringEntry\Services\RecurringGenerationService;
 use App\Services\Central\PlanService;
 use App\Services\Central\TenantSubscriptionService;
+use App\Services\Central\TenantUsageService;
 use App\Services\ModuleEntitlementService;
 use App\Support\TenantClock;
 use Illuminate\Foundation\Inspiring;
@@ -173,6 +174,15 @@ Artisan::command('central:sync-plans', function () {
 
     $this->info("Every tenant has a plan (default: {$plan->name}).");
 })->purpose('Create the default plan when none exists and assign it to tenants without a plan');
+
+Artisan::command('tenants:refresh-usage', function () {
+    $result = app(TenantUsageService::class)->refreshAll();
+
+    $this->info("Refreshed usage for {$result['refreshed']} tenant(s).");
+    if ($result['failed'] !== []) {
+        $this->warn('Failed: '.implode(', ', $result['failed']));
+    }
+})->purpose('Collect every tenant\'s usage (users, branches, warehouses, storage, invoices, last activity) for the central Usage page');
 
 Artisan::command('tenants:expire-subscriptions', function () {
     $expired = app(TenantSubscriptionService::class)->expireDue();

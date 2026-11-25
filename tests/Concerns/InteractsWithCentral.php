@@ -6,8 +6,13 @@ namespace Tests\Concerns;
 
 use App\Jobs\SyncCentralRbac;
 use App\Models\Central\CentralRole;
+use App\Models\Central\PlatformEmailSetting;
 use App\Models\User;
+use App\Support\Mail\MailboxMailerFactory;
+use Illuminate\Contracts\Mail\Mailer;
+use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Helpers for central (platform) API tests: Super Admin user, bearer token, central URLs.
@@ -15,6 +20,42 @@ use Illuminate\Support\Facades\Auth;
 trait InteractsWithCentral
 {
     protected User $centralAdmin;
+
+    /**
+     * Turns the platform mailbox on and routes it to Laravel's in-memory `array` mailer
+     * (Mail::fake() does not cover Mail::build()). Returns the transport holding the sent emails.
+     * Tenant-DB tests must call tearDownPlatformMailbox(): their central rows are not rolled back.
+     */
+    protected function usePlatformMailbox(): ArrayTransport
+    {
+        PlatformEmailSetting::singleton()->forceFill([
+            'enabled' => true,
+            'host' => 'smtp.test.local',
+            'port' => 587,
+            'encryption' => 'tls',
+            'from_address' => 'no-reply@platform.test',
+            'from_name' => 'Platform',
+        ])->save();
+
+        $this->app->instance(MailboxMailerFactory::class, new class extends MailboxMailerFactory
+        {
+            public function make(string $host, int $port, string $encryption, ?string $username, ?string $password): Mailer
+            {
+                return Mail::mailer('array');
+            }
+        });
+
+        $transport = Mail::mailer('array')->getSymfonyTransport();
+        assert($transport instanceof ArrayTransport);
+        $transport->flush();
+
+        return $transport;
+    }
+
+    protected function tearDownPlatformMailbox(): void
+    {
+        PlatformEmailSetting::query()->delete();
+    }
 
     protected function setUpCentralAdmin(): void
     {

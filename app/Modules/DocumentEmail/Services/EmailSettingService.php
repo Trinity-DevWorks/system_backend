@@ -6,9 +6,9 @@ namespace App\Modules\DocumentEmail\Services;
 
 use App\Modules\CompanyProfile\Models\CompanyProfile;
 use App\Modules\DocumentEmail\Models\EmailSetting;
+use App\Support\Mail\SmtpMailbox;
 use Illuminate\Contracts\Mail\Mailer;
 use Illuminate\Mail\Message;
-use Illuminate\Support\Facades\Mail;
 
 /**
  * The company's own mailbox (SMTP): settings, the mailer built from them and the test email.
@@ -72,26 +72,11 @@ final class EmailSettingService
     }
 
     /**
-     * Only real mail ports and no internal addresses, so the SMTP form can't be used to
-     * reach services inside our network. Local development may use anything (e.g. Mailpit on 1025).
+     * Only real mail ports and no internal addresses (see {@see SmtpMailbox::assertHostAllowed()}).
      */
     public function assertHostAllowed(string $host, int $port): void
     {
-        if (app()->environment('local', 'testing')) {
-            return;
-        }
-
-        if (! in_array($port, EmailSetting::ALLOWED_PORTS, true)) {
-            abort(422, 'This port is not allowed for sending email.', ['X-Error-Code' => 'EMAIL_HOST_NOT_ALLOWED']);
-        }
-
-        $host = trim($host);
-        $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
-        foreach ($ips as $ip) {
-            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-                abort(422, 'This mail server address is not allowed.', ['X-Error-Code' => 'EMAIL_HOST_NOT_ALLOWED']);
-            }
-        }
+        SmtpMailbox::assertHostAllowed($host, $port);
     }
 
     public function assertReady(EmailSetting $settings): void
@@ -106,22 +91,7 @@ final class EmailSettingService
 
     public function mailer(EmailSetting $s): Mailer
     {
-        $this->assertHostAllowed((string) $s->host, $s->port);
-
-        return Mail::build([
-            'transport' => 'smtp',
-            // ssl = encrypted from the first byte (usually 465); tls = STARTTLS (usually 587).
-            'scheme' => $s->encryption === 'ssl' ? 'smtps' : 'smtp',
-            'host' => (string) $s->host,
-            'port' => $s->port,
-            'username' => $s->username,
-            'password' => $s->password,
-            // Per read/write on the connection. Uploading a ~1 MB PDF to Gmail on a slow line can take
-            // well over 20s; a shorter limit cuts the upload ("Unable to write bytes on the wire").
-            'timeout' => 60,
-            'require_tls' => $s->encryption === 'tls',
-            'auto_tls' => $s->encryption !== 'none',
-        ]);
+        return SmtpMailbox::build((string) $s->host, $s->port, (string) $s->encryption, $s->username, $s->password);
     }
 
     /**
@@ -158,12 +128,7 @@ final class EmailSettingService
     /** The mail server's error, short and without the password. */
     public function cleanError(\Throwable $e, EmailSetting $settings): string
     {
-        $text = trim(preg_replace('/\s+/', ' ', $e->getMessage()) ?? '');
-        if (filled($settings->password)) {
-            $text = str_replace((string) $settings->password, '***', $text);
-        }
-
-        return mb_substr($text !== '' ? $text : class_basename($e), 0, 500);
+        return SmtpMailbox::cleanError($e, $settings->password);
     }
 
     public function companyName(): string

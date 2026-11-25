@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\DocumentEmail\Models;
 
+use App\Support\Mail\SmtpMailbox;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -43,10 +44,10 @@ class EmailSetting extends Model implements AuditableContract
 {
     use Auditable;
 
-    public const ENCRYPTIONS = ['tls', 'ssl', 'none'];
+    public const ENCRYPTIONS = SmtpMailbox::ENCRYPTIONS;
 
-    /** Ports a company mailbox may use. Anything else is refused (keeps SMTP away from internal services). */
-    public const ALLOWED_PORTS = [25, 465, 587, 2525];
+    /** Ports a company mailbox may use (see {@see SmtpMailbox::ALLOWED_PORTS}). */
+    public const ALLOWED_PORTS = SmtpMailbox::ALLOWED_PORTS;
 
     /** @var list<string> */
     protected $hidden = ['password'];

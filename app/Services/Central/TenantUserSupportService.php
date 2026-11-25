@@ -9,20 +9,18 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchService;
 use App\Modules\Rbac\Models\Role;
-use App\Notifications\ResetPasswordNotification;
 use App\Services\AuditWriter;
 use App\Services\PermissionService;
 use App\Support\FrontendUrl;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Stancl\Tenancy\Database\Models\Domain;
 
 /**
  * Central support for a tenant's users: list them, send a password-reset link, and move ownership.
- * Central never sets or sees a tenant password; the reset link is emailed and also handed to the
- * central admin once (for when the tenant's email does not arrive).
+ * Central never sets or sees a tenant password; the reset link is emailed through the platform
+ * mailbox (when set up) and also handed to the central admin once.
  *
  * Tenant data is read and written inside `$tenant->run()`; the audit rows go to the central log.
  */
@@ -34,6 +32,7 @@ final class TenantUserSupportService
 
     public function __construct(
         private readonly AuditWriter $auditWriter,
+        private readonly PlatformEmailService $platformEmail,
     ) {}
 
     /**
@@ -84,7 +83,9 @@ final class TenantUserSupportService
     /**
      * Creates a reset token, emails the link to the user, and returns the link for the central admin.
      *
-     * @return array{email: string, url: string, expires_at: string, email_sent: bool}
+     * `email_configured` false = the platform mailbox is not set up, so only the link is offered.
+     *
+     * @return array{email: string, url: string, expires_at: string, email_sent: bool, email_configured: bool}
      */
     public function sendResetLink(Tenant $tenant, string $userId): array
     {
@@ -104,15 +105,13 @@ final class TenantUserSupportService
             $email = (string) $user->getEmailForPasswordReset();
             $url = FrontendUrl::passwordResetForHost($host, $token, $email);
 
-            $emailSent = true;
-
-            try {
-                $user->notify(new ResetPasswordNotification($token, $url));
-            } catch (\Throwable $e) {
-                // The link is still returned to the central admin, so a mail outage is not fatal.
-                $emailSent = false;
-                Log::warning('Central password reset email failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
-            }
+            // Only through the platform mailbox; when it is not set up the admin copies the link.
+            $emailSent = $this->platformEmail->isReady() && $this->platformEmail->sendPasswordReset(
+                to: $email,
+                name: (string) $user->name,
+                url: $url,
+                locale: User::passwordResetLocale(),
+            );
 
             return ['user_id' => (string) $user->id, 'email' => $email, 'url' => $url, 'email_sent' => $emailSent];
         });
@@ -132,6 +131,7 @@ final class TenantUserSupportService
             'url' => $result['url'],
             'expires_at' => now()->addMinutes($expireMinutes)->toIso8601String(),
             'email_sent' => $result['email_sent'],
+            'email_configured' => $this->platformEmail->isReady(),
         ];
     }
 

@@ -43,6 +43,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('accounting:run-periodic')->dailyAt((string) config('accounting.recurring.run_hour', '01:00'))->withoutOverlapping()->onOneServer();
         $schedule->command('prices:apply-scheduled')->dailyAt('00:20')->withoutOverlapping();
         // Suspend tenants whose subscription end date has passed (central plans).
+        // Central Usage page numbers (see tenants:refresh-usage).
+        $schedule->command('tenants:refresh-usage')->hourly()->withoutOverlapping()->onOneServer();
         $schedule->command('tenants:expire-subscriptions')->dailyAt('00:10')->withoutOverlapping()->onOneServer();
     })
     ->withMiddleware(function (Middleware $middleware): void {
