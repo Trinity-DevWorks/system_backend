@@ -10,6 +10,18 @@ use Illuminate\Notifications\Messages\MailMessage;
 
 class ResetPasswordNotification extends ResetPassword
 {
+    /**
+     * `$url` overrides the link built from the current request host: the central domain sends
+     * resets for a tenant user, whose link must point at the tenant's own host.
+     */
+    public function __construct(
+        #[\SensitiveParameter]
+        string $token,
+        private readonly ?string $url = null,
+    ) {
+        parent::__construct($token);
+    }
+
     public function toMail(mixed $notifiable): MailMessage
     {
         $request = request();
@@ -17,7 +29,7 @@ class ResetPasswordNotification extends ResetPassword
             ? $notifiable->getEmailForPasswordReset()
             : (string) $notifiable->email;
 
-        $url = FrontendUrl::passwordReset($request, $this->token, $email);
+        $url = $this->url ?? FrontendUrl::passwordReset($request, $this->token, $email);
 
         $expireMinutes = (int) config('auth.passwords.'.config('auth.defaults.passwords').'.expire', 60);
 

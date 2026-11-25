@@ -15,6 +15,7 @@ use App\Http\Controllers\Central\PlanController;
 use App\Http\Controllers\Central\PlatformBrandingController;
 use App\Http\Controllers\Central\TenantController;
 use App\Http\Controllers\Central\TenantModuleController;
+use App\Http\Controllers\Central\TenantUserController;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Rbac\Http\Controllers\ForgotPasswordController;
 use App\Modules\Rbac\Http\Controllers\ResetPasswordController;
@@ -71,6 +72,12 @@ foreach (config('tenancy.central_domains') as $domain) {
                 ->middleware('check.central.permission:tenant_modules,view');
             Route::put('/tenants/{tenant}/subscription', [TenantController::class, 'updateSubscription'])
                 ->middleware('check.central.permission:tenants,edit');
+            Route::get('/tenants/{tenant}/users', [TenantUserController::class, 'index'])
+                ->middleware('check.central.permission:tenant_users,view');
+            Route::post('/tenants/{tenant}/users/{user}/password-reset', [TenantUserController::class, 'passwordReset'])
+                ->middleware(['check.central.permission:tenant_users,edit', 'throttle:20,1']);
+            Route::post('/tenants/{tenant}/users/{user}/make-owner', [TenantUserController::class, 'makeOwner'])
+                ->middleware('check.central.permission:tenant_users,edit');
 
             Route::get('/modules', [ModuleController::class, 'index'])
                 ->middleware('check.central.permission:modules,view');

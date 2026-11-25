@@ -23,6 +23,8 @@ return [
         'overview' => ['label' => 'Overview', 'actions' => ['view']],
         'tenants' => ['label' => 'Tenants', 'actions' => $crud],
         'tenant_modules' => ['label' => 'Tenant Modules', 'actions' => ['view']],
+        // edit = send password-reset links and change the tenant owner.
+        'tenant_users' => ['label' => 'Tenant Users', 'actions' => ['view', 'edit']],
         'plans' => ['label' => 'Subscription Plans', 'actions' => $crud],
         'modules' => ['label' => 'Modules Catalog', 'actions' => ['view']],
         'users' => ['label' => 'Central Users', 'actions' => $crud],

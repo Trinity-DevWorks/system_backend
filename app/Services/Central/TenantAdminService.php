@@ -55,7 +55,8 @@ final class TenantAdminService
     }
 
     /**
-     * First user in the tenant schema (the owner created at provisioning).
+     * The first user holding the Owner role (ownership can be moved from central), falling back
+     * to the first user in the tenant schema (the owner created at provisioning).
      *
      * @return array{id: string, name: string, email: string|null}|null
      */
@@ -63,7 +64,14 @@ final class TenantAdminService
     {
         try {
             return $tenant->run(function (): ?array {
-                $user = User::query()->orderBy('created_at')->first(['id', 'name', 'email']);
+                $user = User::query()
+                    ->whereExists(fn ($q) => $q->selectRaw('1')->from('branch_user')
+                        ->join('roles', 'roles.id', '=', 'branch_user.role_id')
+                        ->whereColumn('branch_user.user_id', 'users.id')
+                        ->where('roles.name', 'Owner'))
+                    ->orderBy('created_at')
+                    ->first(['id', 'name', 'email'])
+                    ?? User::query()->orderBy('created_at')->first(['id', 'name', 'email']);
 
                 return $user !== null
                     ? ['id' => (string) $user->id, 'name' => (string) $user->name, 'email' => $user->email]

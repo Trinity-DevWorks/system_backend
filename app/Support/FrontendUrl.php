@@ -13,8 +13,15 @@ final class FrontendUrl
      */
     public static function baseFromRequest(Request $request): string
     {
+        return self::baseForHost($request->getHost());
+    }
+
+    /**
+     * SPA origin for an explicit host (e.g. a tenant domain when the request is on the central host).
+     */
+    public static function baseForHost(string $host): string
+    {
         $scheme = (string) config('frontend.scheme', 'http');
-        $host = $request->getHost();
         $port = config('frontend.port');
 
         $authority = $host;
@@ -33,7 +40,12 @@ final class FrontendUrl
 
     public static function passwordReset(Request $request, string $token, string $email): string
     {
-        return self::baseFromRequest($request).'/reset-password?'.http_build_query([
+        return self::passwordResetForHost($request->getHost(), $token, $email);
+    }
+
+    public static function passwordResetForHost(string $host, string $token, string $email): string
+    {
+        return self::baseForHost($host).'/reset-password?'.http_build_query([
             'token' => $token,
             'email' => $email,
         ], '', '&', PHP_QUERY_RFC3986);
