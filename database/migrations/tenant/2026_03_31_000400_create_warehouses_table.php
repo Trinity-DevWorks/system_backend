@@ -21,6 +21,8 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->foreignUuid('manager_id')->constrained('users')->restrictOnDelete();
             $table->boolean('is_active')->default(true);
+            // Can stock go below zero here? null = company setting, 'allow', 'block' (an item's own rule wins).
+            $table->string('negative_stock', 10)->nullable();
             $table->boolean('is_default')->default(false);
             $table->boolean('is_default_sales')->default(false);
             $table->boolean('is_default_production')->default(false);

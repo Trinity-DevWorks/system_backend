@@ -20,6 +20,7 @@ use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoicePayment;
+use App\Modules\Sales\SalesInvoice\Services\CustomerCreditService;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
 use App\Modules\Treasury\Support\PaymentCashBankAccount;
 use App\Modules\Warehouse\Services\WarehouseService;
@@ -428,7 +429,14 @@ class CustomerReceiptService
             }
 
             foreach ($allocations->where('applied_later', true) as $later) {
-                $this->journalPostingService->reverse(JournalPostingService::CUSTOMER_CREDIT_APPLICATION, (string) $later->id, $userId);
+                $laterInvoice = $invoices->get($later->sales_invoice_id);
+                if ($later->at_sale && $laterInvoice instanceof SalesInvoice) {
+                    // Used while posting that invoice: the move sits in the invoice's entry, so it is undone on its own.
+                    $this->journalPostingService->customerCreditApplication($later, $locked, $laterInvoice, $userId, now()->toDateString(), true);
+                    CustomerCreditService::reduceCreditRows((string) $laterInvoice->id, (string) $later->applied_amount);
+                } else {
+                    $this->journalPostingService->reverse(JournalPostingService::CUSTOMER_CREDIT_APPLICATION, (string) $later->id, $userId);
+                }
             }
             $this->journalPostingService->reverse(CustomerReceipt::REFERENCE_TYPE, (string) $locked->id, $userId);
 
@@ -444,13 +452,14 @@ class CustomerReceiptService
 
     /**
      * Applies credit left on a posted receipt to open invoices of the same customer.
-     * Each row: sales_invoice_id, amount (receipt currency).
+     * Each row: sales_invoice_id, amount (receipt currency). `$atSale`: used while posting that invoice, so
+     * the move is posted in the invoice's own journal entry instead of one of its own.
      *
      * @param  list<array<string, mixed>>  $rows
      */
-    public function applyCredit(CustomerReceipt $receipt, array $rows, ?string $userId, ?string $date = null): CustomerReceipt
+    public function applyCredit(CustomerReceipt $receipt, array $rows, ?string $userId, ?string $date = null, bool $atSale = false): CustomerReceipt
     {
-        return DB::transaction(function () use ($receipt, $rows, $userId, $date): CustomerReceipt {
+        return DB::transaction(function () use ($receipt, $rows, $userId, $date, $atSale): CustomerReceipt {
             $locked = CustomerReceipt::query()->whereKey($receipt->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== CustomerReceiptStatus::Posted) {
                 $this->fail('Only a posted receipt has credit to apply.', 'CUSTOMER_RECEIPT_NOT_POSTED');
@@ -486,6 +495,7 @@ class CustomerReceiptService
                     ...$settlement,
                     'applied_later' => true,
                     'applied_at' => now(),
+                    'at_sale' => $atSale,
                 ]);
 
                 $paid = PaymentAllocation::add($invoice->paid_total, $settlement['applied_amount']);
@@ -500,7 +510,9 @@ class CustomerReceiptService
                     $this->customerLedgerService->postEntry($customer, (int) $invoice->currency_id, '0', $settlement['applied_amount'], LedgerReferenceType::Payment, (string) $locked->id, $day);
                 }
 
-                $this->journalPostingService->customerCreditApplication($allocation, $locked, $invoice, $userId, $day);
+                if (! $atSale) {
+                    $this->journalPostingService->customerCreditApplication($allocation, $locked, $invoice, $userId, $day);
+                }
             }
 
             return $this->find($locked->id);
@@ -575,35 +587,23 @@ class CustomerReceiptService
     }
 
     /**
-     * Applies the customer's credit to an invoice, oldest receipts first, up to `$invoiceAmount` (invoice currency).
+     * Uses up to `$take` (invoice currency) of one receipt's credit on an invoice. `$worth` is all of the
+     * receipt's credit in the invoice currency and `$unapplied` the same in the receipt currency.
      * Returns what was applied, in the invoice currency.
      */
-    public function applyCreditToInvoice(SalesInvoice $invoice, string $invoiceAmount, ?string $userId, ?string $date = null): string
+    public function useCreditOn(CustomerReceipt $receipt, SalesInvoice $invoice, string $take, string $worth, string $unapplied, ?string $userId, ?string $date, bool $atSale): string
     {
-        $left = PaymentAllocation::normalize($invoiceAmount);
-        $applied = '0';
-        foreach ($this->availableCredit((string) $invoice->customer_id, (int) $invoice->currency_id) as $credit) {
-            if (! PaymentAllocation::isPositive($left)) {
-                break;
-            }
-            $receipt = CustomerReceipt::query()->findOrFail($credit['receipt_id']);
-            $worth = (string) $credit['in_invoice_currency'];
-            $take = PaymentAllocation::exceeds($worth, $left) ? $left : $worth;
-            // Receipt-currency amount worth `$take` in the invoice currency (all of it when it covers the rest).
-            $receiptAmount = PaymentAllocation::same($take, $worth)
-                ? (string) $credit['unapplied_amount']
-                : $this->fromCurrency($receipt, $take, (int) $invoice->currency_id);
-            if (PaymentAllocation::exceeds($receiptAmount, (string) $credit['unapplied_amount'])) {
-                $receiptAmount = (string) $credit['unapplied_amount'];
-            }
-            $this->applyCredit($receipt, [['sales_invoice_id' => (string) $invoice->id, 'amount' => $receiptAmount]], $userId, $date);
-            $allocation = CustomerReceiptAllocation::query()->where('customer_receipt_id', $receipt->id)->where('sales_invoice_id', $invoice->id)->orderByDesc('id')->first();
-            $done = (string) ($allocation?->applied_amount ?? $take);
-            $applied = PaymentAllocation::add($applied, $done);
-            $left = PaymentAllocation::subtract($left, $done) ?? '0';
+        // Receipt-currency amount worth `$take` in the invoice currency (all of it when it covers the rest).
+        $receiptAmount = PaymentAllocation::same($take, $worth)
+            ? $unapplied
+            : $this->fromCurrency($receipt, $take, (int) $invoice->currency_id);
+        if (PaymentAllocation::exceeds($receiptAmount, $unapplied)) {
+            $receiptAmount = $unapplied;
         }
+        $this->applyCredit($receipt, [['sales_invoice_id' => (string) $invoice->id, 'amount' => $receiptAmount]], $userId, $date, $atSale);
+        $allocation = CustomerReceiptAllocation::query()->where('customer_receipt_id', $receipt->id)->where('sales_invoice_id', $invoice->id)->orderByDesc('id')->first();
 
-        return $applied;
+        return (string) ($allocation?->applied_amount ?? $take);
     }
 
     /**
@@ -662,8 +662,8 @@ class CustomerReceiptService
     }
 
     /**
-     * A payment taken when a sales invoice is posted becomes a posted receipt allocated to that invoice,
-     * in the invoice's branch, currency and rate.
+     * A payment recorded later against a posted sales invoice becomes a posted receipt allocated to that
+     * invoice, in the invoice's branch. Change handed back in another currency is posted in the receipt's entry.
      */
     public function postForInvoicePayment(SalesInvoice $invoice, SalesInvoicePayment $payment, ?string $userId, ?string $paymentDate = null, ?string $allocate = null): CustomerReceipt
     {
@@ -690,6 +690,15 @@ class CustomerReceiptService
                 ? [['sales_invoice_id' => (string) $invoice->id, 'amount' => $allocation]]
                 : [],
         ], $userId);
+        if ($payment->change_currency_id !== null && $payment->change_amount !== null) {
+            $receipt->update([
+                'tendered' => $payment->tendered,
+                'change_currency_id' => $payment->change_currency_id,
+                'change_rate' => $payment->change_rate,
+                'change_amount' => $payment->change_amount,
+                'change_cash_bank_account_id' => $payment->change_cash_bank_account_id,
+            ]);
+        }
 
         return $this->post($receipt, $userId);
     }

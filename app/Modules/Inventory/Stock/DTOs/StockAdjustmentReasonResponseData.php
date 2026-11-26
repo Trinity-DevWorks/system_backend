@@ -18,6 +18,7 @@ readonly class StockAdjustmentReasonResponseData
             'direction' => $reason->direction->value,
             'is_active' => (bool) $reason->is_active,
             'is_system' => (bool) $reason->is_system,
+            'is_waste' => (bool) $reason->is_waste,
             'notes' => $reason->notes,
             'created_at' => (string) $reason->created_at,
             'updated_at' => (string) $reason->updated_at,

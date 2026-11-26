@@ -8,6 +8,7 @@ use App\Modules\Accounting\Services\JournalPostingService;
 use App\Modules\Sales\CustomerCheque\Models\CustomerCheque;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Services\CustomerReceiptService;
+use App\Modules\Sales\SalesInvoice\Services\SalesInvoiceService;
 use App\Modules\Treasury\Models\CashBankAccount;
 use App\Support\ListPagination;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -16,7 +17,8 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Cheques received from customers: in hand (in "Cheques to collect") until they clear into a bank account
- * or bounce. A bounce reverses the cheque's receipt, so the invoice is open again and the customer owes it.
+ * or bounce. A bounce reverses the cheque's receipt (or, for a cheque taken with a sales invoice, reopens
+ * what it settled on the invoice), so the customer owes the money again.
  */
 class CustomerChequeService
 {
@@ -35,6 +37,7 @@ class CustomerChequeService
             'customer:id,customer_code,name',
             'currency:id,code,symbol',
             'receipt:id,receipt_number,sales_invoice_id',
+            'salesInvoice:id,invoice_number',
             'clearedCashBankAccount:id,code,name',
         ]);
         if (! empty($filters['status'])) {
@@ -100,8 +103,13 @@ class CustomerChequeService
             if ($locked->status === CustomerCheque::STATUS_CLEARED) {
                 $this->journalPostingService->reverse(CustomerCheque::REFERENCE_TYPE, (string) $locked->id, $userId, $day);
             }
-            $receipt = CustomerReceipt::query()->findOrFail($locked->customer_receipt_id);
-            $this->customerReceiptService->reverse($receipt, $userId, false, true);
+            if ($locked->sales_invoice_payment_id !== null) {
+                // Taken with a sales invoice: the invoice is open again by what the cheque settled.
+                app(SalesInvoiceService::class)->bounceCounterCheque($locked, $userId, $day);
+            } else {
+                $receipt = CustomerReceipt::query()->findOrFail($locked->customer_receipt_id);
+                $this->customerReceiptService->reverse($receipt, $userId, false, true);
+            }
 
             $locked->update([
                 'status' => CustomerCheque::STATUS_BOUNCED,
@@ -119,6 +127,7 @@ class CustomerChequeService
             'customer:id,customer_code,name',
             'currency:id,code,symbol',
             'receipt:id,receipt_number,sales_invoice_id',
+            'salesInvoice:id,invoice_number',
             'clearedCashBankAccount:id,code,name',
         ])->findOrFail($id);
     }
@@ -138,9 +147,10 @@ class CustomerChequeService
             'currency' => $cheque->currency !== null ? ['id' => (int) $cheque->currency->id, 'code' => $cheque->currency->code, 'symbol' => $cheque->currency->symbol] : null,
             'status' => $cheque->status,
             'customer' => $cheque->customer !== null ? ['id' => (string) $cheque->customer->id, 'code' => $cheque->customer->customer_code, 'name' => $cheque->customer->name] : null,
-            'customer_receipt_id' => (string) $cheque->customer_receipt_id,
+            'customer_receipt_id' => $cheque->customer_receipt_id !== null ? (string) $cheque->customer_receipt_id : null,
             'receipt_number' => $cheque->receipt?->receipt_number,
-            'sales_invoice_id' => $cheque->receipt?->sales_invoice_id,
+            'sales_invoice_id' => $cheque->sales_invoice_id ?? $cheque->receipt?->sales_invoice_id,
+            'invoice_number' => $cheque->salesInvoice?->invoice_number,
             'cleared_cash_bank_account' => $cheque->clearedCashBankAccount !== null
                 ? ['id' => (int) $cheque->clearedCashBankAccount->id, 'code' => $cheque->clearedCashBankAccount->code, 'name' => $cheque->clearedCashBankAccount->name]
                 : null,

@@ -44,6 +44,7 @@ use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Inventory\Stock\Models\StockRevaluation;
 use App\Modules\Inventory\Stock\Models\StockTransfer;
 use App\Modules\Inventory\Stock\Models\StockTransferClosure;
+use App\Modules\Inventory\Stock\Models\StockTransferReceipt;
 use App\Modules\Sales\CustomerCheque\Models\CustomerCheque;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceiptAllocation;
@@ -52,7 +53,10 @@ use App\Modules\Sales\CustomerRefund\Models\CustomerRefundAllocation;
 use App\Modules\Sales\DeliveryNote\Models\DeliveryNote;
 use App\Modules\Sales\SalesCreditNote\Enums\SalesCreditNoteType;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
+use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNoteLine;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceCreditUse;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoicePayment;
 use App\Modules\Treasury\Models\CashBankAccount;
 use App\Modules\Treasury\Models\ExpenseVoucher;
 use App\Modules\Treasury\Models\TreasuryTransfer;
@@ -124,7 +128,188 @@ class JournalPostingService
             ->primary($this->account(AccountRole::CostOfGoodsSold), JournalMath::neg($value), null, null, $label)
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label);
 
+        $this->saleSettlement($builder, $invoice, $label);
+
         $this->create(SalesInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->documentBranch($invoice), $builder, $userId);
+    }
+
+    /**
+     * What was paid with the sale, in the same entry: Dr the cash box / bank / "Cheques to collect" for each
+     * payment (the cash given when change came back in another currency, with Cr the box the change left),
+     * Cr Receivable for what it settled and for any extra kept as customer credit. Customer credit used at
+     * the sale moves on Receivable from its source's currency and rate to the invoice's. Rate gaps go to
+     * exchange gain/loss.
+     */
+    private function saleSettlement(JournalBuilder $builder, SalesInvoice $invoice, string $label): void
+    {
+        $before = $builder->net();
+        $invoiceCurrencyId = (int) $invoice->currency_id;
+        $invoiceRate = (string) $invoice->exchange_rate;
+        $customerId = (string) $invoice->customer_id;
+        $receivable = $this->account(AccountRole::Receivable);
+
+        $payments = SalesInvoicePayment::query()
+            ->where('sales_invoice_id', $invoice->id)
+            ->where('at_sale', true)
+            ->where('kind', SalesInvoicePayment::KIND_PAYMENT)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+        foreach ($payments as $payment) {
+            $currencyId = $payment->currency_id !== null ? (int) $payment->currency_id : $invoiceCurrencyId;
+            $rate = $currencyId === $invoiceCurrencyId ? $invoiceRate : (string) $payment->exchange_rate;
+            $isCheque = $payment->cheque_number !== null && $payment->cheque_number !== '';
+            $paymentLabel = $label.' — '.($isCheque ? 'cheque '.$payment->cheque_number : 'payment');
+            $money = $isCheque
+                ? $this->account(AccountRole::ChequesToCollect)
+                : $this->cashBankLedger($payment->cash_bank_account_id !== null ? (int) $payment->cash_bank_account_id : null);
+
+            $changeElsewhere = $payment->change_currency_id !== null
+                && (int) $payment->change_currency_id !== $currencyId
+                && $payment->change_amount !== null
+                && $payment->tendered !== null
+                && JournalMath::isPositive($payment->change_amount);
+            $builder->foreign($money, $changeElsewhere ? (string) $payment->tendered : (string) $payment->amount, $currencyId, $rate, null, null, $paymentLabel);
+            if ($changeElsewhere) {
+                $builder->foreign(
+                    $this->cashBankLedger($payment->change_cash_bank_account_id !== null ? (int) $payment->change_cash_bank_account_id : null),
+                    JournalMath::neg((string) $payment->change_amount),
+                    (int) $payment->change_currency_id,
+                    (string) $payment->change_rate,
+                    null,
+                    null,
+                    $label.' — change',
+                );
+            }
+            if (JournalMath::isPositive($payment->applied_amount ?? '0')) {
+                $builder->foreign($receivable, JournalMath::neg((string) $payment->applied_amount), $invoiceCurrencyId, $invoiceRate, JournalEntryLine::PARTY_CUSTOMER, $customerId, $paymentLabel);
+            }
+            if (JournalMath::isPositive($payment->extra_credit ?? '0')) {
+                $builder->foreign($receivable, JournalMath::neg((string) $payment->extra_credit), $invoiceCurrencyId, $invoiceRate, JournalEntryLine::PARTY_CUSTOMER, $customerId, $label.' — customer credit');
+            }
+        }
+
+        // Customer credit used at the sale: from receipts and from other invoices.
+        $fromReceipts = CustomerReceiptAllocation::query()
+            ->where('sales_invoice_id', $invoice->id)
+            ->where('at_sale', true)
+            ->with('customerReceipt:id,receipt_number,currency_id,exchange_rate')
+            ->orderBy('id')
+            ->get();
+        foreach ($fromReceipts as $allocation) {
+            $receipt = $allocation->customerReceipt;
+            if ($receipt === null) {
+                continue;
+            }
+            $creditLabel = $label.' — credit '.$receipt->receipt_number;
+            $builder
+                ->foreign($receivable, (string) $allocation->amount, (int) $receipt->currency_id, (string) $receipt->exchange_rate, JournalEntryLine::PARTY_CUSTOMER, $customerId, $creditLabel)
+                ->foreign($receivable, JournalMath::neg((string) $allocation->applied_amount), $invoiceCurrencyId, $invoiceRate, JournalEntryLine::PARTY_CUSTOMER, $customerId, $creditLabel);
+        }
+        $fromInvoices = SalesInvoiceCreditUse::query()
+            ->where('sales_invoice_id', $invoice->id)
+            ->where('at_sale', true)
+            ->with('sourceInvoice:id,invoice_number,currency_id,exchange_rate')
+            ->orderBy('id')
+            ->get();
+        foreach ($fromInvoices as $use) {
+            $source = $use->sourceInvoice;
+            if ($source === null) {
+                continue;
+            }
+            $creditLabel = $label.' — credit '.$source->invoice_number;
+            $builder
+                ->foreign($receivable, (string) $use->amount, (int) $source->currency_id, (string) $source->exchange_rate, JournalEntryLine::PARTY_CUSTOMER, $customerId, $creditLabel)
+                ->foreign($receivable, JournalMath::neg((string) $use->applied_amount), $invoiceCurrencyId, $invoiceRate, JournalEntryLine::PARTY_CUSTOMER, $customerId, $creditLabel);
+        }
+
+        // Only the gap the payments added (the sale lines' own rounding stays on Rounding).
+        $gap = JournalMath::sub($builder->net(), $before);
+        if (JournalMath::isPositive($gap)) {
+            $builder->primary($this->account(AccountRole::ExchangeGain), JournalMath::neg($gap), null, null, $label);
+        } elseif (JournalMath::isNegative($gap)) {
+            $builder->primary($this->account(AccountRole::ExchangeLoss), JournalMath::neg($gap), null, null, $label);
+        }
+    }
+
+    /**
+     * A cheque taken with a sales invoice bounced: the customer owes the money again.
+     * Dr Receivable (what it settled + any credit it gave) / Cr Cheques to collect, in the cheque currency.
+     */
+    public function saleChequeBounced(CustomerCheque $cheque, SalesInvoice $invoice, SalesInvoicePayment $payment, ?string $userId, string $date): void
+    {
+        $id = (string) $cheque->id;
+        if (! $this->shouldPost(CustomerCheque::BOUNCE_REFERENCE_TYPE, $id)) {
+            return;
+        }
+
+        $label = 'Cheque '.$cheque->cheque_number.' bounced — '.$invoice->invoice_number;
+        $owed = JournalMath::add((string) ($payment->applied_amount ?? '0'), (string) ($payment->extra_credit ?? '0'));
+        $builder = $this->builder()
+            ->foreign($this->account(AccountRole::Receivable), $owed, (int) $invoice->currency_id, (string) $invoice->exchange_rate, JournalEntryLine::PARTY_CUSTOMER, (string) $invoice->customer_id, $label)
+            ->foreign($this->account(AccountRole::ChequesToCollect), JournalMath::neg((string) $cheque->amount), (int) $cheque->currency_id, (string) $cheque->exchange_rate, null, null, $label);
+
+        $this->exchangeDifference($builder, $label);
+        $this->create(CustomerCheque::BOUNCE_REFERENCE_TYPE, $id, $date, $label, $this->documentBranch($invoice), $builder, $userId);
+    }
+
+    /**
+     * Customer credit kept on one invoice, used on another one: moves the amount on Receivable from the
+     * source invoice's currency and rate to the target's. A use made while posting the target sits inside
+     * the target's own entry; `$undo` posts the opposite entry when such a use is taken back on its own.
+     */
+    public function salesInvoiceCreditUse(SalesInvoiceCreditUse $use, SalesInvoice $source, SalesInvoice $target, ?string $userId, string $date, bool $undo = false): void
+    {
+        $this->creditMove(
+            SalesInvoiceCreditUse::REFERENCE_TYPE,
+            (string) $use->id,
+            'Customer credit '.$source->invoice_number.' — '.$target->invoice_number,
+            (string) $use->amount,
+            (int) $source->currency_id,
+            (string) $source->exchange_rate,
+            (string) $use->applied_amount,
+            (int) $target->currency_id,
+            (string) $target->exchange_rate,
+            (string) $source->customer_id,
+            $this->documentBranch($target),
+            $date,
+            $userId,
+            $undo,
+        );
+    }
+
+    /**
+     * Dr Receivable in the credit's currency / Cr Receivable in the invoice's (the other way round for `$undo`).
+     */
+    private function creditMove(
+        string $sourceType,
+        string $id,
+        string $label,
+        string $fromAmount,
+        int $fromCurrencyId,
+        string $fromRate,
+        string $toAmount,
+        int $toCurrencyId,
+        string $toRate,
+        string $customerId,
+        ?int $branchId,
+        string $date,
+        ?string $userId,
+        bool $undo,
+    ): void {
+        $event = $undo ? JournalEntry::EVENT_REVERSE : JournalEntry::EVENT_POST;
+        if (! $this->enabled() || $this->hasEntry($sourceType, $id, $event)) {
+            return;
+        }
+        $from = $undo ? JournalMath::neg($fromAmount) : $fromAmount;
+        $to = $undo ? $toAmount : JournalMath::neg($toAmount);
+        $receivable = $this->account(AccountRole::Receivable);
+        $builder = $this->builder()
+            ->foreign($receivable, $from, $fromCurrencyId, $fromRate, JournalEntryLine::PARTY_CUSTOMER, $customerId, $label)
+            ->foreign($receivable, $to, $toCurrencyId, $toRate, JournalEntryLine::PARTY_CUSTOMER, $customerId, $label);
+
+        $this->exchangeDifference($builder, $label);
+        $this->create($sourceType, $id, $date, ($undo ? 'Undo: ' : '').$label, $branchId, $builder, $userId, $event);
     }
 
     /**
@@ -160,6 +345,7 @@ class JournalPostingService
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
             ->primary($this->account(AccountRole::GoodsReceivedNotInvoiced), JournalMath::neg($value), null, null, $label);
 
+        $this->costCorrection($builder, GoodsReceipt::REFERENCE_TYPE, $id, $label);
         $this->create(GoodsReceipt::REFERENCE_TYPE, $id, $date ?? $receipt->received_date->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
     }
 
@@ -237,6 +423,7 @@ class JournalPostingService
 
         $builder->balanceTo($this->account(AccountRole::PurchasePriceDifference), $label);
 
+        $this->costCorrection($builder, PurchaseInvoice::REFERENCE_TYPE, $id, $label);
         $this->create(PurchaseInvoice::REFERENCE_TYPE, $id, $date ?? $invoice->invoice_date->toDateString(), $label, $this->documentBranch($invoice), $builder, $userId);
     }
 
@@ -282,15 +469,32 @@ class JournalPostingService
         $moneyLedger = $receipt->cheque_number !== null && $receipt->cheque_number !== ''
             ? $this->account(AccountRole::ChequesToCollect)
             : $this->cashBankLedger($receipt->cash_bank_account_id);
+        // Change handed back in another currency: the box gets the cash given, the change leaves its own box.
+        $changeElsewhere = $receipt->change_currency_id !== null
+            && (int) $receipt->change_currency_id !== (int) $receipt->currency_id
+            && $receipt->change_amount !== null
+            && $receipt->tendered !== null
+            && JournalMath::isPositive($receipt->change_amount);
         $builder = $this->builder()->foreign(
             $moneyLedger,
-            $receipt->amount,
+            $changeElsewhere ? (string) $receipt->tendered : $receipt->amount,
             (int) $receipt->currency_id,
             (string) $receipt->exchange_rate,
             null,
             null,
             $label,
         );
+        if ($changeElsewhere) {
+            $builder->foreign(
+                $this->cashBankLedger($receipt->change_cash_bank_account_id !== null ? (int) $receipt->change_cash_bank_account_id : null),
+                JournalMath::neg((string) $receipt->change_amount),
+                (int) $receipt->change_currency_id,
+                (string) $receipt->change_rate,
+                null,
+                null,
+                $label.' — change',
+            );
+        }
 
         // Allocations made later (customer credit applied to other invoices) have their own entries.
         $allocations = CustomerReceiptAllocation::query()->where('customer_receipt_id', $id)->where('applied_later', false)->orderBy('id')->get();
@@ -335,36 +539,24 @@ class JournalPostingService
      * Customer credit (unapplied receipt money) applied to an invoice later: moves the amount from the
      * receipt's currency and rate to the invoice's on the customer's account. A rate gap is exchange gain/loss.
      */
-    public function customerCreditApplication(CustomerReceiptAllocation $allocation, CustomerReceipt $receipt, SalesInvoice $invoice, ?string $userId, ?string $date = null): void
+    public function customerCreditApplication(CustomerReceiptAllocation $allocation, CustomerReceipt $receipt, SalesInvoice $invoice, ?string $userId, ?string $date = null, bool $undo = false): void
     {
-        $id = (string) $allocation->id;
-        if (! $this->shouldPost(self::CUSTOMER_CREDIT_APPLICATION, $id)) {
-            return;
-        }
-
-        $label = 'Customer credit '.$receipt->receipt_number.' — '.$invoice->invoice_number;
-        $builder = $this->builder()
-            ->foreign(
-                $this->account(AccountRole::Receivable),
-                $allocation->amount,
-                (int) $receipt->currency_id,
-                (string) $receipt->exchange_rate,
-                JournalEntryLine::PARTY_CUSTOMER,
-                (string) $receipt->customer_id,
-                $label,
-            )
-            ->foreign(
-                $this->account(AccountRole::Receivable),
-                JournalMath::neg($allocation->applied_amount),
-                (int) $invoice->currency_id,
-                (string) $invoice->exchange_rate,
-                JournalEntryLine::PARTY_CUSTOMER,
-                (string) $receipt->customer_id,
-                $label,
-            );
-
-        $this->exchangeDifference($builder, $label);
-        $this->create(self::CUSTOMER_CREDIT_APPLICATION, $id, $date ?? now()->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
+        $this->creditMove(
+            self::CUSTOMER_CREDIT_APPLICATION,
+            (string) $allocation->id,
+            'Customer credit '.$receipt->receipt_number.' — '.$invoice->invoice_number,
+            (string) $allocation->amount,
+            (int) $receipt->currency_id,
+            (string) $receipt->exchange_rate,
+            (string) $allocation->applied_amount,
+            (int) $invoice->currency_id,
+            (string) $invoice->exchange_rate,
+            (string) $receipt->customer_id,
+            $this->documentBranch($receipt),
+            $date ?? now()->toDateString(),
+            $userId,
+            $undo,
+        );
     }
 
     /**
@@ -529,6 +721,15 @@ class JournalPostingService
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
             ->primary($this->account(AccountRole::CostOfGoodsSold), JournalMath::neg($value), null, null, $label);
 
+        // Returned goods thrown away: their cost stays out of stock and moves from cost of sales to Waste.
+        $waste = JournalMath::of(SalesCreditNoteLine::query()->where('sales_credit_note_id', $id)->sum('waste_value'));
+        if (JournalMath::isPositive($waste)) {
+            $builder
+                ->primary($this->account(AccountRole::WasteExpense), $waste, null, null, $label.' — waste')
+                ->primary($this->account(AccountRole::CostOfGoodsSold), JournalMath::neg($waste), null, null, $label.' — waste');
+        }
+
+        $this->costCorrection($builder, SalesCreditNote::REFERENCE_TYPE, $id, $label);
         $this->create(SalesCreditNote::REFERENCE_TYPE, $id, $date ?? $note->credit_date->toDateString(), $label, $this->documentBranch($note), $builder, $userId);
     }
 
@@ -750,6 +951,7 @@ class JournalPostingService
 
     public function stockAdjustment(StockAdjustment $document, ?string $userId, ?string $date = null): void
     {
+        $document->loadMissing('reason:id,is_waste');
         $this->stockVariance(
             StockAdjustment::REFERENCE_TYPE,
             (string) $document->id,
@@ -758,6 +960,8 @@ class JournalPostingService
             $this->documentBranch($document),
             $userId,
             false,
+            // Taken out as waste (spoiled, expired, damaged): the cost goes to Waste, not to shortages.
+            (bool) $document->reason?->is_waste ? AccountRole::WasteExpense : AccountRole::InventoryShortage,
         );
     }
 
@@ -856,6 +1060,7 @@ class JournalPostingService
             ->primary($this->account(AccountRole::Inventory), $value, null, null, $label)
             ->primary($this->account(AccountRole::OpeningBalanceEquity), JournalMath::neg($value), null, null, $label);
 
+        $this->costCorrection($builder, OpeningStock::REFERENCE_TYPE, $id, $label);
         $this->create(OpeningStock::REFERENCE_TYPE, $id, $date ?? $document->opening_date->toDateString(), $label, $this->documentBranch($document), $builder, $userId);
     }
 
@@ -930,7 +1135,7 @@ class JournalPostingService
         $this->journalEntryService->reverseEntry($original, $userId, $date);
     }
 
-    private function stockVariance(string $type, string $id, string $label, string $date, ?int $branchId, ?string $userId, bool $netOnly): void
+    private function stockVariance(string $type, string $id, string $label, string $date, ?int $branchId, ?string $userId, bool $netOnly, AccountRole $shortageRole = AccountRole::InventoryShortage): void
     {
         if (! $this->shouldPost($type, $id)) {
             return;
@@ -960,10 +1165,11 @@ class JournalPostingService
         }
         if (JournalMath::isNegative($decrease)) {
             $builder
-                ->primary($this->account(AccountRole::InventoryShortage), JournalMath::neg($decrease), null, null, $label)
+                ->primary($this->account($shortageRole), JournalMath::neg($decrease), null, null, $label)
                 ->primary($this->account(AccountRole::Inventory), $decrease, null, null, $label);
         }
 
+        $this->costCorrection($builder, $type, $id, $label);
         $this->create($type, $id, $date, $label, $branchId, $builder, $userId);
     }
 
@@ -1320,6 +1526,44 @@ class JournalPostingService
         return $costs;
     }
 
+    /**
+     * Stock that went below zero was sold at the last known cost. An inbound that fills it values that part at
+     * its new cost; the difference (stored on its movements) moves between cost of sales and inventory here.
+     */
+    private function costCorrection(JournalBuilder $builder, string $referenceType, string $referenceId, string $label): void
+    {
+        $total = '0';
+        foreach ($this->originalMovements($referenceType, $referenceId) as $movement) {
+            $total = JournalMath::add($total, (string) ($movement->cost_correction ?? '0'));
+        }
+        $this->addCostCorrection($builder, $total, $label);
+    }
+
+    private function addCostCorrection(JournalBuilder $builder, string $amount, string $label): void
+    {
+        if (JournalMath::isZero($amount)) {
+            return;
+        }
+        $builder
+            ->primary($this->account(AccountRole::CostOfGoodsSold), $amount, null, null, $label.' — negative stock cost')
+            ->primary($this->account(AccountRole::Inventory), JournalMath::neg($amount), null, null, $label.' — negative stock cost');
+    }
+
+    /**
+     * A transfer arriving moves no value between accounts; it only posts when it filled negative stock.
+     */
+    public function stockTransferReceipt(StockTransferReceipt $receipt, string $correction, ?string $userId): void
+    {
+        $id = (string) $receipt->id;
+        if (JournalMath::isZero($correction) || ! $this->shouldPost(StockTransferReceipt::REFERENCE_TYPE, $id)) {
+            return;
+        }
+        $label = 'Transfer receipt '.($receipt->receipt_number ?? $id);
+        $builder = $this->builder();
+        $this->addCostCorrection($builder, $correction, $label);
+        $this->create(StockTransferReceipt::REFERENCE_TYPE, $id, $receipt->received_date?->toDateString() ?? Carbon::today()->toDateString(), $label, $this->documentBranch($receipt), $builder, $userId);
+    }
+
     private function stockValue(string $referenceType, string $referenceId): string
     {
         $total = '0';
@@ -1342,7 +1586,7 @@ class JournalPostingService
             ->where('reference_type', $referenceType)
             ->where('reference_id', $referenceId)
             ->orderBy('id')
-            ->get(['id', 'item_id', 'lot_id', 'quantity_delta', 'value_delta', 'notes']);
+            ->get(['id', 'item_id', 'lot_id', 'quantity_delta', 'value_delta', 'cost_correction', 'notes']);
 
         $firstReverse = $movements->first(fn (StockMovement $m): bool => str_starts_with((string) $m->notes, 'Reverse'));
         if ($firstReverse === null) {

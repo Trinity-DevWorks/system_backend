@@ -10,6 +10,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\DocumentType;
 use Barryvdh\DomPDF\PDF;
 
 class PurchaseOrderPdfService
@@ -23,7 +24,7 @@ class PurchaseOrderPdfService
     {
         PurchaseOrderRules::assertPrintable($order);
 
-        $options = DocumentPdfOptions::fromRequest($locale);
+        $options = DocumentPdfOptions::fromRequest($locale, documentType: DocumentType::PurchaseOrder);
         $money = DocumentMoney::forOptions($options);
         $labels = $this->renderer->labelsFor($options);
 

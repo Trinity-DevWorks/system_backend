@@ -20,6 +20,7 @@ return new class extends Migration
             $table->foreignId('item_uom_id')->nullable()->constrained('item_uoms')->nullOnDelete();
             $table->foreignId('stock_adjustment_reason_id')->constrained('stock_adjustment_reasons')->restrictOnDelete();
             $table->text('notes')->nullable();
+            $table->json('serial_numbers')->nullable();
             $table->timestamps();
 
             $table->index('stock_transfer_closure_id');

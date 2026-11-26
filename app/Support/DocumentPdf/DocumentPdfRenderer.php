@@ -43,7 +43,9 @@ final class DocumentPdfRenderer
         $payload['termsText'] = $options->termsText !== null ? $money->text($options->termsText) : null;
 
         if ($options->isReceipt() && $view === 'document-pdf.document') {
-            $pdf = Pdf::loadView('document-pdf.receipt', $payload)->setPaper([0, 0, self::RECEIPT_WIDTH, $this->receiptHeight($payload)]);
+            $payload['narrow'] = $options->rollWidthMm < 80;
+            $width = round($options->rollWidthMm * 72 / 25.4, 2);
+            $pdf = Pdf::loadView('document-pdf.receipt', $payload)->setPaper([0, 0, $width, $this->receiptHeight($payload)]);
             $pdf->render();
 
             return $pdf;
@@ -55,9 +57,6 @@ final class DocumentPdfRenderer
         return $pdf;
     }
 
-    /** 80mm roll in points. */
-    public const RECEIPT_WIDTH = 226.77;
-
     /**
      * Roll paper has no fixed height: estimate it from the content so the receipt prints on one page.
      *
@@ -66,7 +65,10 @@ final class DocumentPdfRenderer
     private function receiptHeight(array $payload): float
     {
         $count = static fn (mixed $v): int => is_array($v) ? count($v) : 0;
-        $textLines = static fn (?string $v): int => $v === null || $v === '' ? 0 : (int) ceil(mb_strlen($v) / 38) + substr_count($v, "\n");
+        // A 58mm roll fits fewer characters per line, so text and rows wrap more.
+        $narrow = ! empty($payload['narrow']);
+        $perLine = $narrow ? 28 : 38;
+        $textLines = static fn (?string $v): int => $v === null || $v === '' ? 0 : (int) ceil(mb_strlen($v) / $perLine) + substr_count($v, "\n");
 
         $height = 200
             + 30 * $count($payload['lines'] ?? [])
@@ -153,6 +155,8 @@ final class DocumentPdfRenderer
             'amount' => 'Amount',
             'open_amount' => 'Open amount',
             'notes' => 'Notes',
+            'prices_incl_tax' => 'Prices include VAT',
+            'prices_excl_tax' => 'Prices exclude VAT',
             'prepared_by' => 'Prepared by',
             'approved_by' => 'Approved by',
             'page' => 'Page',
@@ -173,6 +177,7 @@ final class DocumentPdfRenderer
             'cheque' => 'Cheque',
             'customer_credit' => 'Customer credit',
             'kept_as_credit' => 'Kept as credit',
+            'bounced' => 'Cheque bounced',
             'source' => 'Source',
             'warehouse' => 'Warehouse',
             'po_number' => 'Purchase order',
@@ -189,6 +194,7 @@ final class DocumentPdfRenderer
             'reason' => 'Reason',
             'total_debit' => 'Total debit',
             'total_credit' => 'Total credit',
+            'serials' => 'Serial numbers',
         ];
 
         $ar = [
@@ -202,6 +208,7 @@ final class DocumentPdfRenderer
             'to_warehouse' => 'إلى المستودع',
             'code' => 'الرمز',
             'description' => 'الوصف',
+            'serials' => 'الأرقام التسلسلية',
             'qty' => 'الكمية',
             'uom' => 'الوحدة',
             'unit_price' => 'سعر الوحدة',
@@ -225,6 +232,8 @@ final class DocumentPdfRenderer
             'amount' => 'المبلغ',
             'open_amount' => 'المبلغ المفتوح',
             'notes' => 'ملاحظات',
+            'prices_incl_tax' => 'الأسعار شاملة الضريبة',
+            'prices_excl_tax' => 'الأسعار غير شاملة الضريبة',
             'prepared_by' => 'أعده',
             'approved_by' => 'اعتمده',
             'page' => 'صفحة',
@@ -245,6 +254,7 @@ final class DocumentPdfRenderer
             'cheque' => 'شيك',
             'customer_credit' => 'رصيد العميل',
             'kept_as_credit' => 'أُبقي كرصيد',
+            'bounced' => 'شيك مرتجع',
             'source' => 'المصدر',
             'warehouse' => 'المستودع',
             'po_number' => 'أمر الشراء',

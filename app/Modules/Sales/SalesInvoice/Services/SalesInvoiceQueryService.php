@@ -90,4 +90,38 @@ class SalesInvoiceQueryService
 
         return $query;
     }
+
+    /**
+     * One invoice with everything the drawer and the PDF show (only in a warehouse the user can see).
+     */
+    public function find(string $id): SalesInvoice
+    {
+        $invoice = SalesInvoice::query()
+            ->withPostedCreditTotal()
+            ->with([
+                'customer',
+                'warehouse',
+                'currency',
+                'salesman',
+                'paymentMethod',
+                'paymentTerm',
+                'createdByUser',
+                'postedByUser',
+                'lines' => fn ($query) => $query->orderBy('sort_order')->orderBy('id'),
+                'salesOrder:id,order_number,status',
+                'lines.item',
+                'lines.itemUom.uom',
+                'lines.warehouse',
+                'lines.lot',
+                'lines.salesOrderLine',
+                'payments.paymentMethod:id,code,name,type,supports_change',
+                'payments.cashBankAccount:id,code,name',
+                'payments.customerReceipt:id,receipt_number,status',
+            ])
+            ->findOrFail($id);
+
+        $this->warehouseService->assertDocumentVisible($invoice);
+
+        return $invoice;
+    }
 }

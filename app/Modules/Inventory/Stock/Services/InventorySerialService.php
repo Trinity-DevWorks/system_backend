@@ -433,8 +433,13 @@ class InventorySerialService
     private function receive(InventorySerial $serial, StockMovementData $data, Carbon $now): void
     {
         $firstReceipt = ! $serial->exists || $serial->status === InventorySerial::STATUS_VOID;
+        $wasSold = $serial->exists && $serial->status === InventorySerial::STATUS_SOLD;
         $serial->status = InventorySerial::STATUS_IN_STOCK;
         $serial->warehouse_id = $data->warehouseId;
+        if ($wasSold) {
+            // Back in stock: the sale stays in the history, not on the unit (reversing the return restores it).
+            $this->clearSale($serial);
+        }
 
         if ($firstReceipt || $data->type === StockMovementType::Purchase) {
             $serial->received_at = $now;
@@ -479,22 +484,26 @@ class InventorySerialService
             ->where('is_reversal', false)
             ->whereNull('reversed_at');
 
-        $sale = (clone $standing)
-            ->where('direction', 'out')
-            ->whereIn('movement_type', [StockMovementType::Sale->value, StockMovementType::BundleSale->value])
-            ->orderByDesc('id')
-            ->first();
+        // Only a sold unit carries its sale; a unit back in stock keeps it in the history only.
+        $sale = $serial->status === InventorySerial::STATUS_SOLD
+            ? (clone $standing)
+                ->where('direction', 'out')
+                ->whereIn('movement_type', [StockMovementType::Sale->value, StockMovementType::BundleSale->value])
+                ->orderByDesc('id')
+                ->first()
+            : null;
         if ($sale === null) {
-            $serial->customer_id = null;
-            $serial->sold_at = null;
-            $serial->sold_ref_type = null;
-            $serial->sold_ref_id = null;
-            $serial->warranty_ends_on = null;
+            $this->clearSale($serial);
         } else {
+            $sameSale = $serial->sold_ref_type === $sale->reference_type && (string) $serial->sold_ref_id === (string) $sale->reference_id;
             $serial->sold_at = $sale->moved_at;
             $serial->sold_ref_type = $sale->reference_type;
             $serial->sold_ref_id = $sale->reference_id;
             $serial->customer_id = $sale->party_type === 'customer' ? $sale->party_id : $serial->customer_id;
+            if (! $sameSale || $serial->warranty_ends_on === null) {
+                $months = (int) (Item::query()->whereKey($serial->item_id)->value('warranty_months') ?? 0);
+                $serial->warranty_ends_on = $months > 0 ? Carbon::parse($sale->moved_at)->addMonthsNoOverflow($months) : null;
+            }
         }
 
         $receipt = (clone $standing)->where('direction', 'in')->orderBy('id')->first();
@@ -504,6 +513,15 @@ class InventorySerialService
             $serial->received_ref_id = null;
             $serial->supplier_id = null;
         }
+    }
+
+    private function clearSale(InventorySerial $serial): void
+    {
+        $serial->customer_id = null;
+        $serial->sold_at = null;
+        $serial->sold_ref_type = null;
+        $serial->sold_ref_id = null;
+        $serial->warranty_ends_on = null;
     }
 
     /** Latest move of a unit that is not a reversal and has not been reversed. */

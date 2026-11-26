@@ -32,6 +32,8 @@ enum AccountRole: string
     case ChequesToCollect = 'cheques_to_collect';
     case SalesmanCommissionPayable = 'salesman_commission_payable';
     case InventoryShortage = 'inventory_shortage';
+    /** Spoiled, expired, damaged or returned-and-thrown-away goods. */
+    case WasteExpense = 'waste_expense';
     case InventorySurplus = 'inventory_surplus';
     case OpeningBalanceEquity = 'opening_balance_equity';
     case ExchangeLoss = 'exchange_loss';
@@ -89,6 +91,7 @@ enum AccountRole: string
             self::PurchasePriceDifference,
             self::NonStockPurchase,
             self::InventoryShortage,
+            self::WasteExpense,
             self::ExchangeLoss,
             self::UnrealizedExchangeLoss => [AccountType::Expense],
             self::Rounding => [AccountType::Expense, AccountType::Revenue],

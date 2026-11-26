@@ -23,6 +23,7 @@ readonly class BranchData
         public bool $isDefault,
         public ?int $priceListId = null,
         public bool $priceListProvided = false,
+        public ?string $returnDefault = null,
     ) {}
 
     public static function fromStoreRequest(StoreBranchRequest $request): self
@@ -56,6 +57,7 @@ readonly class BranchData
             isDefault: (bool) $data['is_default'],
             priceListId: isset($data['price_list_id']) ? (int) $data['price_list_id'] : null,
             priceListProvided: array_key_exists('price_list_id', $data),
+            returnDefault: isset($data['return_default']) && in_array($data['return_default'], ['restock', 'waste'], true) ? (string) $data['return_default'] : null,
         );
     }
 
@@ -105,6 +107,9 @@ readonly class BranchData
         ];
         if ($this->priceListProvided) {
             $out['price_list_id'] = $this->priceListId;
+        }
+        if ($this->returnDefault !== null) {
+            $out['return_default'] = $this->returnDefault;
         }
 
         return $out;

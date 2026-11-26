@@ -14,6 +14,7 @@ use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNote;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNoteAllocation;
 use App\Modules\Sales\SalesCreditNote\Models\SalesCreditNoteLine;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\Support\DocumentTaxMode;
 use Illuminate\Support\Collection;
 
 readonly class SalesCreditNoteResponseData
@@ -46,6 +47,7 @@ readonly class SalesCreditNoteResponseData
             'credit_date' => $note->credit_date?->toDateString(),
             'reason' => $note->reason,
             'notes' => $note->notes,
+            'prices_include_tax' => DocumentTaxMode::of($note),
             'subtotal' => (string) $note->subtotal,
             'discount_total' => (string) $note->discount_total,
             'tax_total' => (string) $note->tax_total,
@@ -112,6 +114,8 @@ readonly class SalesCreditNoteResponseData
             'tax_amount' => (string) $line->tax_amount,
             'line_total' => (string) $line->line_total,
             'restock' => (bool) $line->restock,
+            'return_action' => $line->return_action,
+            'waste_value' => (string) $line->waste_value,
             'description' => $line->description,
             'sort_order' => $line->sort_order,
             'item' => $line->item ? [

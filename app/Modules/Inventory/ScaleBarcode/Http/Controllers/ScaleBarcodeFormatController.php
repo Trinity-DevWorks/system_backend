@@ -11,6 +11,7 @@ use App\Modules\Inventory\ScaleBarcode\Http\Requests\TestScaleBarcodeRequest;
 use App\Modules\Inventory\ScaleBarcode\Models\ScaleBarcodeFormat;
 use App\Modules\Inventory\ScaleBarcode\Services\ScaleBarcodeFormatService;
 use App\Modules\Inventory\ScaleBarcode\Services\ScaleBarcodeService;
+use App\Modules\Inventory\ScaleBarcode\Services\ScalePluService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ class ScaleBarcodeFormatController extends Controller
     public function __construct(
         private readonly ScaleBarcodeFormatService $formats,
         private readonly ScaleBarcodeService $scale,
+        private readonly ScalePluService $plus,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -43,14 +45,14 @@ class ScaleBarcodeFormatController extends Controller
     {
         $format = $this->formats->create($request->validated());
 
-        return ApiResponse::success($this->formats->present($format), 'Scale barcode format created successfully.', 201);
+        return ApiResponse::success($this->withWarnings($format), 'Scale barcode format created successfully.', 201);
     }
 
     public function update(ScaleBarcodeFormatRequest $request, ScaleBarcodeFormat $scaleBarcodeFormat): JsonResponse
     {
         $format = $this->formats->update($scaleBarcodeFormat, $request->validated());
 
-        return ApiResponse::success($this->formats->present($format), 'Scale barcode format updated successfully.');
+        return ApiResponse::success($this->withWarnings($format), 'Scale barcode format updated successfully.');
     }
 
     public function destroy(ScaleBarcodeFormat $scaleBarcodeFormat): JsonResponse
@@ -58,6 +60,19 @@ class ScaleBarcodeFormatController extends Controller
         $this->formats->delete($scaleBarcodeFormat);
 
         return ApiResponse::success(null, 'Scale barcode format deleted successfully.');
+    }
+
+    /**
+     * The format, plus scale items whose PLU is too long for it (saved anyway; shown as a warning).
+     *
+     * @return array<string, mixed>
+     */
+    private function withWarnings(ScaleBarcodeFormat $format): array
+    {
+        return [
+            ...$this->formats->present($format),
+            'warnings' => ['plu_too_long' => $this->plus->itemsTooLongFor($format)],
+        ];
     }
 
     /** Try a barcode against the (unsaved) form: what would the line be? */

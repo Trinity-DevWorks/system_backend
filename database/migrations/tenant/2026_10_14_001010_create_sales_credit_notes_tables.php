@@ -40,6 +40,9 @@ return new class extends Migration
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('posted_at')->nullable();
+            // Do this document's prices include VAT? Fixed when it is created (main price list, else the company
+            // setting; copied from the document it is made from).
+            $table->boolean('prices_include_tax')->default(false);
             $table->timestamps();
 
             $table->index(['status', 'created_at']);
@@ -67,6 +70,10 @@ return new class extends Migration
             $table->decimal('tax_amount', 20, 4)->default(0);
             $table->decimal('line_total', 20, 4)->default(0);
             $table->boolean('restock')->default(true);
+            // Returned goods: restock (back in stock, cost of sales reduced) | waste (stays out, cost moves to Waste).
+            $table->string('return_action', 16)->nullable();
+            // Cost moved from cost of sales to the Waste account for a waste return.
+            $table->decimal('waste_value', 20, 4)->default(0);
             $table->string('description', 500)->nullable();
             $table->unsignedInteger('sort_order')->default(0);
         });

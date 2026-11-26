@@ -58,6 +58,11 @@ use App\Modules\Inventory\Purchasing\PurchaseDebitNote\Http\Controllers\Purchase
 use App\Modules\Inventory\Purchasing\SupplierPayment\Http\Controllers\SupplierPaymentController;
 use App\Modules\Inventory\Purchasing\SupplierRefund\Http\Controllers\SupplierRefundController;
 use App\Modules\Inventory\ScaleBarcode\Http\Controllers\ScaleBarcodeFormatController;
+use App\Modules\Inventory\ScaleBarcode\Http\Controllers\ScaleExportController;
+use App\Modules\Inventory\ScaleBarcode\Http\Controllers\ScaleExportTemplateController;
+use App\Modules\Inventory\ScaleBarcode\Http\Controllers\ScaleLabelController;
+use App\Modules\Inventory\ScaleBarcode\Http\Controllers\ScaleLabelTemplateController;
+use App\Modules\Inventory\ScaleBarcode\Http\Controllers\ScalePluController;
 use App\Modules\Inventory\Stock\Http\Controllers\BundleExplosionController;
 use App\Modules\Inventory\Stock\Http\Controllers\InventoryLotController;
 use App\Modules\Inventory\Stock\Http\Controllers\InventorySerialController;
@@ -161,6 +166,8 @@ Route::middleware([
 
         Route::get('auth/me', [MeController::class, 'show']);
         Route::put('auth/me', [MeController::class, 'update']);
+        Route::put('auth/me/approval-pin', [MeController::class, 'approvalPin'])->middleware('throttle:10,1');
+        Route::get('auth/manager-approvers', [MeController::class, 'approvers']);
         Route::get('branch-context', [BranchContextController::class, 'show']);
         Route::post('branch-context/switch', [BranchContextController::class, 'switch']);
 
@@ -229,6 +236,10 @@ Route::middleware([
             Route::get('print-settings', [PrintSettingController::class, 'show'])
                 ->middleware('check.permission:print_settings,view');
             Route::put('print-settings', [PrintSettingController::class, 'update'])
+                ->middleware('check.permission:print_settings,edit');
+            Route::put('print-settings/types/{type}', [PrintSettingController::class, 'updateType'])
+                ->middleware('check.permission:print_settings,edit');
+            Route::delete('print-settings/types/{type}', [PrintSettingController::class, 'destroyType'])
                 ->middleware('check.permission:print_settings,edit');
 
             // Emailing documents: the company mailbox, the templates and the send itself.
@@ -301,6 +312,16 @@ Route::middleware([
                     ->middleware('ensure.module:sales');
                 Route::get('reports/lot-expiry', [AnalyticsReportController::class, 'show'])->defaults('report', 'lot-expiry')
                     ->middleware('ensure.module:inventory');
+                Route::get('reports/serials-in-stock', [AnalyticsReportController::class, 'show'])->defaults('report', 'serials-in-stock')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/serials-sold', [AnalyticsReportController::class, 'show'])->defaults('report', 'serials-sold')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/warranty-expiring', [AnalyticsReportController::class, 'show'])->defaults('report', 'warranty-expiring')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/waste', [AnalyticsReportController::class, 'show'])->defaults('report', 'waste')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/negative-stock', [AnalyticsReportController::class, 'show'])->defaults('report', 'negative-stock')
+                    ->middleware('ensure.module:inventory');
                 Route::get('reports/dead-stock', [AnalyticsReportController::class, 'show'])->defaults('report', 'dead-stock')
                     ->middleware('ensure.module:inventory');
                 Route::get('reports/item-movement', [AnalyticsReportController::class, 'show'])->defaults('report', 'item-movement')
@@ -331,6 +352,16 @@ Route::middleware([
                 Route::get('reports/sales-profitability/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'sales-profitability')
                     ->middleware('ensure.module:sales');
                 Route::get('reports/lot-expiry/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'lot-expiry')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/serials-in-stock/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'serials-in-stock')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/serials-sold/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'serials-sold')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/warranty-expiring/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'warranty-expiring')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/waste/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'waste')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/negative-stock/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'negative-stock')
                     ->middleware('ensure.module:inventory');
                 Route::get('reports/dead-stock/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'dead-stock')
                     ->middleware('ensure.module:inventory');
@@ -678,6 +709,38 @@ Route::middleware([
                 ->middlewareFor(['store'], ['check.permission:scale_barcode_formats,add'])
                 ->middlewareFor(['update'], ['check.permission:scale_barcode_formats,edit'])
                 ->middlewareFor(['destroy'], ['check.permission:scale_barcode_formats,delete']);
+            Route::post('scale-export-templates/preview', [ScaleExportTemplateController::class, 'previewDraft'])
+                ->middleware('check.permission:scale_barcode_formats,view');
+            Route::get('scale-export-templates/{scaleExportTemplate}/preview', [ScaleExportTemplateController::class, 'preview'])
+                ->middleware('check.permission:scale_exports,view');
+            Route::post('scale-export-templates/{scaleExportTemplate}/download', [ScaleExportTemplateController::class, 'download'])
+                ->middleware('check.permission:scale_exports,export');
+            Route::apiResource('scale-export-templates', ScaleExportTemplateController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:scale_exports,view'])
+                ->middlewareFor(['store'], ['check.permission:scale_barcode_formats,add'])
+                ->middlewareFor(['update'], ['check.permission:scale_barcode_formats,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:scale_barcode_formats,delete']);
+            Route::get('scale-exports/outdated', [ScaleExportController::class, 'outdated'])
+                ->middleware('check.permission:scale_exports,view');
+            Route::get('scale-exports', [ScaleExportController::class, 'index'])
+                ->middleware('check.permission:scale_exports,view');
+            Route::get('scale-exports/{scaleExport}', [ScaleExportController::class, 'show'])
+                ->middleware('check.permission:scale_exports,view');
+            Route::get('scale-labels/items', [ScaleLabelController::class, 'items'])
+                ->middleware('check.permission:scale_labels,view');
+            Route::post('scale-labels/preview', [ScaleLabelController::class, 'preview'])
+                ->middleware('check.permission:scale_labels,view');
+            Route::post('scale-labels/print', [ScaleLabelController::class, 'print'])
+                ->middleware('check.permission:scale_labels,print');
+            Route::apiResource('scale-label-templates', ScaleLabelTemplateController::class)
+                ->middlewareFor(['index', 'show'], ['check.permission:scale_labels,view'])
+                ->middlewareFor(['store'], ['check.permission:scale_barcode_formats,add'])
+                ->middlewareFor(['update'], ['check.permission:scale_barcode_formats,edit'])
+                ->middlewareFor(['destroy'], ['check.permission:scale_barcode_formats,delete']);
+            Route::get('items/next-plu', [ScalePluController::class, 'next'])
+                ->middleware('check.permission:items,view');
+            Route::get('items/plu-check', [ScalePluController::class, 'check'])
+                ->middleware('check.permission:items,view');
             Route::get('items/{item}/invoice-line-setup', [ItemController::class, 'invoiceLineSetup'])
                 ->middleware('check.permission:items,view');
             Route::get('items/{item}/barcodes', [ItemBarcodeController::class, 'index'])
@@ -755,6 +818,9 @@ Route::middleware([
         Route::middleware(['ensure.module:sales'])->group(function () {
             // Default line prices for sales documents (same audience as invoice-line-setup).
             Route::post('pricing/resolve', [PriceListController::class, 'resolve'])
+                ->middleware('check.permission:items,view');
+            // Tax mode a new document for this customer would get (its main price list, else the company setting).
+            Route::get('pricing/tax-mode', [PriceListController::class, 'taxMode'])
                 ->middleware('check.permission:items,view');
             Route::apiResource('price-lists', PriceListController::class)
                 ->middlewareFor(['index', 'show'], ['check.permission:price_lists,view'])
@@ -913,6 +979,8 @@ Route::middleware([
             Route::get('sales-invoices', [SalesInvoiceController::class, 'index'])
                 ->middleware('check.permission:sales_invoices,view');
             Route::post('sales-invoices', [SalesInvoiceController::class, 'store'])
+                ->middleware('check.permission:sales_invoices,add');
+            Route::post('sales-invoices/post', [SalesInvoiceController::class, 'postNew'])
                 ->middleware('check.permission:sales_invoices,add');
             Route::get('sales-invoices/{sales_invoice}/pdf', [SalesInvoiceController::class, 'pdf'])
                 ->middleware('check.permission:sales_invoices,print');

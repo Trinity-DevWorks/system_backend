@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\DB;
 class SupplierLedgerService
 {
     /**
-     * Live balance in one currency: SUM(credit) − SUM(debit). Positive means amount owed to supplier (AP).
+     * Live balance in one currency (credit − debit of the ledger, kept up to date on supplier_balances).
+     * Positive means amount owed to the supplier (AP).
      */
     public function balanceInCurrency(Supplier $supplier, int $currencyId): string
     {
@@ -26,13 +27,12 @@ class SupplierLedgerService
 
     public function balanceInCurrencyForSupplierId(string $supplierId, int $currencyId): string
     {
-        $raw = SupplierLedgerEntry::query()
+        $raw = DB::table('supplier_balances')
             ->where('supplier_id', $supplierId)
             ->where('currency_id', $currencyId)
-            ->selectRaw('COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as bal')
-            ->value('bal');
+            ->value('balance');
 
-        return $this->formatMoney($raw);
+        return $this->formatMoney($raw ?? 0);
     }
 
     /**
@@ -40,11 +40,10 @@ class SupplierLedgerService
      */
     public function balancesPerCurrencyForSupplier(Supplier $supplier): array
     {
-        $rows = SupplierLedgerEntry::query()
+        $rows = DB::table('supplier_balances')
             ->where('supplier_id', $supplier->id)
-            ->groupBy('currency_id')
-            ->selectRaw('currency_id, COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as bal')
-            ->pluck('bal', 'currency_id');
+            ->where('balance', '!=', 0)
+            ->pluck('balance', 'currency_id');
 
         $out = [];
         foreach ($rows as $currencyId => $raw) {
@@ -55,8 +54,8 @@ class SupplierLedgerService
     }
 
     /**
-     * @param  list<int>  $supplierIds
-     * @return array<int, string> supplier_id => balance in one currency
+     * @param  list<string>  $supplierIds
+     * @return array<string, string> supplier_id => balance in one currency
      */
     public function balancesForSupplierIdsInCurrency(array $supplierIds, int $currencyId): array
     {
@@ -64,12 +63,10 @@ class SupplierLedgerService
             return [];
         }
 
-        $rows = SupplierLedgerEntry::query()
+        $rows = DB::table('supplier_balances')
             ->whereIn('supplier_id', $supplierIds)
             ->where('currency_id', $currencyId)
-            ->groupBy('supplier_id')
-            ->selectRaw('supplier_id, COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as bal')
-            ->pluck('bal', 'supplier_id');
+            ->pluck('balance', 'supplier_id');
 
         $out = [];
         foreach ($supplierIds as $id) {
@@ -80,8 +77,8 @@ class SupplierLedgerService
     }
 
     /**
-     * @param  list<int>  $supplierIds
-     * @return array<int, array<int, string>> supplier_id => currency_id => balance
+     * @param  list<string>  $supplierIds
+     * @return array<string, array<int, string>> supplier_id => currency_id => balance
      */
     public function balancesGroupedBySupplierAndCurrency(array $supplierIds): array
     {
@@ -89,15 +86,14 @@ class SupplierLedgerService
             return [];
         }
 
-        $rows = SupplierLedgerEntry::query()
+        $rows = DB::table('supplier_balances')
             ->whereIn('supplier_id', $supplierIds)
-            ->groupBy('supplier_id', 'currency_id')
-            ->selectRaw('supplier_id, currency_id, COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as bal')
-            ->get();
+            ->where('balance', '!=', 0)
+            ->get(['supplier_id', 'currency_id', 'balance as bal']);
 
         $out = [];
         foreach ($rows as $row) {
-            $sid = (int) $row->supplier_id;
+            $sid = (string) $row->supplier_id;
             $curId = (int) $row->currency_id;
             $out[$sid][$curId] = $this->formatMoney($row->bal);
         }
@@ -125,10 +121,13 @@ class SupplierLedgerService
      */
     public function deleteDocumentEntries(LedgerReferenceType $referenceType, string $referenceId): void
     {
-        SupplierLedgerEntry::query()
+        $rows = SupplierLedgerEntry::query()
             ->where('reference_type', $referenceType)
-            ->where('reference_id', $referenceId)
-            ->delete();
+            ->where('reference_id', $referenceId);
+        foreach ((clone $rows)->groupBy('supplier_id', 'currency_id')->selectRaw('supplier_id, currency_id, COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as bal')->get() as $sum) {
+            $this->moveBalance((string) $sum->supplier_id, (int) $sum->currency_id, Decimal::sub('0', (string) $sum->getAttribute('bal')));
+        }
+        $rows->delete();
     }
 
     /**
@@ -252,7 +251,7 @@ class SupplierLedgerService
         ?string $referenceId,
         string $transactionDate
     ): SupplierLedgerEntry {
-        return SupplierLedgerEntry::query()->create([
+        $entry = SupplierLedgerEntry::query()->create([
             'supplier_id' => $supplier->id,
             'currency_id' => $currencyId,
             'debit' => $debit,
@@ -261,6 +260,35 @@ class SupplierLedgerService
             'reference_id' => $referenceId,
             'transaction_date' => $transactionDate,
         ]);
+        $this->moveBalance((string) $supplier->id, $currencyId, Decimal::sub($credit, $debit));
+
+        return $entry;
+    }
+
+    /**
+     * Keeps the stored balance (credit − debit) in step with the ledger rows, one row per supplier and currency.
+     */
+    private function moveBalance(string $supplierId, int $currencyId, string $delta): void
+    {
+        if (Decimal::cmp($delta, '0') === 0) {
+            return;
+        }
+        $now = now();
+        DB::table('supplier_balances')->insertOrIgnore([
+            'supplier_id' => $supplierId,
+            'currency_id' => $currencyId,
+            'credit_limit' => 0,
+            'balance' => 0,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        DB::table('supplier_balances')
+            ->where('supplier_id', $supplierId)
+            ->where('currency_id', $currencyId)
+            ->update([
+                'balance' => DB::raw('balance + '.Decimal::round($delta, 4)),
+                'updated_at' => $now,
+            ]);
     }
 
     private function formatMoney(mixed $value): string

@@ -24,6 +24,7 @@ final class PriceListResponseData
             'valid_from' => $list->valid_from?->toDateString(),
             'valid_to' => $list->valid_to?->toDateString(),
             'is_default' => (bool) $list->is_default,
+            'prices_include_tax' => (bool) $list->prices_include_tax,
             'is_active' => (bool) $list->is_active,
             'items_count' => isset($list->items_count) ? (int) $list->items_count : null,
             'created_at' => (string) $list->created_at,

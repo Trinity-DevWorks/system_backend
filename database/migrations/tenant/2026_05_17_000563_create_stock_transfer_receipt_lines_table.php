@@ -18,6 +18,7 @@ return new class extends Migration
             $table->decimal('base_quantity', 14, 6);
             $table->foreignId('item_uom_id')->nullable()->constrained('item_uoms')->nullOnDelete();
             $table->text('notes')->nullable();
+            $table->json('serial_numbers')->nullable();
             $table->timestamps();
 
             $table->index('stock_transfer_receipt_id');

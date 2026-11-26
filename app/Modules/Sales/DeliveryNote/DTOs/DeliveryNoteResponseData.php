@@ -6,6 +6,7 @@ namespace App\Modules\Sales\DeliveryNote\DTOs;
 
 use App\Modules\Sales\DeliveryNote\Models\DeliveryNote;
 use App\Modules\Sales\DeliveryNote\Models\DeliveryNoteLine;
+use App\Modules\Sales\Support\DocumentTaxMode;
 
 final class DeliveryNoteResponseData
 {
@@ -39,6 +40,7 @@ final class DeliveryNoteResponseData
                 : null,
             'shipping_address' => $note->shipping_address,
             'notes' => $note->notes,
+            'prices_include_tax' => DocumentTaxMode::of($note),
             'posted_at' => $note->posted_at?->toIso8601String(),
             'posted_by' => $note->relationLoaded('postedByUser') && $note->postedByUser !== null
                 ? ['id' => (string) $note->postedByUser->id, 'name' => $note->postedByUser->name]

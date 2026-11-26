@@ -9,6 +9,7 @@ use App\Modules\Inventory\PriceChange\Services\PriceHistoryRecorder;
 use App\Modules\Sales\PriceList\Models\PriceList;
 use App\Modules\Sales\PriceList\Models\PriceListItem;
 use App\Support\Decimal;
+use App\Support\DocumentTaxContext;
 use App\Support\ListPagination;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -230,10 +231,14 @@ class PriceListService
     private function headerAttributes(array $data, ?PriceList $existing = null): array
     {
         $out = [];
-        foreach (['code', 'name', 'name_ar', 'currency_id', 'valid_from', 'valid_to', 'is_default', 'is_active'] as $key) {
+        foreach (['code', 'name', 'name_ar', 'currency_id', 'valid_from', 'valid_to', 'is_default', 'is_active', 'prices_include_tax'] as $key) {
             if (array_key_exists($key, $data)) {
                 $out[$key] = $data[$key];
             }
+        }
+        if ($existing === null && ! array_key_exists('prices_include_tax', $out)) {
+            // A new list starts with the company's setting.
+            $out['prices_include_tax'] = DocumentTaxContext::pricesIncludeTax();
         }
         if (isset($out['name_ar']) && trim((string) $out['name_ar']) === '') {
             $out['name_ar'] = null;

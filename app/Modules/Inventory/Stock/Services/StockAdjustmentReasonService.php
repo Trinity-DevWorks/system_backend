@@ -50,6 +50,7 @@ class StockAdjustmentReasonService
             'direction' => StockAdjustmentReasonDirection::from($data['direction']),
             'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true,
             'is_system' => false,
+            'is_waste' => (bool) ($data['is_waste'] ?? false),
             'notes' => $this->normalizeNotes($data['notes'] ?? null),
         ]);
     }
@@ -72,6 +73,9 @@ class StockAdjustmentReasonService
         }
         if (array_key_exists('notes', $data)) {
             $updates['notes'] = $this->normalizeNotes($data['notes']);
+        }
+        if (array_key_exists('is_waste', $data)) {
+            $updates['is_waste'] = (bool) $data['is_waste'];
         }
         if (! $reason->is_system && array_key_exists('code', $data) && $data['code'] !== null) {
             $updates['code'] = strtoupper(trim((string) $data['code']));

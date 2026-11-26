@@ -10,6 +10,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\DocumentType;
 use App\Support\OpeningDocumentService;
 use Barryvdh\DomPDF\PDF;
 
@@ -30,7 +31,7 @@ class SalesInvoicePdfService
             'SALES_INVOICE_PDF_NOT_ALLOWED',
         );
 
-        $options = DocumentPdfOptions::fromRequest($locale, $template, allowReceipt: true);
+        $options = DocumentPdfOptions::fromRequest($locale, $template, allowReceipt: true, documentType: DocumentType::SalesInvoice);
         $money = DocumentMoney::forOptions($options);
         $labels = $this->renderer->labelsFor($options);
 

@@ -7,31 +7,30 @@ namespace App\Modules\Sales\Support;
 use App\Models\User;
 use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Rbac\Models\Role;
+use App\Modules\Rbac\Services\ManagerApprovalService;
 use App\Services\PermissionService;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\RateLimiter;
 
 /**
- * Discount limits at posting time. Each role may have a highest discount %; above it a user with
- * `discount_override` (a manager) must approve by entering their login on the spot.
+ * Discount limits at posting time. Each role may have a highest discount %; above it someone allowed to
+ * approve (the owner, a role with `discount_override`, or a role whose own limit covers it) gives their PIN
+ * on the spot (see ManagerApprovalService).
  */
 class DiscountGuard
 {
-    public const OVERRIDE_RESOURCE = 'discount_override';
-
-    private const MAX_ATTEMPTS = 5;
+    public const OVERRIDE_RESOURCE = ManagerApprovalService::DISCOUNT;
 
     public function __construct(
         private readonly PermissionService $permissions,
         private readonly BranchContextService $branches,
+        private readonly ManagerApprovalService $approvals,
     ) {}
 
     /**
      * @param  iterable<int, Model>  $lines  document lines (quantity, unit_price, discount_amount)
-     * @param  array{email?: mixed, password?: mixed}|null  $approval  manager login typed at the counter
+     * @param  array{approver_id?: mixed, pin?: mixed}|null  $approval  approver and PIN typed at the counter
      * @return string|null the approving manager's user id, or null when no approval was needed
      */
     public function assert(Model $document, iterable $lines, ?array $approval, ?User $user = null): ?string
@@ -47,34 +46,24 @@ class DiscountGuard
             return null;
         }
 
-        $email = is_array($approval) ? trim((string) ($approval['email'] ?? '')) : '';
-        $password = is_array($approval) ? (string) ($approval['password'] ?? '') : '';
-        if ($email === '' || $password === '') {
-            $limit = $user instanceof User ? $this->limitFor($user, $branchId) : '0';
-            abort(422, sprintf(
+        $limit = $user instanceof User ? $this->limitFor($user, $branchId) : '0';
+        $referenceType = defined($document::class.'::REFERENCE_TYPE') ? constant($document::class.'::REFERENCE_TYPE') : $document->getTable();
+
+        return $this->approvals->approve(
+            ManagerApprovalService::DISCOUNT,
+            $approval,
+            $branchId,
+            'DISCOUNT_APPROVAL_REQUIRED',
+            sprintf(
                 'This discount (%s%%) is above your limit (%s%%). A manager must approve it.',
                 Decimal::round($requested, 2),
                 Decimal::round($limit ?? '0', 2),
-            ), ['X-Error-Code' => 'DISCOUNT_APPROVAL_REQUIRED']);
-        }
-
-        $key = 'discount-approval:'.($user?->getKey() ?? request()->ip());
-        if (RateLimiter::tooManyAttempts($key, self::MAX_ATTEMPTS)) {
-            abort(429, 'Too many approval attempts. Try again in a minute.', ['X-Error-Code' => 'DISCOUNT_APPROVAL_THROTTLED']);
-        }
-
-        $approver = User::query()->where('email', $email)->first();
-        if (! $approver instanceof User
-            || ! $approver->is_active
-            || ! Hash::check($password, (string) $approver->password)
-            || ! $this->branches->canAccessBranch($branchId, $approver)
-            || ! $this->allows($approver, $requested, $branchId)) {
-            RateLimiter::hit($key, 60);
-            abort(422, 'This login cannot approve the discount.', ['X-Error-Code' => 'DISCOUNT_APPROVAL_INVALID']);
-        }
-        RateLimiter::clear($key);
-
-        return (string) $approver->getKey();
+            ),
+            is_string($referenceType) ? $referenceType : null,
+            $document->getKey() !== null ? (string) $document->getKey() : null,
+            'Discount '.Decimal::round($requested, 2).'%',
+            fn (User $approver): bool => $this->allows($approver, $requested, $branchId),
+        );
     }
 
     /**

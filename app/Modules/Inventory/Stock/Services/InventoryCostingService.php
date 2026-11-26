@@ -50,8 +50,9 @@ class InventoryCostingService
     /**
      * Apply valuation for a posted movement. Caller must hold the balance row lock.
      * Returns unit_cost and signed value_delta to persist on the movement, then syncs layers + balance value.
+     * An inbound that fills negative stock also returns how much it filled and its cost correction.
      *
-     * @return array{unit_cost: string, value_delta: string}
+     * @return array{unit_cost: string, value_delta: string, cost_correction: string, negative_fill_quantity: string}
      */
     public function apply(
         Item $item,
@@ -77,11 +78,13 @@ class InventoryCostingService
             } else {
                 $valueDelta = Math::value($qty, $unitCost);
             }
-            $this->applyInbound($method, $item, $balance, $qty, $unitCost, $valueDelta, $movementId);
+            $fill = $this->applyInbound($method, $item, $balance, $qty, $unitCost, $valueDelta, $movementId);
 
             return [
                 'unit_cost' => $unitCost,
                 'value_delta' => $valueDelta,
+                'cost_correction' => $fill['correction'],
+                'negative_fill_quantity' => $fill['quantity'],
             ];
         }
 
@@ -92,6 +95,8 @@ class InventoryCostingService
         return [
             'unit_cost' => $unitCost,
             'value_delta' => $valueDelta,
+            'cost_correction' => Math::money(0),
+            'negative_fill_quantity' => Math::qty(0),
         ];
     }
 
@@ -219,6 +224,8 @@ class InventoryCostingService
         ?string $originalUnitCost,
         int $originalMovementId,
         int $reverseMovementId,
+        string $originalCostCorrection = '0',
+        string $originalNegativeFill = '0',
     ): void {
         $method = $this->methodFor($item);
         $reverseQty = bcmul($originalQuantityDelta, '-1', Math::QTY_SCALE);
@@ -226,13 +233,24 @@ class InventoryCostingService
         $newQty = bcadd($oldQty, $reverseQty, Math::QTY_SCALE);
 
         if (bccomp($originalQuantityDelta, '0', Math::QTY_SCALE) > 0 && $method->usesLayers()) {
-            $this->releaseInboundLayer($originalMovementId, Math::qty($originalQuantityDelta));
+            // The part that filled negative stock never became a layer.
+            $layerQty = bcsub(Math::qty($originalQuantityDelta), Math::qty($originalNegativeFill), Math::QTY_SCALE);
+            if (bccomp($layerQty, '0', Math::QTY_SCALE) > 0) {
+                $this->releaseInboundLayer($originalMovementId, $layerQty);
+            }
         }
 
         $oldValue = Math::money($balance->inventory_value);
-        $newValue = bcsub($oldValue, Math::money($originalValueDelta), Math::MONEY_SCALE);
+        // An inbound that filled negative stock added its value less the cost correction it posted.
+        $added = bcsub(Math::money($originalValueDelta), Math::money($originalCostCorrection), Math::MONEY_SCALE);
+        $newValue = bcsub($oldValue, $added, Math::MONEY_SCALE);
 
-        if (bccomp($newQty, '0', Math::QTY_SCALE) <= 0) {
+        if (bccomp($newQty, '0', Math::QTY_SCALE) < 0) {
+            // Back below zero: the value stays negative (what the missing quantity was issued at).
+            if (bccomp($newValue, '0', Math::MONEY_SCALE) > 0) {
+                $newValue = Math::money(0);
+            }
+        } elseif (bccomp($newQty, '0', Math::QTY_SCALE) === 0) {
             $newValue = Math::money(0);
         } elseif (bccomp($newValue, '0', Math::MONEY_SCALE) < 0) {
             $newValue = Math::money(0);
@@ -407,24 +425,30 @@ class InventoryCostingService
         $oldQty = Math::qty($balance->quantity);
         $oldValue = Math::money($balance->inventory_value);
 
+        $newQty = bcsub($oldQty, $qty, Math::QTY_SCALE);
+
         if ($method->usesLayers()) {
-            $consumedValue = $this->consumeLayers(
+            // The part going below zero has no layer: it is costed at the last known cost.
+            $belowZero = bccomp($newQty, '0', Math::QTY_SCALE) < 0
+                ? (bccomp($oldQty, '0', Math::QTY_SCALE) > 0 ? Math::absQty($newQty) : $qty)
+                : Math::qty(0);
+            $consumed = $this->consumeLayers(
                 $item,
-                (int) $balance->warehouse_id,
+                $balance,
                 $qty,
                 $documentUnitCost,
-                $balance->lot_id !== null ? (int) $balance->lot_id : null,
+                $belowZero,
             );
-            $newQty = bcsub($oldQty, $qty, Math::QTY_SCALE);
+            $consumedValue = $consumed['value'];
             $newValue = bcsub($oldValue, $consumedValue, Math::MONEY_SCALE);
-            if (bccomp($newValue, '0', Math::MONEY_SCALE) < 0) {
+            if (bccomp($newQty, '0', Math::QTY_SCALE) >= 0 && bccomp($newValue, '0', Math::MONEY_SCALE) < 0) {
                 $newValue = Math::money(0);
             }
             $this->writeBalanceValue(
                 $balance,
                 $newQty,
                 $newValue,
-                Math::unitCostFromValue($qty, $consumedValue),
+                $consumed['last_cost'],
             );
 
             return [
@@ -439,11 +463,10 @@ class InventoryCostingService
                 'Set a cost price on the item base UOM before issuing stock under standard costing.',
                 'STOCK_STANDARD_COST_REQUIRED',
             ),
-            InventoryCostingMethod::MovingAverage => Math::unitCost($balance->unit_cost),
-            default => Math::unitCost($balance->unit_cost),
+            // The last known cost (kept on the balance after it reaches zero), else the item's cost price.
+            default => $this->lastKnownCost($item, $balance),
         };
 
-        $newQty = bcsub($oldQty, $qty, Math::QTY_SCALE);
         $consumedValue = Math::value($qty, $unitCost);
         if (
             $method === InventoryCostingMethod::MovingAverage
@@ -457,7 +480,7 @@ class InventoryCostingService
         if (bccomp($newQty, '0', Math::QTY_SCALE) === 0) {
             $newValue = Math::money(0);
         }
-        if (bccomp($newValue, '0', Math::MONEY_SCALE) < 0) {
+        if (bccomp($newQty, '0', Math::QTY_SCALE) > 0 && bccomp($newValue, '0', Math::MONEY_SCALE) < 0) {
             $newValue = Math::money(0);
         }
         $this->writeBalanceValue($balance, $newQty, $newValue, $unitCost);
@@ -468,6 +491,9 @@ class InventoryCostingService
         ];
     }
 
+    /**
+     * @return array{correction: string, quantity: string} the cost correction and quantity that filled negative stock
+     */
     private function applyInbound(
         InventoryCostingMethod $method,
         Item $item,
@@ -476,34 +502,59 @@ class InventoryCostingService
         string $unitCost,
         string $valueDelta,
         int $movementId,
-    ): void {
+    ): array {
         $oldQty = Math::qty($balance->quantity);
         $oldValue = Math::money($balance->inventory_value);
         $newQty = bcadd($oldQty, $qty, Math::QTY_SCALE);
+        $noFill = ['correction' => Math::money(0), 'quantity' => Math::qty(0)];
 
-        if (bccomp($oldQty, '0', Math::QTY_SCALE) <= 0) {
-            $recovered = bccomp($oldQty, '0', Math::QTY_SCALE) === 0
-                ? ['qty' => $qty, 'value' => $valueDelta]
-                : Math::inboundAfterNonPositiveOnHand($oldQty, $qty, $unitCost);
-            $layerQty = $recovered['qty'];
-            if (bccomp($layerQty, '0', Math::QTY_SCALE) < 0) {
-                $layerQty = Math::qty(0);
-            }
+        if (bccomp($oldQty, '0', Math::QTY_SCALE) < 0) {
+            // Stock below zero was sold at the last known cost. The part of this inbound that fills it is
+            // valued at the new cost; the difference is a cost correction (more or less cost of sales).
+            $short = Math::absQty($oldQty);
+            $fill = bccomp($qty, $short, Math::QTY_SCALE) < 0 ? $qty : $short;
+            $issued = bccomp($oldValue, '0', Math::MONEY_SCALE) < 0
+                ? bcdiv(bcmul(bcmul($oldValue, '-1', Math::MONEY_SCALE), $fill, 12), $short, 12)
+                : bcmul($fill, Math::unitCost($balance->unit_cost), 12);
+            $correction = Math::money(bcsub(bcmul($fill, $unitCost, 12), $issued, 12));
+            $newValue = bcsub(bcadd($oldValue, $valueDelta, Math::MONEY_SCALE), $correction, Math::MONEY_SCALE);
 
-            if ($method->usesLayers() && bccomp($layerQty, '0', Math::QTY_SCALE) > 0) {
+            if ($method->usesLayers() && bccomp($newQty, '0', Math::QTY_SCALE) > 0) {
                 InventoryCostLayer::query()->create([
                     'item_id' => $item->id,
                     'warehouse_id' => $balance->warehouse_id,
                     'lot_id' => $balance->lot_id,
                     'source_movement_id' => $movementId,
-                    'quantity_remaining' => $layerQty,
+                    'quantity_remaining' => $newQty,
                     'unit_cost' => $unitCost,
                 ]);
             }
 
-            $this->writeBalanceValue($balance, $recovered['qty'], $recovered['value'], $unitCost);
+            // Still below zero: the rest keeps the cost it was issued at.
+            $this->writeBalanceValue(
+                $balance,
+                $newQty,
+                $newValue,
+                bccomp($newQty, '0', Math::QTY_SCALE) < 0 ? Math::unitCost($balance->unit_cost) : $unitCost,
+            );
 
-            return;
+            return ['correction' => $correction, 'quantity' => $fill];
+        }
+
+        if (bccomp($oldQty, '0', Math::QTY_SCALE) === 0) {
+            if ($method->usesLayers()) {
+                InventoryCostLayer::query()->create([
+                    'item_id' => $item->id,
+                    'warehouse_id' => $balance->warehouse_id,
+                    'lot_id' => $balance->lot_id,
+                    'source_movement_id' => $movementId,
+                    'quantity_remaining' => $qty,
+                    'unit_cost' => $unitCost,
+                ]);
+            }
+            $this->writeBalanceValue($balance, $qty, $valueDelta, $unitCost);
+
+            return $noFill;
         }
 
         if ($method->usesLayers()) {
@@ -518,30 +569,41 @@ class InventoryCostingService
             $newValue = bcadd($oldValue, $valueDelta, Math::MONEY_SCALE);
             $this->writeBalanceValue($balance, $newQty, $newValue);
 
-            return;
+            return $noFill;
         }
 
         if ($method === InventoryCostingMethod::MovingAverage) {
             $newValue = bcadd($oldValue, $valueDelta, Math::MONEY_SCALE);
             $this->writeBalanceValue($balance, $newQty, $newValue);
 
-            return;
+            return $noFill;
         }
 
         $standard = $unitCost;
         $newValue = Math::value($newQty, $standard);
         $this->writeBalanceValue($balance, $newQty, $newValue);
+
+        return $noFill;
     }
 
+    /**
+     * Take `$qty` from the balance's layers (oldest first). `$belowZero` of it may have no layer (stock going
+     * negative): that part is costed at the last known cost.
+     *
+     * @return array{value: string, last_cost: string}
+     */
     private function consumeLayers(
         Item $item,
-        int $warehouseId,
+        StockBalance $balance,
         string $qty,
         ?string $preferredUnitCost,
-        ?int $lotId,
-    ): string {
+        string $belowZero,
+    ): array {
+        $warehouseId = (int) $balance->warehouse_id;
+        $lotId = $balance->lot_id !== null ? (int) $balance->lot_id : null;
         $remaining = $qty;
         $consumedValue = Math::money(0);
+        $lastCost = null;
 
         $layers = InventoryCostLayer::query()
             ->where('item_id', $item->id)
@@ -571,18 +633,45 @@ class InventoryCostingService
             $layerQty = Math::qty($layer->quantity_remaining);
             $take = bccomp($layerQty, $remaining, Math::QTY_SCALE) <= 0 ? $layerQty : $remaining;
             $consumedValue = bcadd($consumedValue, Math::value($take, Math::unitCost($layer->unit_cost)), Math::MONEY_SCALE);
+            $lastCost = Math::unitCost($layer->unit_cost);
             $left = bcsub($layerQty, $take, Math::QTY_SCALE);
             $layer->update(['quantity_remaining' => $left]);
             $remaining = bcsub($remaining, $take, Math::QTY_SCALE);
         }
 
+        $lastCost ??= $this->lastKnownCost($item, $balance);
         if (bccomp($remaining, '0', Math::QTY_SCALE) > 0) {
-            abort(422, 'Insufficient cost layers for this issue. Recost or adjust opening stock.', [
-                'X-Error-Code' => 'STOCK_COST_LAYER_INSUFFICIENT',
-            ]);
+            if (bccomp($remaining, Math::qty($belowZero), Math::QTY_SCALE) > 0) {
+                abort(422, 'Insufficient cost layers for this issue. Recost or adjust opening stock.', [
+                    'X-Error-Code' => 'STOCK_COST_LAYER_INSUFFICIENT',
+                ]);
+            }
+            $consumedValue = bcadd($consumedValue, Math::value($remaining, $lastCost), Math::MONEY_SCALE);
         }
 
-        return $consumedValue;
+        return ['value' => $consumedValue, 'last_cost' => $lastCost];
+    }
+
+    /**
+     * Cost of stock issued with nothing left to take it from: the balance's last cost (kept after it reaches
+     * zero), else the newest layer's, else the item's cost price, else zero.
+     */
+    private function lastKnownCost(Item $item, StockBalance $balance): string
+    {
+        $cost = Math::unitCost($balance->unit_cost);
+        if (bccomp($cost, '0', Math::UNIT_COST_SCALE) > 0) {
+            return $cost;
+        }
+        $layer = InventoryCostLayer::query()
+            ->where('item_id', $item->id)
+            ->where('warehouse_id', $balance->warehouse_id)
+            ->orderByDesc('id')
+            ->value('unit_cost');
+        if ($layer !== null && bccomp(Math::unitCost($layer), '0', Math::UNIT_COST_SCALE) > 0) {
+            return Math::unitCost($layer);
+        }
+
+        return $this->standardUnitCost($item) ?? Math::unitCost(0);
     }
 
     private function writeBalanceValue(
@@ -592,11 +681,15 @@ class InventoryCostingService
         ?string $fallbackUnitCost = null,
     ): void {
         if (bccomp($qty, '0', Math::QTY_SCALE) < 0) {
+            // Below zero the value is what the missing quantity was issued at (never above zero).
+            $value = bccomp($value, '0', Math::MONEY_SCALE) > 0 ? Math::money(0) : Math::money($value);
+            $unitCost = bccomp($value, '0', Math::MONEY_SCALE) < 0
+                ? Math::unitCostFromValue(Math::absQty($qty), bcmul($value, '-1', Math::MONEY_SCALE))
+                : ($fallbackUnitCost ?? Math::unitCost($balance->unit_cost));
+        } elseif (bccomp($qty, '0', Math::QTY_SCALE) === 0) {
+            // Keep the last cost: stock issued while at zero is costed at it.
             $value = Math::money(0);
             $unitCost = $fallbackUnitCost ?? Math::unitCost($balance->unit_cost);
-        } elseif (bccomp($qty, '0', Math::QTY_SCALE) === 0) {
-            $value = Math::money(0);
-            $unitCost = Math::unitCost(0);
         } else {
             $unitCost = Math::unitCostFromValue($qty, $value);
         }

@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
 use App\Modules\Sales\SalesInvoice\DTOs\SalesInvoiceLineResponseData;
 use App\Modules\Sales\SalesInvoice\DTOs\SalesInvoiceResponseData;
+use App\Modules\Sales\SalesInvoice\Http\Requests\PostSalesInvoiceRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\RecordSalesInvoicePaymentsRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\StoreSalesInvoiceRequest;
 use App\Modules\Sales\SalesInvoice\Http\Requests\SyncSalesInvoiceLinesRequest;
@@ -69,7 +70,7 @@ class SalesInvoiceController extends Controller
 
     public function update(UpdateSalesInvoiceRequest $request, SalesInvoice $salesInvoice): JsonResponse
     {
-        $invoice = $this->salesInvoiceService->updateHeader(
+        $invoice = $this->salesInvoiceService->saveDocument(
             $salesInvoice,
             $request->validated()
         );
@@ -134,13 +135,32 @@ class SalesInvoiceController extends Controller
         );
     }
 
-    public function post(Request $request, SalesInvoice $salesInvoice): JsonResponse
+    /**
+     * Saves the changes sent with it (header, lines, payments) and posts the draft, in one call.
+     */
+    public function post(PostSalesInvoiceRequest $request, SalesInvoice $salesInvoice): JsonResponse
+    {
+        return $this->postDocument($request, $salesInvoice);
+    }
+
+    /**
+     * Creates and posts a new invoice in one call.
+     */
+    public function postNew(PostSalesInvoiceRequest $request): JsonResponse
+    {
+        return $this->postDocument($request, null);
+    }
+
+    private function postDocument(PostSalesInvoiceRequest $request, ?SalesInvoice $salesInvoice): JsonResponse
     {
         $userId = $request->user()?->id;
-        $invoice = $this->salesInvoiceService->post(
+        $data = $request->validated();
+        $invoice = $this->salesInvoiceService->postDocument(
             $salesInvoice,
+            $data,
+            $request->requestId(),
             $userId !== null ? (string) $userId : null,
-            is_array($request->input('discount_approval')) ? $request->input('discount_approval') : null,
+            is_array($data['approval'] ?? null) ? $data['approval'] : null,
         );
 
         return ApiResponse::success(

@@ -43,6 +43,13 @@ readonly class ItemData
         public bool $trackSerials = false,
         public ?int $warrantyMonths = null,
         public bool $isScaleItem = false,
+        public ?int $shelfLifeDays = null,
+        public bool $makeOnSale = false,
+        public ?string $returnDefault = null,
+        public bool $openPrice = false,
+        public bool $allowPriceChange = true,
+        public bool $allowDiscount = true,
+        public ?string $negativeStock = null,
     ) {
         if ($this->isScaleItem) {
             if (! $this->allowSale) {
@@ -121,6 +128,13 @@ readonly class ItemData
             trackSerials: $trackInventory && (bool) ($data['track_serials'] ?? false),
             warrantyMonths: self::normalizeWarranty($data['warranty_months'] ?? null),
             isScaleItem: (bool) ($data['is_scale_item'] ?? false),
+            shelfLifeDays: self::normalizeShelfLife($data['shelf_life_days'] ?? null),
+            makeOnSale: (bool) ($data['make_on_sale'] ?? false),
+            returnDefault: self::normalizeReturnDefault($data['return_default'] ?? null),
+            openPrice: (bool) ($data['open_price'] ?? false),
+            allowPriceChange: (bool) ($data['allow_price_change'] ?? true),
+            allowDiscount: (bool) ($data['allow_discount'] ?? true),
+            negativeStock: self::negativeStockRule($data['negative_stock'] ?? null),
         );
     }
 
@@ -215,6 +229,17 @@ readonly class ItemData
             isScaleItem: array_key_exists('is_scale_item', $data)
                 ? (bool) $data['is_scale_item']
                 : (bool) $item->is_scale_item,
+            shelfLifeDays: array_key_exists('shelf_life_days', $data)
+                ? self::normalizeShelfLife($data['shelf_life_days'])
+                : ($item->shelf_life_days !== null ? (int) $item->shelf_life_days : null),
+            makeOnSale: array_key_exists('make_on_sale', $data) ? (bool) $data['make_on_sale'] : (bool) $item->make_on_sale,
+            returnDefault: array_key_exists('return_default', $data)
+                ? self::normalizeReturnDefault($data['return_default'])
+                : self::normalizeReturnDefault($item->return_default),
+            openPrice: array_key_exists('open_price', $data) ? (bool) $data['open_price'] : (bool) $item->open_price,
+            allowPriceChange: array_key_exists('allow_price_change', $data) ? (bool) $data['allow_price_change'] : (bool) $item->allow_price_change,
+            allowDiscount: array_key_exists('allow_discount', $data) ? (bool) $data['allow_discount'] : (bool) $item->allow_discount,
+            negativeStock: array_key_exists('negative_stock', $data) ? self::negativeStockRule($data['negative_stock']) : $item->negative_stock,
         );
     }
 
@@ -246,6 +271,13 @@ readonly class ItemData
             'track_serials' => $this->trackSerials,
             'warranty_months' => $this->warrantyMonths,
             'is_scale_item' => $this->isScaleItem,
+            'shelf_life_days' => $this->shelfLifeDays,
+            'make_on_sale' => $this->makeOnSale,
+            'return_default' => $this->returnDefault,
+            'open_price' => $this->openPrice,
+            'allow_price_change' => $this->allowPriceChange,
+            'allow_discount' => $this->allowDiscount,
+            'negative_stock' => $this->negativeStock,
             'costing_method' => $this->costingMethod,
             'allow_sale' => $this->allowSale,
             'allow_purchase' => $this->allowPurchase,
@@ -399,6 +431,24 @@ readonly class ItemData
         return $normalized === '' ? null : $normalized;
     }
 
+    /** restock | waste, or null to use the branch default. */
+    private static function normalizeReturnDefault(mixed $value): ?string
+    {
+        $value = is_string($value) ? strtolower(trim($value)) : null;
+
+        return in_array($value, ['restock', 'waste'], true) ? $value : null;
+    }
+
+    private static function normalizeShelfLife(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $days = (int) $value;
+
+        return $days > 0 ? $days : null;
+    }
+
     private static function normalizeWarranty(mixed $value): ?int
     {
         if ($value === null || $value === '') {
@@ -407,5 +457,11 @@ readonly class ItemData
         $months = (int) $value;
 
         return $months > 0 ? $months : null;
+    }
+
+    /** null = the warehouse's rule; 'allow'; 'never'. */
+    private static function negativeStockRule(mixed $value): ?string
+    {
+        return in_array($value, ['allow', 'never'], true) ? (string) $value : null;
     }
 }

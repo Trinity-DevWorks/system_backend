@@ -142,6 +142,15 @@ return [
             'label' => 'Scale Barcode Formats',
             'actions' => $crud,
         ],
+        // Download item files for the scales' software, and their history.
+        'scale_exports' => [
+            'label' => 'Scale Exports',
+            'actions' => ['view', 'export'],
+        ],
+        'scale_labels' => [
+            'label' => 'Scale Labels',
+            'actions' => ['view', 'print'],
+        ],
         // Lets a role save a selling price that is below the item's current cost.
         'price_below_cost_override' => [
             'label' => 'Allow Prices Below Cost',

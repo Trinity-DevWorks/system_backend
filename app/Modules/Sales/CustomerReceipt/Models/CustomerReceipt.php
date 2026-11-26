@@ -42,6 +42,11 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'cheque_number',
     'cheque_bank',
     'cheque_due_date',
+    'tendered',
+    'change_currency_id',
+    'change_rate',
+    'change_amount',
+    'change_cash_bank_account_id',
     'notes',
     'status',
     'created_by',
@@ -78,6 +83,9 @@ class CustomerReceipt extends Model implements AuditableContract
             'amount' => 'decimal:4',
             'posted_at' => 'datetime',
             'cheque_due_date' => 'date',
+            'tendered' => 'decimal:4',
+            'change_rate' => 'decimal:12',
+            'change_amount' => 'decimal:4',
         ];
     }
 

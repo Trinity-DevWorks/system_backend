@@ -30,7 +30,7 @@ class ItemBarcodeService
     }
 
     /**
-     * Resolve a scanned barcode to an item UOM (item_barcodes row or item_uoms.barcode). An exact
+     * Resolve a scanned barcode to an item UOM (item_barcodes). An exact
      * barcode always wins; otherwise the scale label formats of the branch are tried
      * (ScaleBarcodeService), which adds a `scale` block with the quantity / label price.
      *
@@ -84,27 +84,7 @@ class ItemBarcodeService
             }
         }
 
-        $itemUom = ItemUom::query()
-            ->where('barcode', $normalized)
-            ->with([
-                'item.itemType:id,code,name',
-                'item.category:id,code,name',
-                'item.brand:id,code,name',
-                'item.baseUom:id,code,name,unit_group_id',
-                'uom:id,code,name,unit_group_id',
-            ])
-            ->first();
-
-        if (! $itemUom || ! $itemUom->item || ! $itemUom->item->is_active || $itemUom->item->is_variant_parent) {
-            return null;
-        }
-
-        return [
-            'source' => 'item_uoms',
-            'barcode_record_id' => null,
-            'item' => ItemResponseData::fromModel($itemUom->item)->toArray(),
-            'item_uom' => ItemUomResponseData::fromModel($itemUom),
-        ];
+        return null;
     }
 
     /**
@@ -159,8 +139,7 @@ class ItemBarcodeService
     private function lastInStoreSequence(): int
     {
         $last = 0;
-        $codes = ItemBarcode::query()->where('barcode', 'like', InStoreBarcode::PREFIX.'%')->pluck('barcode')
-            ->merge(ItemUom::query()->where('barcode', 'like', InStoreBarcode::PREFIX.'%')->pluck('barcode'));
+        $codes = ItemBarcode::query()->where('barcode', 'like', InStoreBarcode::PREFIX.'%')->pluck('barcode');
         foreach ($codes as $code) {
             $last = max($last, InStoreBarcode::sequenceOf((string) $code) ?? 0);
         }
@@ -170,8 +149,7 @@ class ItemBarcodeService
 
     private function barcodeTaken(string $barcode): bool
     {
-        return ItemBarcode::query()->where('barcode', $barcode)->exists()
-            || ItemUom::query()->where('barcode', $barcode)->exists();
+        return ItemBarcode::query()->where('barcode', $barcode)->exists();
     }
 
     /**

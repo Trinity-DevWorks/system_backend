@@ -13,6 +13,7 @@ use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesOrder\Models\SalesOrder;
+use App\Modules\Sales\Support\DocumentTaxMode;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Warehouse\Models\Warehouse;
 
@@ -67,7 +68,10 @@ readonly class SalesInvoiceResponseData
             'credited_total' => (string) $invoice->credited_total,
             'creditable_total' => self::creditableTotal($invoice),
             'net_to_pay' => (string) $invoice->net_to_pay,
+            'extra_credit' => (string) ($invoice->extra_credit ?? '0'),
+            'extra_credit_used' => (string) ($invoice->extra_credit_used ?? '0'),
             'notes' => $invoice->notes,
+            'prices_include_tax' => DocumentTaxMode::of($invoice),
             'customer' => self::customerBrief($invoice->customer),
             'sales_order' => self::orderBrief($invoice->salesOrder),
             'warehouse' => self::warehouseBrief($invoice->warehouse),
@@ -121,7 +125,10 @@ readonly class SalesInvoiceResponseData
                 'change_currency_code' => $payment->changeCurrency?->code,
                 'change_amount' => $payment->change_amount !== null ? (string) $payment->change_amount : null,
                 'change_cash_bank_account_id' => $payment->change_cash_bank_account_id !== null ? (int) $payment->change_cash_bank_account_id : null,
-                'treasury_transfer_id' => $payment->treasury_transfer_id,
+                'at_sale' => (bool) $payment->at_sale,
+                'applied_amount' => $payment->applied_amount !== null ? (string) $payment->applied_amount : null,
+                'extra_credit' => $payment->extra_credit !== null ? (string) $payment->extra_credit : null,
+                'bounced_on' => $payment->bounced_on?->toDateString(),
                 'cheque_number' => $payment->cheque_number,
                 'cheque_bank' => $payment->cheque_bank,
                 'cheque_due_date' => $payment->cheque_due_date?->toDateString(),

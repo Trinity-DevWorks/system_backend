@@ -16,6 +16,10 @@ return new class extends Migration
             $table->decimal('quantity_delta', 14, 6);
             $table->decimal('unit_cost', 20, 6)->default(0);
             $table->decimal('value_delta', 20, 4)->default(0);
+            // Inbound that filled negative stock: how much it filled, and the extra (or saved) cost of sales:
+            // the filled part at the new cost minus what it was sold at. Posted in the document's own entry.
+            $table->decimal('negative_fill_quantity', 20, 6)->default(0);
+            $table->decimal('cost_correction', 20, 4)->default(0);
             $table->string('type', 32);
             $table->string('reference_type', 100)->nullable();
             $table->uuid('reference_id')->nullable();

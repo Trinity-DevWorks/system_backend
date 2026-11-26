@@ -12,6 +12,7 @@ use App\Modules\PaymentTerm\Models\PaymentTerm;
 use App\Modules\Sales\SalesOrder\Enums\SalesOrderStatus;
 use App\Modules\Sales\SalesOrder\Models\SalesOrder;
 use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
+use App\Modules\Sales\Support\DocumentTaxMode;
 use App\Modules\Salesman\Models\Salesman;
 use App\Modules\Warehouse\Models\Warehouse;
 
@@ -54,6 +55,7 @@ readonly class SalesOrderResponseData
             'tax_total' => (string) $order->tax_total,
             'grand_total' => (string) $order->grand_total,
             'notes' => $order->notes,
+            'prices_include_tax' => DocumentTaxMode::of($order),
             'customer' => self::customerBrief($order->customer),
             'warehouse' => self::warehouseBrief($order->warehouse),
             'currency' => self::currencyBrief($order->currency),

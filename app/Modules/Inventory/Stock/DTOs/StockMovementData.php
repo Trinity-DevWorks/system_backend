@@ -305,6 +305,30 @@ readonly class StockMovementData
         );
     }
 
+    public static function forRecipeIngredient(
+        string $itemId,
+        int $warehouseId,
+        string $quantityDelta,
+        string $documentId,
+        ?string $notes,
+        ?string $userId,
+        string $referenceType = 'sales_invoice',
+    ): self {
+        return new self(
+            itemId: $itemId,
+            warehouseId: $warehouseId,
+            quantityDelta: self::formatDelta($quantityDelta),
+            type: StockMovementType::RecipeSale,
+            referenceType: $referenceType,
+            referenceId: $documentId,
+            itemUomId: null,
+            notes: self::normalizeNotes($notes),
+            userId: $userId,
+            unitCost: null,
+            lotId: null,
+        );
+    }
+
     public static function forSaleBundleComponent(
         string $itemId,
         int $warehouseId,

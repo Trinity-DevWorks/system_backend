@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Sales\SalesCreditNote\Services;
 
 use App\Modules\Accounting\Services\JournalPostingService;
+use App\Modules\Branch\Models\Branch;
 use App\Modules\Customer\Enums\LedgerReferenceType;
 use App\Modules\Customer\Services\CustomerLedgerService;
 use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
+use App\Modules\Inventory\Item\Support\RecipeConsumption;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\StockMovement;
@@ -26,6 +28,7 @@ use App\Modules\Sales\SalesInvoice\Enums\SalesInvoiceStatus;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
 use App\Modules\Sales\SalesInvoice\Models\SalesInvoiceLine;
 use App\Modules\Sales\SalesInvoice\Support\SalesInvoiceRules;
+use App\Modules\Sales\Support\DocumentTaxMode;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\DocumentNumberService;
 use App\Support\DocumentType;
@@ -154,6 +157,9 @@ class SalesCreditNoteService
                 'serial_numbers' => $line->serial_numbers ?? [],
                 'track_serials' => (bool) ($line->item?->track_serials),
                 'track_inventory' => (bool) ($line->item?->track_inventory),
+                // Goods that come back (stocked items, bundles, made-on-sale items): the line asks restock or waste.
+                'has_goods' => $hasGoods = $line->item !== null && ($line->item->track_inventory || SalesInvoiceRules::isBundleItem($line->item) || RecipeConsumption::isMadeOnSale($line->item)),
+                'default_return_action' => $hasGoods ? self::defaultReturnAction($line->item, $invoice->branch_id !== null ? (int) $invoice->branch_id : null) : null,
                 'allow_return' => (bool) ($line->item?->allow_return ?? true),
                 'item' => $line->item ? [
                     'id' => $line->item->id,
@@ -239,6 +245,8 @@ class SalesCreditNoteService
                 'status' => SalesCreditNoteStatus::Draft,
                 'created_by' => $userId,
             ]);
+            // Credits the invoice's lines, so it has the invoice's mode.
+            $note->forceFill(['prices_include_tax' => DocumentTaxMode::of($invoice)])->save();
 
             if (! empty($data['lines'])) {
                 $this->replaceLines($note, $data['lines']);
@@ -309,7 +317,6 @@ class SalesCreditNoteService
     {
         return DB::transaction(function () use ($note, $userId): SalesCreditNote {
             $locked = SalesCreditNote::query()->whereKey($note->id)->lockForUpdate()->firstOrFail();
-            app(DocumentNumberService::class)->assign($locked, 'credit_note_number', DocumentType::SalesCreditNote, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->credit_date);
             if ($locked->status !== SalesCreditNoteStatus::Draft) {
                 $this->fail('Only a draft credit note can be posted.', 'SALES_CREDIT_NOTE_NOT_DRAFT');
             }
@@ -358,6 +365,10 @@ class SalesCreditNoteService
 
             $this->applyToInvoice($locked, $invoice, (string) $locked->grand_total, true, $userId);
             $locked->refresh();
+
+            // The number is taken last, so the branch's number series is locked only for the end of posting.
+            $number = app(DocumentNumberService::class)->assign($locked, 'credit_note_number', DocumentType::SalesCreditNote, $locked->branch_id !== null ? (int) $locked->branch_id : null, $locked->credit_date);
+            $this->stockMovementService->stampDocumentNumber(SalesCreditNote::REFERENCE_TYPE, (string) $locked->id, 'SCN', $number);
 
             $this->journalPostingService->salesCreditNote($locked, $userId);
             foreach ($locked->allocations()->get() as $allocation) {
@@ -600,7 +611,7 @@ class SalesCreditNoteService
             'unit_price' => $source->unit_price,
             'discount_percent' => $source->discount_percent,
             'tax_rate' => $source->tax_rate,
-            'restock' => $note->type === SalesCreditNoteType::Return ? (bool) ($row['restock'] ?? true) : false,
+            ...$this->returnChoice($note, $source, $row),
             'description' => $this->nullableString($row['description'] ?? $source->description),
             ...$amounts,
         ];
@@ -759,8 +770,53 @@ class SalesCreditNoteService
         }
     }
 
+    /**
+     * What happens to returned goods: put back in stock, or written off as waste. Taken from the line when sent,
+     * else the item's default, else waste for made-on-sale items (they cannot go back), else the branch default.
+     * Lines with no goods (allowances, services) have none.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{restock: bool, return_action: ?string}
+     */
+    private function returnChoice(SalesCreditNote $note, SalesInvoiceLine $source, array $row): array
+    {
+        $item = $source->item ?? Item::query()->with('itemType')->find($source->item_id);
+        $stocked = $item instanceof Item
+            && ($item->track_inventory || SalesInvoiceRules::isBundleItem($item) || RecipeConsumption::isMadeOnSale($item));
+        if ($note->type !== SalesCreditNoteType::Return || ! $stocked) {
+            return ['restock' => false, 'return_action' => null];
+        }
+
+        $sent = $row['return_action'] ?? null;
+        if (! in_array($sent, ['restock', 'waste'], true) && array_key_exists('restock', $row)) {
+            $sent = (bool) $row['restock'] ? 'restock' : 'waste';
+        }
+        $action = in_array($sent, ['restock', 'waste'], true) ? $sent : self::defaultReturnAction($item, $note->branch_id !== null ? (int) $note->branch_id : null);
+
+        return ['restock' => $action === 'restock', 'return_action' => $action];
+    }
+
+    /** The return choice a new credit-note line starts with. */
+    public static function defaultReturnAction(Item $item, ?int $branchId): string
+    {
+        if (in_array($item->return_default, ['restock', 'waste'], true)) {
+            return (string) $item->return_default;
+        }
+        if (RecipeConsumption::isMadeOnSale($item)) {
+            return 'waste';
+        }
+        $branch = $branchId !== null ? Branch::query()->whereKey($branchId)->value('return_default') : null;
+
+        return in_array($branch, ['restock', 'waste'], true) ? (string) $branch : 'restock';
+    }
+
     private function postReturnStock(SalesCreditNote $note, SalesCreditNoteLine $line, ?string $userId): void
     {
+        if ($line->return_action === 'waste') {
+            $this->recordWaste($note, $line);
+
+            return;
+        }
         if (! $line->restock) {
             return;
         }
@@ -774,6 +830,11 @@ class SalesCreditNoteService
 
         if (SalesInvoiceRules::isBundleItem($item)) {
             $this->postBundleReturn($note, $line, $item, $warehouseId, $userId);
+
+            return;
+        }
+        if (RecipeConsumption::isMadeOnSale($item)) {
+            $this->postRecipeReturn($note, $line, $item, $warehouseId, $userId);
 
             return;
         }
@@ -798,7 +859,7 @@ class SalesCreditNoteService
             salesCreditNoteId: (string) $note->id,
             unitCost: $valuation['unit_cost'],
             itemUomId: $line->item_uom_id ? (int) $line->item_uom_id : null,
-            notes: 'SCN '.$note->credit_note_number,
+            notes: trim('SCN '.$note->credit_note_number),
             userId: $userId,
             lotId: $lotId,
             valueDelta: $valuation['value'],
@@ -821,6 +882,71 @@ class SalesCreditNoteService
         InventorySerialService::assertSubset($source->serial_numbers ?? [], $chosen ?? [], $item->name);
 
         return $chosen;
+    }
+
+    /**
+     * Made-on-sale item put back in stock: its ingredients come back, at what they cost when sold.
+     */
+    private function postRecipeReturn(SalesCreditNote $note, SalesCreditNoteLine $line, Item $item, int $warehouseId, ?string $userId): void
+    {
+        $invoiceId = (string) $note->sales_invoice_id;
+        foreach (RecipeConsumption::ingredients($item, (string) $line->base_quantity, 'SALES_CREDIT_NOTE') as $ingredient) {
+            $valuation = $this->returnValuation(
+                (string) $note->id,
+                $invoiceId,
+                (string) $ingredient['item']->id,
+                $warehouseId,
+                null,
+                StockMovementType::RecipeSale,
+                $ingredient['base_quantity'],
+            );
+            $this->stockMovementService->post(StockMovementData::forSalesReturn(
+                itemId: (string) $ingredient['item']->id,
+                warehouseId: $warehouseId,
+                quantityDelta: $ingredient['base_quantity'],
+                salesCreditNoteId: (string) $note->id,
+                unitCost: $valuation['unit_cost'],
+                itemUomId: null,
+                notes: trim('SCN '.$note->credit_note_number).' '.RecipeConsumption::TAG.' '.$item->item_code,
+                userId: $userId,
+                valueDelta: $valuation['value'],
+            ));
+        }
+    }
+
+    /**
+     * Returned goods written off as waste: nothing goes back in stock; what they cost when sold is kept on the
+     * line, and the journal moves it from cost of sales to the Waste account.
+     */
+    private function recordWaste(SalesCreditNote $note, SalesCreditNoteLine $line): void
+    {
+        $item = $line->item ?? Item::query()->with('itemType')->findOrFail($line->item_id);
+        $invoiceId = (string) $note->sales_invoice_id;
+        $warehouseId = (int) ($line->warehouse_id ?? SalesInvoiceLine::query()->whereKey($line->sales_invoice_line_id)->value('warehouse_id') ?? 0);
+        $baseQty = (string) $line->base_quantity;
+
+        /** @var list<array{item_id: string, qty: string, type: StockMovementType, lot: ?int}> $parts */
+        $parts = [];
+        if (SalesInvoiceRules::isBundleItem($item)) {
+            foreach (BundleItem::query()->where('bundle_item_id', $item->id)->with('childItem')->get() as $component) {
+                if ($component->childItem instanceof Item && $component->childItem->track_inventory) {
+                    $parts[] = ['item_id' => (string) $component->child_item_id, 'qty' => bcmul($baseQty, (string) $component->quantity, 6), 'type' => StockMovementType::BundleSale, 'lot' => null];
+                }
+            }
+        } elseif (RecipeConsumption::isMadeOnSale($item)) {
+            foreach (RecipeConsumption::ingredients($item, $baseQty, 'SALES_CREDIT_NOTE') as $ingredient) {
+                $parts[] = ['item_id' => (string) $ingredient['item']->id, 'qty' => $ingredient['base_quantity'], 'type' => StockMovementType::RecipeSale, 'lot' => null];
+            }
+        } elseif ($item->track_inventory) {
+            $parts[] = ['item_id' => (string) $item->id, 'qty' => $baseQty, 'type' => StockMovementType::Sale, 'lot' => $line->lot_id ? (int) $line->lot_id : null];
+        }
+
+        $value = '0';
+        foreach ($parts as $part) {
+            $valuation = $this->returnValuation((string) $note->id, $invoiceId, $part['item_id'], $warehouseId, $part['lot'], $part['type'], $part['qty']);
+            $value = bcadd($value, (string) ($valuation['value'] ?? '0'), 4);
+        }
+        $line->update(['waste_value' => InventoryCostingMath::moneyRound($value)]);
     }
 
     private function postBundleReturn(SalesCreditNote $note, SalesCreditNoteLine $line, Item $bundle, int $warehouseId, ?string $userId): void
@@ -858,7 +984,7 @@ class SalesCreditNoteService
                 salesCreditNoteId: (string) $note->id,
                 unitCost: $valuation['unit_cost'],
                 itemUomId: null,
-                notes: 'SCN '.$note->credit_note_number.' bundle '.$bundle->item_code,
+                notes: trim('SCN '.$note->credit_note_number).' bundle '.$bundle->item_code,
                 userId: $userId,
                 valueDelta: $valuation['value'],
             ));
@@ -915,7 +1041,11 @@ class SalesCreditNoteService
             $warehouseId,
             $lotId,
             StockMovementType::SalesReturn,
-            $type === StockMovementType::BundleSale,
+            match ($type) {
+                StockMovementType::BundleSale => 'bundle',
+                StockMovementType::RecipeSale => RecipeConsumption::TAG,
+                default => '',
+            },
         );
         $remainingQty = bcsub($soldQty, InventoryCostingMath::absQty($already['qty']), 6);
         $remainingValue = bcsub($soldValue, InventoryCostingMath::moneyRound($already['value']), 4);
@@ -945,7 +1075,7 @@ class SalesCreditNoteService
         int $warehouseId,
         ?int $lotId,
         StockMovementType $type,
-        ?bool $bundleReturn,
+        ?string $componentTag,
     ): array {
         if ($referenceIds === []) {
             return ['qty' => '0', 'value' => '0'];
@@ -960,11 +1090,14 @@ class SalesCreditNoteService
             ->where(function ($inner): void {
                 $inner->whereNull('notes')->orWhere('notes', 'not like', 'Reverse%');
             });
-        if ($bundleReturn === true) {
-            $query->where('notes', 'like', '% bundle %');
-        } elseif ($bundleReturn === false) {
+        if ($componentTag !== null && $componentTag !== '') {
+            // Returns of bundle components / recipe ingredients ("… bundle CODE", "… recipe CODE").
+            $query->where('notes', 'like', '% '.$componentTag.' %');
+        } elseif ($componentTag === '') {
+            // Returns of the item itself, not as a component of something else.
             $query->where(function ($inner): void {
-                $inner->whereNull('notes')->orWhere('notes', 'not like', '% bundle %');
+                $inner->whereNull('notes')
+                    ->orWhere(fn ($n) => $n->where('notes', 'not like', '% bundle %')->where('notes', 'not like', '% '.RecipeConsumption::TAG.' %'));
             });
         }
         $lotId === null ? $query->whereNull('lot_id') : $query->where('lot_id', $lotId);

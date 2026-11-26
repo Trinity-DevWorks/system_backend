@@ -10,6 +10,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\DocumentType;
 use Barryvdh\DomPDF\PDF;
 
 class CustomerReceiptPdfService
@@ -28,7 +29,7 @@ class CustomerReceiptPdfService
             'CUSTOMER_RECEIPT_PDF_NOT_ALLOWED',
         );
 
-        $options = DocumentPdfOptions::fromRequest($locale, $template, allowReceipt: true);
+        $options = DocumentPdfOptions::fromRequest($locale, $template, allowReceipt: true, documentType: DocumentType::CustomerReceipt);
         $money = DocumentMoney::forOptions($options);
         $labels = $this->renderer->labelsFor($options);
 

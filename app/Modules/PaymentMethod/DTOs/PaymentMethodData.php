@@ -20,6 +20,7 @@ readonly class PaymentMethodData
         public bool $isDefault,
         public bool $isActive,
         public ?string $notes,
+        public ?string $provider = null,
     ) {}
 
     public static function fromStoreRequest(StorePaymentMethodRequest $request): self
@@ -51,6 +52,7 @@ readonly class PaymentMethodData
             isDefault: (bool) $data['is_default'],
             isActive: (bool) $data['is_active'],
             notes: isset($data['notes']) ? (string) $data['notes'] : null,
+            provider: isset($data['provider']) && trim((string) $data['provider']) !== '' ? trim((string) $data['provider']) : null,
         );
     }
 
@@ -63,6 +65,7 @@ readonly class PaymentMethodData
             'code' => $this->code,
             'name' => $this->name,
             'type' => $this->type->value,
+            'provider' => $this->provider,
             'currency_id' => $this->currencyId,
             'requires_reference' => $this->requiresReference,
             'supports_change' => $this->supportsChange,

@@ -21,12 +21,9 @@ class StoreItemUomRequest extends FormRequest
         return [
             'uom_id' => ['required', 'integer', 'exists:unit_of_measurements,id'],
             'conversion_factor' => ['required', 'numeric', 'gt:0', 'max:999999999.999999999999'],
-            'barcode' => ['nullable', 'string', 'max:128', 'unique:item_uoms,barcode'],
+            'barcode' => ['nullable', 'string', 'max:128'],
             'selling_price' => ['nullable', 'numeric', 'min:0'],
             'cost_price' => ['nullable', 'numeric', 'min:0'],
-            'takeaway_price' => ['nullable', 'numeric', 'min:0'],
-            'dine_in_price' => ['nullable', 'numeric', 'min:0'],
-            'delivery_price' => ['nullable', 'numeric', 'min:0'],
             'is_base' => ['nullable', 'boolean'],
             'is_default_sale' => ['nullable', 'boolean'],
             'is_default_purchase' => ['nullable', 'boolean'],

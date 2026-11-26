@@ -67,7 +67,6 @@ class ItemService
                 'brand' => ['code', 'name'],
                 'itemType' => ['code', 'name'],
                 'barcodes' => ['barcode'],
-                'itemUoms' => ['barcode'],
             ],
         );
 
@@ -112,7 +111,6 @@ class ItemService
             ['sku', 'item_code', 'plu_code', 'name'],
             [
                 'barcodes' => ['barcode'],
-                'itemUoms' => ['barcode'],
             ],
         );
 

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
-use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
@@ -12,6 +11,7 @@ use App\Modules\Inventory\Stock\Enums\StockMovementType;
 use App\Modules\Inventory\Stock\Models\StockBalance;
 use App\Modules\Inventory\Stock\Models\StockMovement;
 use App\Modules\Inventory\Stock\Models\StockRevaluationLine;
+use App\Modules\Inventory\Stock\Support\NegativeStockPolicy;
 use App\Modules\Notification\Services\InstantLotExpiryNotifier;
 use App\Modules\Notification\Services\InstantLowStockNotifier;
 use App\Modules\Warehouse\Models\Warehouse;
@@ -93,9 +93,10 @@ class StockMovementService
 
             if (
                 bccomp($newQuantity, '0', 6) < 0
-                && ! CompanySetting::current()->allowsNegativeStock()
+                && bccomp($data->quantityDelta, '0', 6) < 0
+                && ! NegativeStockPolicy::allows($item, $warehouse)
             ) {
-                abort(422, 'Insufficient stock for this movement.', ['X-Error-Code' => 'STOCK_INSUFFICIENT']);
+                $this->abortInsufficient($item, $warehouse, sprintf('Not enough stock of "%s" in %s.', $item->name, $warehouse->name));
             }
 
             if (! in_array($data->type, [StockMovementType::Adjustment, StockMovementType::Count], true)) {
@@ -119,6 +120,8 @@ class StockMovementService
             $movement->update([
                 'unit_cost' => $costing['unit_cost'],
                 'value_delta' => $costing['value_delta'],
+                'negative_fill_quantity' => $costing['negative_fill_quantity'],
+                'cost_correction' => $costing['cost_correction'],
             ]);
 
             $balance->update(['quantity' => $newQuantity]);
@@ -188,6 +191,24 @@ class StockMovementService
         });
     }
 
+    /**
+     * A document posts its stock before it takes its number (the number is taken at the end of posting, so
+     * the number series is locked only briefly). Its movements' notes were written as "{prefix} …"; this puts
+     * the number in: "SI" → "SI SI-MAIN-2026-000012", "SI bundle X" → "SI SI-MAIN-2026-000012 bundle X".
+     */
+    public function stampDocumentNumber(string $referenceType, string $referenceId, string $prefix, string $number): void
+    {
+        $movements = StockMovement::query()
+            ->where('reference_type', $referenceType)
+            ->where('reference_id', $referenceId)
+            ->where(fn ($q) => $q->where('notes', $prefix)->orWhere('notes', 'like', $prefix.' %'))
+            ->get(['id', 'notes']);
+        foreach ($movements as $movement) {
+            $rest = ltrim(substr((string) $movement->notes, strlen($prefix) + 1));
+            $movement->update(['notes' => trim($prefix.' '.$number.($rest !== '' ? ' '.$rest : ''))]);
+        }
+    }
+
     public function reverseReference(string $referenceType, string $referenceId, ?string $userId): void
     {
         $movements = StockMovement::query()
@@ -229,9 +250,10 @@ class StockMovementService
         $newQuantity = bcadd((string) $balance->quantity, $reverseDelta, 6);
         if (
             bccomp($newQuantity, '0', 6) < 0
-            && ! CompanySetting::current()->allowsNegativeStock()
+            && bccomp($reverseDelta, '0', 6) < 0
+            && ! NegativeStockPolicy::allows($item, $warehouse)
         ) {
-            abort(422, 'Insufficient stock to reverse this document.', ['X-Error-Code' => 'STOCK_INSUFFICIENT']);
+            $this->abortInsufficient($item, $warehouse, sprintf('Not enough stock of "%s" in %s to reverse this document.', $item->name, $warehouse->name));
         }
 
         $note = trim((string) ($original->notes ?? ''));
@@ -242,6 +264,8 @@ class StockMovementService
             'quantity_delta' => $reverseDelta,
             'unit_cost' => $original->unit_cost,
             'value_delta' => bcmul((string) ($original->value_delta ?? '0'), '-1', 4),
+            'negative_fill_quantity' => bcmul((string) ($original->negative_fill_quantity ?? '0'), '-1', 6),
+            'cost_correction' => bcmul((string) ($original->cost_correction ?? '0'), '-1', 4),
             'type' => $original->type,
             'reference_type' => $original->reference_type,
             'reference_id' => $original->reference_id,
@@ -258,6 +282,8 @@ class StockMovementService
             $original->unit_cost !== null ? (string) $original->unit_cost : null,
             (int) $original->id,
             (int) $reverse->id,
+            (string) ($original->cost_correction ?? '0'),
+            (string) ($original->negative_fill_quantity ?? '0'),
         );
 
         $balance->update(['quantity' => $newQuantity]);
@@ -340,5 +366,16 @@ class StockMovementService
         if (! $warehouse->is_active) {
             abort(422, 'Cannot move stock in an inactive warehouse.', ['X-Error-Code' => 'STOCK_WAREHOUSE_INACTIVE']);
         }
+    }
+
+    /**
+     * 422 STOCK_INSUFFICIENT with the item and warehouse names, so the toast can say which stock is short.
+     */
+    private function abortInsufficient(Item $item, Warehouse $warehouse, string $message): never
+    {
+        abort(422, $message, [
+            'X-Error-Code' => 'STOCK_INSUFFICIENT',
+            'X-Error-Params' => (string) json_encode(['item' => $item->name, 'warehouse' => $warehouse->name]),
+        ]);
     }
 }

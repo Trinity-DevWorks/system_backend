@@ -10,9 +10,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // One row per tenant: how printed documents (PDFs) look.
+        // How printed documents (PDFs) look, company-wide: one default row (no document type)
+        // plus an optional row per document type that overrides it.
         Schema::create('print_settings', function (Blueprint $table) {
             $table->id();
+            $table->string('document_type', 40)->nullable()->unique();
             $table->string('paper', 8)->default('a4');
             $table->boolean('show_logo')->default(true);
             $table->boolean('show_tax_number')->default(true);

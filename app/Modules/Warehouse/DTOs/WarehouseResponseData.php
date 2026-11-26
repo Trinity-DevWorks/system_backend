@@ -29,6 +29,7 @@ readonly class WarehouseResponseData
         public bool $isDefaultStorage,
         public string $createdAt,
         public string $updatedAt,
+        public ?string $negativeStock = null,
     ) {}
 
     public static function fromModel(Warehouse $warehouse): self
@@ -52,6 +53,7 @@ readonly class WarehouseResponseData
             managerId: $warehouse->manager_id,
             managerName: $manager?->name,
             isActive: (bool) $warehouse->is_active,
+            negativeStock: $warehouse->negative_stock,
             isDefault: (bool) $warehouse->is_default,
             isDefaultSales: (bool) $warehouse->is_default_sales,
             isDefaultProduction: (bool) $warehouse->is_default_production,
@@ -91,6 +93,7 @@ readonly class WarehouseResponseData
             'manager_id' => $this->managerId,
             'manager_name' => $this->managerName,
             'is_active' => $this->isActive,
+            'negative_stock' => $this->negativeStock,
             'is_default' => $this->isDefault,
             'is_default_sales' => $this->isDefaultSales,
             'is_default_production' => $this->isDefaultProduction,

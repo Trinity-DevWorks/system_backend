@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Stock\Services;
 
-use App\Modules\CompanySetting\Models\CompanySetting;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Stock\Models\StockBalance;
+use App\Modules\Inventory\Stock\Support\NegativeStockPolicy;
 use App\Modules\Sales\SalesOrder\Enums\SalesOrderStatus;
 use App\Modules\Sales\SalesOrder\Models\SalesOrder;
 use App\Support\Decimal;
@@ -80,10 +80,6 @@ class StockReservationService
      */
     public function assertOrderCanReserve(SalesOrder $order): void
     {
-        if (CompanySetting::current()->allowsNegativeStock()) {
-            return;
-        }
-
         $warehouseId = (int) $order->warehouse_id;
         $needs = DB::query()
             ->fromSub($this->reservedQuery(), 'rv')
@@ -105,7 +101,10 @@ class StockReservationService
 
             $onHand = StockBalance::onHandForWarehouse((string) $itemId, $warehouseId);
             if (Decimal::cmp($reservedIncludingThis, $onHand) > 0) {
-                $item = Item::query()->find($itemId, ['id', 'item_code', 'name']);
+                $item = Item::query()->find($itemId);
+                if ($item instanceof Item && NegativeStockPolicy::allows($item, $warehouseId)) {
+                    continue;
+                }
                 $mine = Decimal::sub($reservedIncludingThis, $this->reservedFor((string) $itemId, $warehouseId, (string) $order->id));
                 $available = Decimal::max('0', Decimal::sub($onHand, Decimal::sub($reservedIncludingThis, $mine)));
                 abort(422, sprintf(
@@ -127,7 +126,7 @@ class StockReservationService
      */
     public function assertOutboundRespectsReservations(Item $item, int $warehouseId, string $warehouseOnHandBefore, string $quantityDelta): void
     {
-        if (! Decimal::isNegative($quantityDelta) || CompanySetting::current()->allowsNegativeStock()) {
+        if (! Decimal::isNegative($quantityDelta) || NegativeStockPolicy::allows($item, $warehouseId)) {
             return;
         }
 

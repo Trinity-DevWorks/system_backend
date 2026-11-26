@@ -25,6 +25,7 @@ class StoreStockAdjustmentReasonRequest extends FormRequest
             'name' => ['required', 'string', 'max:120'],
             'direction' => ['required', 'string', Rule::in(StockAdjustmentReasonDirection::values())],
             'is_active' => ['sometimes', 'boolean'],
+            'is_waste' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }

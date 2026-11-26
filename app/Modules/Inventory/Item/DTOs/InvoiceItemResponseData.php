@@ -33,6 +33,9 @@ readonly class InvoiceItemResponseData
             'allow_sale' => (bool) $item->allow_sale,
             'allow_purchase' => (bool) $item->allow_purchase,
             'allow_return' => (bool) $item->allow_return,
+            'open_price' => (bool) $item->open_price,
+            'allow_price_change' => (bool) $item->allow_price_change,
+            'allow_discount' => (bool) $item->allow_discount,
             'is_active' => (bool) $item->is_active,
             'vat_percentage' => $item->vatGroup?->percentage !== null
                 ? (string) $item->vatGroup->percentage
@@ -114,16 +117,12 @@ readonly class InvoiceItemResponseData
     }
 
     /**
-     * Prefer UOM column barcode, else primary item_barcodes row for that UOM, else any.
+     * The unit's primary barcode, else its oldest one.
      *
      * @param  Collection<int, ItemBarcode>  $itemBarcodes
      */
     private static function resolveBarcode(ItemUom $row, Collection $itemBarcodes): ?string
     {
-        if (is_string($row->barcode) && trim($row->barcode) !== '') {
-            return trim($row->barcode);
-        }
-
         $forUom = $itemBarcodes->filter(
             fn (ItemBarcode $b): bool => (int) $b->item_uom_id === (int) $row->id
         );

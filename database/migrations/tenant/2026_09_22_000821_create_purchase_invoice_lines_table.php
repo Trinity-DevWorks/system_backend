@@ -32,6 +32,7 @@ return new class extends Migration
             $table->decimal('line_total', 20, 4)->default(0);
             $table->string('description', 500)->nullable();
             $table->text('notes')->nullable();
+            $table->json('serial_numbers')->nullable();
             $table->timestamps();
 
             $table->index('purchase_invoice_id');

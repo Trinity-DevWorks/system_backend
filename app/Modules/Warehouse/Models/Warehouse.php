@@ -23,6 +23,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'description',
     'manager_id',
     'is_active',
+    'negative_stock',
     'is_default',
     'is_default_sales',
     'is_default_production',

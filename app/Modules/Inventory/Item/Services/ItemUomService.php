@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Item\Services;
 use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\Item;
+use App\Modules\Inventory\Item\Models\ItemBarcode;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Inventory\PriceChange\Enums\PriceField;
 use App\Modules\Inventory\PriceChange\Services\PriceHistoryRecorder;
@@ -72,16 +73,16 @@ class ItemUomService
                 'item_id' => $item->id,
                 'uom_id' => $uom->id,
                 'conversion_factor' => $conversionFactor,
-                'barcode' => $this->normalizeBarcode($data['barcode'] ?? null),
                 'selling_price' => $this->normalizeOptionalPrice($data['selling_price'] ?? null),
                 'cost_price' => $this->normalizeOptionalPrice($data['cost_price'] ?? null),
-                'takeaway_price' => $this->normalizeOptionalPrice($data['takeaway_price'] ?? null),
-                'dine_in_price' => $this->normalizeOptionalPrice($data['dine_in_price'] ?? null),
-                'delivery_price' => $this->normalizeOptionalPrice($data['delivery_price'] ?? null),
                 'is_base' => $isBase,
                 'is_default_sale' => (bool) ($data['is_default_sale'] ?? $isBase),
                 'is_default_purchase' => (bool) ($data['is_default_purchase'] ?? $isBase),
             ]);
+
+            if (array_key_exists('barcode', $data)) {
+                $this->saveUnitBarcode($item, $row, $data['barcode']);
+            }
 
             if ($row->is_base) {
                 $this->syncItemBaseUom($item, $uom);
@@ -144,24 +145,12 @@ class ItemUomService
 
             $itemUom->update([
                 'conversion_factor' => $conversionFactor,
-                'barcode' => array_key_exists('barcode', $data)
-                    ? $this->normalizeBarcode($data['barcode'])
-                    : $itemUom->barcode,
                 'selling_price' => array_key_exists('selling_price', $data)
                     ? $this->normalizeOptionalPrice($data['selling_price'])
                     : $itemUom->selling_price,
                 'cost_price' => array_key_exists('cost_price', $data)
                     ? $this->normalizeOptionalPrice($data['cost_price'])
                     : $itemUom->cost_price,
-                'takeaway_price' => array_key_exists('takeaway_price', $data)
-                    ? $this->normalizeOptionalPrice($data['takeaway_price'])
-                    : $itemUom->takeaway_price,
-                'dine_in_price' => array_key_exists('dine_in_price', $data)
-                    ? $this->normalizeOptionalPrice($data['dine_in_price'])
-                    : $itemUom->dine_in_price,
-                'delivery_price' => array_key_exists('delivery_price', $data)
-                    ? $this->normalizeOptionalPrice($data['delivery_price'])
-                    : $itemUom->delivery_price,
                 'is_base' => $isBase,
                 'is_default_sale' => array_key_exists('is_default_sale', $data)
                     ? (bool) $data['is_default_sale']
@@ -170,6 +159,10 @@ class ItemUomService
                     ? (bool) $data['is_default_purchase']
                     : $itemUom->is_default_purchase,
             ]);
+
+            if (array_key_exists('barcode', $data)) {
+                $this->saveUnitBarcode($item, $itemUom, $data['barcode']);
+            }
 
             $itemUom->refresh();
 
@@ -209,7 +202,7 @@ class ItemUomService
     {
         return ItemUom::query()
             ->where('item_id', $item->id)
-            ->with(['uom:id,code,name,unit_group_id'])
+            ->with(['uom:id,code,name,unit_group_id', 'primaryBarcode:id,item_uom_id,barcode,is_primary'])
             ->orderByDesc('is_base')
             ->orderBy('id')
             ->get();
@@ -408,6 +401,34 @@ class ItemUomService
             ->where('item_id', $itemId)
             ->where('id', '!=', $exceptId)
             ->update(['is_default_purchase' => false]);
+    }
+
+    /**
+     * The barcode typed on the unit row is the unit's barcode in item_barcodes: set, changed, or (empty) removed.
+     */
+    private function saveUnitBarcode(Item $item, ItemUom $itemUom, mixed $value): void
+    {
+        $barcode = $this->normalizeBarcode($value);
+        $current = ItemBarcode::query()->where('item_uom_id', $itemUom->id)->orderByDesc('is_primary')->orderBy('id')->first();
+        if ($barcode === null) {
+            $current?->delete();
+
+            return;
+        }
+        if ($current !== null) {
+            if ($current->barcode !== $barcode) {
+                $current->update(['barcode' => $barcode]);
+            }
+
+            return;
+        }
+        ItemBarcode::query()->create([
+            'item_id' => $item->id,
+            'item_uom_id' => $itemUom->id,
+            'barcode' => $barcode,
+            // The item's first barcode is its primary one.
+            'is_primary' => ! ItemBarcode::query()->where('item_id', $item->id)->exists(),
+        ]);
     }
 
     private function normalizeBarcode(mixed $value): ?string

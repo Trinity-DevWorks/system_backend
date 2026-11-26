@@ -7,12 +7,14 @@ namespace App\Modules\Sales\PriceList\Http\Controllers;
 use App\Http\Controllers\Concerns\ResolvesListSection;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\ApiResponse;
+use App\Modules\Currency\Models\Currency;
 use App\Modules\Sales\PriceList\DTOs\PriceListResponseData;
 use App\Modules\Sales\PriceList\Http\Requests\ResolvePricesRequest;
 use App\Modules\Sales\PriceList\Http\Requests\SavePriceListRequest;
 use App\Modules\Sales\PriceList\Models\PriceList;
 use App\Modules\Sales\PriceList\Services\PriceListService;
 use App\Modules\Sales\PriceList\Services\PriceResolver;
+use App\Modules\Sales\Support\DocumentTaxMode;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -82,17 +84,36 @@ class PriceListController extends Controller
     {
         $data = $request->validated();
         $branchId = $request->attributes->get('active_branch_id');
+        $customerId = isset($data['customer_id']) ? (string) $data['customer_id'] : null;
+        $date = (string) ($data['date'] ?? now()->toDateString());
+        $branch = $branchId !== null ? (int) $branchId : null;
+        // Prices come back in the document's tax mode (a new document: the mode it will get).
+        $mode = isset($data['prices_include_tax'])
+            ? (bool) $data['prices_include_tax']
+            : DocumentTaxMode::forNewDocument($customerId, $branch, $date, (int) $data['currency_id']);
 
         return ApiResponse::success(
-            $this->resolver->resolve(
-                isset($data['customer_id']) ? (string) $data['customer_id'] : null,
-                (int) $data['currency_id'],
-                $data['exchange_rate'] ?? '1',
-                (string) ($data['date'] ?? now()->toDateString()),
-                $branchId !== null ? (int) $branchId : null,
-                array_values($data['lines']),
-            ),
+            $this->resolver->resolve($customerId, (int) $data['currency_id'], $data['exchange_rate'] ?? '1', $date, $branch, array_values($data['lines']), $mode),
             'Prices resolved successfully.'
         );
+    }
+
+    public function taxMode(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'customer_id' => ['nullable', 'uuid'],
+            'currency_id' => ['nullable', 'integer'],
+            'date' => ['nullable', 'date'],
+        ]);
+        $branchId = $request->attributes->get('active_branch_id');
+
+        return ApiResponse::success([
+            'prices_include_tax' => DocumentTaxMode::forNewDocument(
+                isset($data['customer_id']) ? (string) $data['customer_id'] : null,
+                $branchId !== null ? (int) $branchId : null,
+                (string) ($data['date'] ?? now()->toDateString()),
+                (int) ($data['currency_id'] ?? Currency::getPrimary()?->id ?? 0),
+            ),
+        ], 'Tax mode resolved successfully.');
     }
 }

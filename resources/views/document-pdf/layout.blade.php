@@ -46,6 +46,7 @@
         .logo { height: 48px; max-width: 140px; margin-bottom: 6px; }
         .company-name { font-size: 15px; font-weight: bold; margin: 0 0 2px; }
         .muted { color: #666; }
+        .line-serials { color: #555; font-size: 0.85em; margin-top: 2px; word-break: break-all; }
         .doc-title {
             font-size: 18px;
             font-weight: bold;
