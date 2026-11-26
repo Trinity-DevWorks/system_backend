@@ -10,9 +10,11 @@ use App\Models\User;
 use App\Modules\Branch\Services\BranchContextService;
 use App\Modules\Rbac\DTOs\UserResponseData;
 use App\Modules\Rbac\Http\Requests\UpdateMeRequest;
+use App\Modules\Rbac\Services\ManagerApprovalService;
 use App\Modules\Rbac\Services\UserService;
 use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class MeController extends Controller
 {
@@ -46,6 +48,38 @@ class MeController extends Controller
     }
 
     /**
+     * Sets or removes the user's own approval PIN (4–6 digits), after checking their password.
+     */
+    public function approvalPin(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'pin' => ['nullable', 'string', 'regex:/^[0-9]{4,6}$/'],
+            'current_password' => ['required', 'string'],
+        ]);
+        /** @var User $user */
+        $user = auth()->user();
+        app(ManagerApprovalService::class)->setPin($user, $data['pin'] ?? null, (string) $data['current_password']);
+
+        return ApiResponse::success($this->payload($user->fresh() ?? $user), 'Approval PIN saved.');
+    }
+
+    /**
+     * People who can approve an action in a branch (they have the permission and a PIN set).
+     */
+    public function approvers(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'string', 'in:'.ManagerApprovalService::DISCOUNT.','.ManagerApprovalService::CREDIT_LIMIT],
+            'branch_id' => ['nullable', 'integer'],
+        ]);
+
+        return ApiResponse::success(
+            app(ManagerApprovalService::class)->approvers((string) $data['action'], isset($data['branch_id']) ? (int) $data['branch_id'] : null),
+            'Approvers fetched successfully.',
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function payload(User $user): array
@@ -63,6 +97,7 @@ class MeController extends Controller
         $base['role'] = $this->permissionService->resolveEffectiveRole($user, $branchId);
         $base['permissions'] = $this->permissionService->matrixForUser($user, $branchId);
         $base['branch_context'] = $branchContext;
+        $base['has_approval_pin'] = $user->approval_pin !== null;
 
         return $base;
     }

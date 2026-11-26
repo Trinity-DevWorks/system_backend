@@ -322,16 +322,16 @@ SQL;
         $ws = "' ' || chr(9) || chr(10) || chr(13) || chr(11)";
 
         return 'SELECT s.doc_id,'
-            ." CASE WHEN s.type = 'bundle_sale' OR (s.type = 'sales_return' AND s.bcode IS NOT NULL) THEN 'b' ELSE 'i' END AS k,"
-            ." CASE WHEN s.type = 'bundle_sale' OR (s.type = 'sales_return' AND s.bcode IS NOT NULL) THEN s.bcode ELSE s.item_id::text END AS key,"
+            ." CASE WHEN s.type IN ('bundle_sale', 'recipe_sale') OR (s.type = 'sales_return' AND s.bcode IS NOT NULL) THEN 'b' ELSE 'i' END AS k,"
+            ." CASE WHEN s.type IN ('bundle_sale', 'recipe_sale') OR (s.type = 'sales_return' AND s.bcode IS NOT NULL) THEN s.bcode ELSE s.item_id::text END AS key,"
             .' SUM(ABS(s.value_delta)) AS cost'
             .' FROM ('
-            ."  SELECT m.reference_id AS doc_id, m.item_id, m.type, m.value_delta, btrim(substring(m.notes from '^.* bundle (.*)$'), {$ws}) AS bcode"
+            ."  SELECT m.reference_id AS doc_id, m.item_id, m.type, m.value_delta, btrim(substring(m.notes from '^.* (?:bundle|recipe) (.*)$'), {$ws}) AS bcode"
             .'  FROM stock_movements m'
             ."  WHERE m.reference_type = ? AND m.reference_id IN (SELECT doc_id FROM {$docsCte})"
             ."  AND (m.notes IS NULL OR m.notes NOT LIKE 'Reverse%')"
             .' ) s'
-            ." WHERE NOT (s.type = 'bundle_sale' AND s.bcode IS NULL)"
+            ." WHERE NOT (s.type IN ('bundle_sale', 'recipe_sale') AND s.bcode IS NULL)"
             .' GROUP BY 1, 2, 3';
     }
 

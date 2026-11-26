@@ -32,6 +32,7 @@ class StoreWarehouseRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:5000'],
             'manager_id' => ['required', 'uuid', 'exists:users,id'],
             'is_active' => ['required', 'boolean'],
+            'negative_stock' => ['nullable', 'in:allow,block'],
             'is_default' => ['required', 'boolean'],
             'is_default_sales' => ['required', 'boolean'],
             'is_default_production' => ['required', 'boolean'],

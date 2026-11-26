@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('direction', 16);
             $table->boolean('is_active')->default(true);
             $table->boolean('is_system')->default(false);
+            // Stock taken out for this reason is waste (spoiled, expired, damaged): its cost goes to the Waste account.
+            $table->boolean('is_waste')->default(false);
             $table->text('notes')->nullable();
             $table->timestamps();
 
@@ -26,12 +28,12 @@ return new class extends Migration
 
         $now = now();
         DB::table('stock_adjustment_reasons')->insert([
-            ['code' => 'COUNT_UP', 'name' => 'Stock count increase', 'direction' => 'increase', 'is_active' => true, 'is_system' => true, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
-            ['code' => 'COUNT_DOWN', 'name' => 'Stock count decrease', 'direction' => 'decrease', 'is_active' => true, 'is_system' => true, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
-            ['code' => 'DAMAGE', 'name' => 'Damage', 'direction' => 'decrease', 'is_active' => true, 'is_system' => true, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
-            ['code' => 'EXPIRED', 'name' => 'Expired', 'direction' => 'decrease', 'is_active' => true, 'is_system' => true, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
-            ['code' => 'FOUND', 'name' => 'Found stock', 'direction' => 'increase', 'is_active' => true, 'is_system' => true, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
-            ['code' => 'OTHER', 'name' => 'Other', 'direction' => 'both', 'is_active' => true, 'is_system' => true, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
+            ['code' => 'COUNT_UP', 'name' => 'Stock count increase', 'direction' => 'increase', 'is_active' => true, 'is_system' => true, 'is_waste' => false, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
+            ['code' => 'COUNT_DOWN', 'name' => 'Stock count decrease', 'direction' => 'decrease', 'is_active' => true, 'is_system' => true, 'is_waste' => false, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
+            ['code' => 'DAMAGE', 'name' => 'Damage', 'direction' => 'decrease', 'is_active' => true, 'is_system' => true, 'is_waste' => true, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
+            ['code' => 'EXPIRED', 'name' => 'Expired', 'direction' => 'decrease', 'is_active' => true, 'is_system' => true, 'is_waste' => true, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
+            ['code' => 'FOUND', 'name' => 'Found stock', 'direction' => 'increase', 'is_active' => true, 'is_system' => true, 'is_waste' => false, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
+            ['code' => 'OTHER', 'name' => 'Other', 'direction' => 'both', 'is_active' => true, 'is_system' => true, 'is_waste' => false, 'notes' => null, 'created_at' => $now, 'updated_at' => $now],
         ]);
     }
 

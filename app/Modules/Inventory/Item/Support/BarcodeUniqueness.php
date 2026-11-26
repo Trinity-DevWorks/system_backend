@@ -10,6 +10,10 @@ use Illuminate\Validation\Validator;
 
 final class BarcodeUniqueness
 {
+    /**
+     * A barcode belongs to one item and unit only (item_barcodes, also unique in the database).
+     * `$ignoreBarcodeId`: the barcode row being edited. `$ignoreItemUomId`: the unit whose own barcode is being edited.
+     */
     public static function validateUnique(
         Validator $validator,
         string $barcode,
@@ -21,24 +25,18 @@ final class BarcodeUniqueness
             return;
         }
 
-        $barcodeQuery = ItemBarcode::query()->where('barcode', $normalized);
+        $query = ItemBarcode::query()->where('barcode', $normalized);
         if ($ignoreBarcodeId !== null) {
-            $barcodeQuery->where('id', '!=', $ignoreBarcodeId);
+            $query->where('id', '!=', $ignoreBarcodeId);
         }
-
-        if ($barcodeQuery->exists()) {
-            $validator->errors()->add('barcode', 'This barcode is already assigned to another item.');
-
-            return;
-        }
-
-        $uomQuery = ItemUom::query()->where('barcode', $normalized);
         if ($ignoreItemUomId !== null) {
-            $uomQuery->where('id', '!=', $ignoreItemUomId);
+            $own = ItemUom::query()->find($ignoreItemUomId)?->primaryBarcode?->id;
+            if ($own !== null) {
+                $query->where('id', '!=', $own);
+            }
         }
-
-        if ($uomQuery->exists()) {
-            $validator->errors()->add('barcode', 'This barcode is already used on an item unit of measurement.');
+        if ($query->exists()) {
+            $validator->errors()->add('barcode', 'This barcode is already assigned to another item.');
         }
     }
 }

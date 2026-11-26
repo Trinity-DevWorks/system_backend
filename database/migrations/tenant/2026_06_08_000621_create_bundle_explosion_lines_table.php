@@ -21,6 +21,7 @@ return new class extends Migration
             $table->decimal('theoretical_quantity', 14, 6);
             $table->foreignId('lot_id')->nullable()->constrained('inventory_lots')->restrictOnDelete();
             $table->text('notes')->nullable();
+            $table->json('serial_numbers')->nullable();
             $table->timestamps();
 
             $table->index('bundle_explosion_id');

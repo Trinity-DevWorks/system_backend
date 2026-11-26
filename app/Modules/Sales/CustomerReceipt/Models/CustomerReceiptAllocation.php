@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'exchange_difference',
     'applied_later',
     'applied_at',
+    'at_sale',
 ])]
 class CustomerReceiptAllocation extends Model
 {
@@ -35,6 +36,7 @@ class CustomerReceiptAllocation extends Model
             'exchange_difference' => 'decimal:4',
             'applied_later' => 'boolean',
             'applied_at' => 'datetime',
+            'at_sale' => 'boolean',
         ];
     }
 

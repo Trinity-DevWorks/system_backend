@@ -9,6 +9,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\DocumentType;
 use Barryvdh\DomPDF\PDF;
 
 class FixedAssetPdfService
@@ -22,7 +23,7 @@ class FixedAssetPdfService
     {
         $asset = $this->assets->find((string) $asset->id);
         $detail = $this->assets->detail($asset);
-        $options = DocumentPdfOptions::fromRequest($locale);
+        $options = DocumentPdfOptions::fromRequest($locale, documentType: DocumentType::FixedAsset);
         $money = DocumentMoney::forOptions($options);
         $labels = $this->renderer->labelsFor($options);
         $category = $asset->category?->name;

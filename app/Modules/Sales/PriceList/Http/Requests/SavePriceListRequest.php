@@ -36,6 +36,7 @@ class SavePriceListRequest extends FormRequest
             'valid_from' => ['nullable', 'date'],
             'valid_to' => ['nullable', 'date'],
             'is_default' => ['sometimes', 'boolean'],
+            'prices_include_tax' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'items' => ['sometimes', 'array', 'max:5000'],
             'items.*.item_id' => ['required', 'uuid', Rule::exists('items', 'id')],

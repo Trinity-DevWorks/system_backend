@@ -18,6 +18,8 @@ enum StockMovementType: string
     case ProductionIn = 'production_in';
     case ProductionOut = 'production_out';
     case BundleSale = 'bundle_sale';
+    /** Ingredients used up when a "made on sale" item is sold (notes: "… recipe CODE"). */
+    case RecipeSale = 'recipe_sale';
     case Count = 'count';
     case Revaluation = 'revaluation';
     /** Value-only: freight/customs added to stock already received. */

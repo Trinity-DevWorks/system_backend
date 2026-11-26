@@ -28,7 +28,7 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 #[Fillable(['name', 'email', 'phone', 'password', 'is_active', 'created_by', 'preferred_branch_id'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'approval_pin'])]
 class User extends Authenticatable implements AuditableContract, CanResetPasswordContract
 {
     use Auditable;
@@ -50,6 +50,7 @@ class User extends Authenticatable implements AuditableContract, CanResetPasswor
     protected array $auditExclude = [
         'password',
         'remember_token',
+        'approval_pin',
     ];
 
     public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void

@@ -13,6 +13,7 @@ use App\Modules\Sales\CustomerReceipt\Http\Requests\UpdateCustomerReceiptRequest
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Sales\CustomerReceipt\Services\CustomerReceiptPdfService;
 use App\Modules\Sales\CustomerReceipt\Services\CustomerReceiptService;
+use App\Modules\Sales\SalesInvoice\Services\CustomerCreditService;
 use App\Support\ListPagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -145,19 +146,22 @@ class CustomerReceiptController extends Controller
     }
 
     /**
-     * The customer's credit (posted receipts with money left), with its value in `currency_id` when given.
+     * The customer's credit (posted receipts with money left, and money kept on invoices paid above their
+     * total), with its value in `currency_id` when given. `except_invoice_id` leaves out that invoice's own credit.
      */
     public function availableCredit(Request $request): JsonResponse
     {
         $data = $request->validate([
             'customer_id' => ['required', 'uuid', 'exists:customers,id'],
             'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
+            'except_invoice_id' => ['nullable', 'uuid'],
         ]);
 
         return ApiResponse::success(
-            $this->customerReceiptService->availableCredit(
+            app(CustomerCreditService::class)->available(
                 (string) $data['customer_id'],
                 isset($data['currency_id']) ? (int) $data['currency_id'] : null,
+                isset($data['except_invoice_id']) ? (string) $data['except_invoice_id'] : null,
             ),
             'Customer credit fetched successfully.'
         );

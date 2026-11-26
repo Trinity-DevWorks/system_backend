@@ -7,6 +7,8 @@ namespace App\Modules\Sales\CustomerCheque\Models;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoice;
+use App\Modules\Sales\SalesInvoice\Models\SalesInvoicePayment;
 use App\Modules\Treasury\Models\CashBankAccount;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -16,10 +18,13 @@ use Illuminate\Support\Carbon;
 
 /**
  * A cheque received from a customer. Its money sits in "Cheques to collect" until it clears into a bank
- * account, or bounces (its receipt is reversed and the invoice is open again).
+ * account, or bounces (the invoice it paid is open again). It comes from a customer receipt, or from a
+ * payment taken with a sales invoice (`sales_invoice_payment_id`, no receipt).
  *
  * @property string $id
- * @property string $customer_receipt_id
+ * @property string|null $customer_receipt_id
+ * @property int|null $sales_invoice_payment_id
+ * @property string|null $sales_invoice_id
  * @property string $customer_id
  * @property int|null $branch_id
  * @property string $cheque_number
@@ -35,6 +40,8 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'customer_receipt_id',
+    'sales_invoice_payment_id',
+    'sales_invoice_id',
     'customer_id',
     'branch_id',
     'cheque_number',
@@ -55,13 +62,16 @@ class CustomerCheque extends Model
 
     public const REFERENCE_TYPE = 'customer_cheque';
 
+    /** Journal source of a bounce for a cheque taken with a sales invoice. */
+    public const BOUNCE_REFERENCE_TYPE = 'customer_cheque_bounce';
+
     public const STATUS_IN_HAND = 'in_hand';
 
     public const STATUS_CLEARED = 'cleared';
 
     public const STATUS_BOUNCED = 'bounced';
 
-    /** Its receipt was reversed before the cheque cleared (e.g. the invoice was reversed). */
+    /** Its receipt or invoice was reversed before the cheque cleared. */
     public const STATUS_CANCELLED = 'cancelled';
 
     /**
@@ -84,6 +94,22 @@ class CustomerCheque extends Model
     public function receipt(): BelongsTo
     {
         return $this->belongsTo(CustomerReceipt::class, 'customer_receipt_id');
+    }
+
+    /**
+     * @return BelongsTo<SalesInvoice, $this>
+     */
+    public function salesInvoice(): BelongsTo
+    {
+        return $this->belongsTo(SalesInvoice::class);
+    }
+
+    /**
+     * @return BelongsTo<SalesInvoicePayment, $this>
+     */
+    public function salesInvoicePayment(): BelongsTo
+    {
+        return $this->belongsTo(SalesInvoicePayment::class);
     }
 
     /**

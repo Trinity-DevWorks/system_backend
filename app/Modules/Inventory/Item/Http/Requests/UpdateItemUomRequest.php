@@ -4,7 +4,6 @@ namespace App\Modules\Inventory\Item\Http\Requests;
 
 use App\Modules\Inventory\Item\Support\BarcodeUniqueness;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class UpdateItemUomRequest extends FormRequest
@@ -23,18 +22,9 @@ class UpdateItemUomRequest extends FormRequest
 
         return [
             'conversion_factor' => ['sometimes', 'numeric', 'gt:0', 'max:999999999.999999999999'],
-            'barcode' => [
-                'sometimes',
-                'nullable',
-                'string',
-                'max:128',
-                Rule::unique('item_uoms', 'barcode')->ignore($itemUom),
-            ],
+            'barcode' => ['sometimes', 'nullable', 'string', 'max:128'],
             'selling_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'cost_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
-            'takeaway_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
-            'dine_in_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
-            'delivery_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'is_base' => ['sometimes', 'boolean'],
             'is_default_sale' => ['sometimes', 'boolean'],
             'is_default_purchase' => ['sometimes', 'boolean'],

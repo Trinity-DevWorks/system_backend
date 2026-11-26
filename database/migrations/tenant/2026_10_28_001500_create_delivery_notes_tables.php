@@ -30,6 +30,9 @@ return new class extends Migration
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('posted_at')->nullable();
+            // Do this document's prices include VAT? Fixed when it is created (main price list, else the company
+            // setting; copied from the document it is made from).
+            $table->boolean('prices_include_tax')->default(false);
             $table->timestamps();
 
             $table->index(['status', 'delivery_date']);

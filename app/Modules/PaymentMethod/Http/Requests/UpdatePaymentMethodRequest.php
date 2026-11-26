@@ -35,6 +35,7 @@ class UpdatePaymentMethodRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', new Enum(PaymentMethodType::class)],
             'currency_id' => ['nullable', 'integer', 'exists:currencies,id'],
+            'provider' => ['nullable', 'string', 'max:64'],
             'requires_reference' => ['required', 'boolean'],
             'supports_change' => ['required', 'boolean'],
             // Cash boxes / bank accounts this method uses.

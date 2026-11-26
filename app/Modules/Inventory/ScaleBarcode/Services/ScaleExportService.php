@@ -393,7 +393,7 @@ class ScaleExportService
     {
         $primary = $item->barcodes->firstWhere('is_primary', true) ?? $item->barcodes->first();
 
-        return (string) ($primary?->barcode ?? $uom?->barcode ?? '');
+        return (string) ($primary?->barcode ?? '');
     }
 
     private function saleUnit(Item $item): ?ItemUom

@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('phone', 32)->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            // Short PIN (hashed) a manager types to approve something at the counter (discount, credit limit, ...).
+            $table->string('approval_pin')->nullable();
             $table->boolean('is_active')->default(true);
             $table->uuid('created_by')->nullable();
             $table->rememberToken();

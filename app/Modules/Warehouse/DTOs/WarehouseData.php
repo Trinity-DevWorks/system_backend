@@ -24,6 +24,7 @@ readonly class WarehouseData
         public bool $isDefaultProduction,
         public bool $isDefaultPurchase,
         public bool $isDefaultStorage,
+        public ?string $negativeStock = null,
     ) {}
 
     public static function fromStoreRequest(StoreWarehouseRequest $request): self
@@ -64,6 +65,7 @@ readonly class WarehouseData
             isDefaultProduction: (bool) $data['is_default_production'],
             isDefaultPurchase: (bool) $data['is_default_purchase'],
             isDefaultStorage: (bool) $data['is_default_storage'],
+            negativeStock: in_array($data['negative_stock'] ?? null, ['allow', 'block'], true) ? (string) $data['negative_stock'] : null,
         );
     }
 
@@ -111,6 +113,7 @@ readonly class WarehouseData
             'is_default_production' => $this->isDefaultProduction,
             'is_default_purchase' => $this->isDefaultPurchase,
             'is_default_storage' => $this->isDefaultStorage,
+            'negative_stock' => $this->negativeStock,
         ];
     }
 }

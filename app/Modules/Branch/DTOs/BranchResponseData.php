@@ -24,6 +24,7 @@ readonly class BranchResponseData
         public bool $isActive,
         public bool $isDefault,
         public ?int $priceListId,
+        public string $returnDefault,
         public string $createdAt,
         public string $updatedAt,
     ) {}
@@ -48,6 +49,7 @@ readonly class BranchResponseData
             isActive: (bool) $branch->is_active,
             isDefault: (bool) $branch->is_default,
             priceListId: $branch->price_list_id !== null ? (int) $branch->price_list_id : null,
+            returnDefault: (string) ($branch->return_default ?? 'restock'),
             createdAt: (string) $branch->created_at,
             updatedAt: (string) $branch->updated_at,
         );
@@ -100,6 +102,7 @@ readonly class BranchResponseData
             'is_active' => $this->isActive,
             'is_default' => $this->isDefault,
             'price_list_id' => $this->priceListId,
+            'return_default' => $this->returnDefault,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];

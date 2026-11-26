@@ -25,7 +25,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * @property bool $is_default
  * @property bool $is_active
  */
-#[Fillable(['code', 'name', 'name_ar', 'currency_id', 'valid_from', 'valid_to', 'is_default', 'is_active'])]
+#[Fillable(['code', 'name', 'name_ar', 'currency_id', 'valid_from', 'valid_to', 'is_default', 'is_active', 'prices_include_tax'])]
 class PriceList extends Model implements AuditableContract
 {
     use Auditable;
@@ -39,6 +39,7 @@ class PriceList extends Model implements AuditableContract
             'valid_from' => 'date',
             'valid_to' => 'date',
             'is_default' => 'boolean',
+            'prices_include_tax' => 'boolean',
             'is_active' => 'boolean',
         ];
     }

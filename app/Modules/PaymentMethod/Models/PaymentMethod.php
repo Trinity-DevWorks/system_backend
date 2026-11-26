@@ -26,6 +26,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'code',
     'name',
     'type',
+    'provider',
     'currency_id',
     'requires_reference',
     'supports_change',

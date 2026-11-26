@@ -49,10 +49,18 @@ return new class extends Migration
             $table->decimal('net_to_pay', 20, 4)->default(0);
             // Payments taken at sale may be more than the total: the extra stays on the customer's account as credit.
             $table->boolean('keep_extra_as_credit')->default(false);
+            // Key of the one-call post request that posted it: a retry with the same key posts once.
+            $table->string('post_request_id', 64)->nullable()->unique();
+            // Money paid above the total and kept as customer credit (invoice currency), and how much of it is used.
+            $table->decimal('extra_credit', 20, 4)->default(0);
+            $table->decimal('extra_credit_used', 20, 4)->default(0);
             $table->text('notes')->nullable();
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignUuid('posted_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('posted_at')->nullable();
+            // Do this document's prices include VAT? Fixed when it is created (main price list, else the company
+            // setting; copied from the document it is made from).
+            $table->boolean('prices_include_tax')->default(false);
             $table->timestamps();
 
             $table->index(['status', 'created_at']);

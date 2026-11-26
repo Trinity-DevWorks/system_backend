@@ -13,6 +13,7 @@ use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
 use App\Modules\Sales\SalesQuotation\Models\SalesQuotationLine;
 use App\Modules\Sales\SalesQuotation\Support\SalesQuotationRules;
 use App\Modules\Sales\Support\CommercialLineBuilder;
+use App\Modules\Sales\Support\DocumentTaxMode;
 use App\Support\DocumentNumberService;
 use App\Support\DocumentType;
 use App\Support\ExchangeRateSnapshot;
@@ -72,6 +73,7 @@ class SalesQuotationService
                 'created_by' => $userId,
             ]);
             app(DocumentNumberService::class)->assign($quotation, 'quotation_number', DocumentType::SalesQuotation, $quotation->branch_id !== null ? (int) $quotation->branch_id : null, $quotation->quotation_date);
+            DocumentTaxMode::stamp($quotation, null, (string) $quotation->customer_id, $quotation->branch_id !== null ? (int) $quotation->branch_id : null, $quotation->quotation_date->toDateString(), (int) $quotation->currency_id);
 
             $this->replaceLines($quotation, $data['lines'] ?? []);
 
@@ -301,7 +303,7 @@ class SalesQuotationService
     {
         $quotation->loadMissing('customer');
         $customer = $quotation->customer ?? SalesQuotationRules::assertCustomer((string) $quotation->customer_id);
-        $rows = CommercialLineBuilder::rows($lines, $customer, $quotation->quotation_date->toDateString(), 'SALES_QUOTATION');
+        $rows = CommercialLineBuilder::rows($lines, $customer, $quotation->quotation_date->toDateString(), 'SALES_QUOTATION', DocumentTaxMode::of($quotation));
 
         SalesQuotationLine::query()->where('sales_quotation_id', $quotation->id)->delete();
         foreach ($rows as $row) {
@@ -317,7 +319,7 @@ class SalesQuotationService
     private function recalculateTotals(SalesQuotation $quotation): void
     {
         $rows = SalesQuotationLine::query()->where('sales_quotation_id', $quotation->id)->orderBy('sort_order')->orderBy('id')->get();
-        CommercialLineBuilder::applyHeaderDiscount($rows, $quotation->header_discount_type, $quotation->header_discount_value);
-        $quotation->update(CommercialLineBuilder::totals($rows));
+        CommercialLineBuilder::applyHeaderDiscount($rows, $quotation->header_discount_type, $quotation->header_discount_value, DocumentTaxMode::of($quotation));
+        $quotation->update(CommercialLineBuilder::totals($rows, DocumentTaxMode::of($quotation)));
     }
 }

@@ -38,7 +38,19 @@ return new class extends Migration
             $table->boolean('allow_sale')->default(true);
             $table->boolean('allow_purchase')->default(true);
             $table->boolean('allow_return')->default(true);
+            // Price typed at the sale (no fixed price); the line price must be above zero.
+            $table->boolean('open_price')->default(false);
+            // Off: the line keeps the normal price (price list, else the unit's selling price).
+            $table->boolean('allow_price_change')->default(true);
+            // Off: no line discount, and bill discounts skip the item.
+            $table->boolean('allow_discount')->default(true);
+            // PRODUCE with a recipe: selling it takes the recipe's ingredients out of stock, not the item.
+            $table->boolean('make_on_sale')->default(false);
+            // What a customer return of this item does by default: restock | waste (null = the branch default).
+            $table->string('return_default', 16)->nullable();
             $table->boolean('is_active')->default(true);
+            // Can this item's stock go below zero? null = the warehouse's rule, 'allow', 'never' (never wins).
+            $table->string('negative_stock', 10)->nullable();
             $table->timestamps();
             $table->softDeletes();
 

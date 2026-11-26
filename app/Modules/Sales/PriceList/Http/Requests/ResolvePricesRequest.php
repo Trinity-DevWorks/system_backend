@@ -24,6 +24,7 @@ class ResolvePricesRequest extends FormRequest
             'currency_id' => ['required', 'integer', Rule::exists('currencies', 'id')],
             'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'date' => ['nullable', 'date'],
+            'prices_include_tax' => ['nullable', 'boolean'],
             'lines' => ['required', 'array', 'min:1', 'max:500'],
             'lines.*.item_id' => ['required', 'uuid'],
             'lines.*.item_uom_id' => ['nullable', 'integer'],

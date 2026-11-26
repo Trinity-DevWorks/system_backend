@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>{{ $documentNumber }}</title>
-    {{-- 80mm thermal roll: one narrow column, no fixed-position elements. --}}
+    {{-- Thermal roll (80mm, or 58mm when $narrow): one narrow column, no fixed-position elements. --}}
     <style>
         * { box-sizing: border-box; }
         @page { margin: 10px 8px; }
@@ -29,6 +29,16 @@
         .small { font-size: 7.5px; }
         .watermark { font-size: 12px; font-weight: bold; text-align: center; margin: 4px 0; }
         .pre { white-space: pre-wrap; }
+        @if (!empty($narrow))
+            @page { margin: 8px 5px; }
+            body { font-size: 7.5px; }
+            .logo { max-height: 32px; max-width: 90px; }
+            .company { font-size: 9.5px; }
+            .title { font-size: 9px; }
+            .grand td { font-size: 9px; }
+            .small { font-size: 6.5px; }
+            .watermark { font-size: 10px; }
+        @endif
     </style>
 </head>
 <body>

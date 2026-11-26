@@ -21,6 +21,7 @@ return new class extends Migration
             $table->decimal('unit_cost', 20, 6)->nullable();
             $table->foreignId('lot_id')->nullable()->constrained('inventory_lots')->restrictOnDelete();
             $table->text('notes')->nullable();
+            $table->json('serial_numbers')->nullable();
             $table->timestamps();
 
             $table->index('stock_adjustment_id');
