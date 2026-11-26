@@ -21,6 +21,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'quantity_delta',
     'unit_cost',
     'value_delta',
+    'negative_fill_quantity',
+    'cost_correction',
     'type',
     'reference_type',
     'reference_id',
@@ -39,6 +41,8 @@ class StockMovement extends Model
             'quantity_delta' => 'decimal:6',
             'unit_cost' => 'decimal:6',
             'value_delta' => 'decimal:4',
+            'negative_fill_quantity' => 'decimal:6',
+            'cost_correction' => 'decimal:4',
             'type' => StockMovementType::class,
         ];
     }

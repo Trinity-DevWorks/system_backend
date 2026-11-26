@@ -101,7 +101,8 @@ final class DocumentTaxMath
         $bases = [];
         foreach ($inputs as $input) {
             $plain = self::line($input['quantity'], $input['unit_price'], $input['discount_percent'] ?? 0, $input['tax_rate'] ?? 0, $pricesIncludeTax, $settings, $scale);
-            $bases[] = bcsub($plain['merchandise'], $plain['discount_amount'], $scale + 4);
+            // Items that may not be discounted take no share of the bill discount.
+            $bases[] = ! empty($input['no_header_discount']) ? '0' : bcsub($plain['merchandise'], $plain['discount_amount'], $scale + 4);
         }
         $shares = self::spreadHeaderDiscount($bases, $headerDiscountType, $headerDiscountValue, $settings, $scale);
 

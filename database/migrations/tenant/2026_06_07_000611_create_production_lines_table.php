@@ -22,6 +22,7 @@ return new class extends Migration
             $table->foreignId('item_uom_id')->nullable()->constrained('item_uoms')->nullOnDelete();
             $table->foreignId('lot_id')->nullable()->constrained('inventory_lots')->restrictOnDelete();
             $table->text('notes')->nullable();
+            $table->json('serial_numbers')->nullable();
             $table->timestamps();
 
             $table->index('production_id');

@@ -68,6 +68,7 @@ return new class extends Migration
             $table->decimal('line_total', 20, 4)->default(0);
             $table->string('description', 500)->nullable();
             $table->unsignedInteger('sort_order')->default(0);
+            $table->json('serial_numbers')->nullable();
         });
 
         Schema::create('purchase_debit_note_allocations', function (Blueprint $table) {

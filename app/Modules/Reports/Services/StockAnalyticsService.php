@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\DB;
 class StockAnalyticsService
 {
     /** Movement types that take stock out for use (not corrections). */
-    private const OUTBOUND = ['sale', 'bundle_sale', 'transfer_out', 'production_out', 'purchase_return'];
+    private const OUTBOUND = ['sale', 'bundle_sale', 'recipe_sale', 'transfer_out', 'production_out', 'purchase_return'];
 
     public function __construct(
         private readonly FiscalCalendar $fiscal,
@@ -37,6 +37,8 @@ class StockAnalyticsService
 
     /** Columns the dead stock table can be sorted by. */
     public const DEAD_STOCK_SORTS = ['days_idle', 'last_movement', 'code', 'name', 'warehouse', 'quantity', 'value'];
+
+    public const NEGATIVE_STOCK_SORTS = ['code', 'name', 'warehouse', 'quantity', 'unit_cost', 'value'];
 
     /**
      * @param  array{search?: ?string, sort?: ?string, dir?: ?string, page?: ?int, per_page?: ?int}  $list
@@ -112,6 +114,62 @@ class StockAnalyticsService
      *
      * @return array<string, mixed>
      */
+    /**
+     * Items below zero, per warehouse: quantity sold without stock, the cost it was issued at and that value.
+     * A later receipt in the same warehouse fills it (and corrects the cost of sales).
+     *
+     * @param  array{search?: ?string, sort?: ?string, dir?: ?string, page?: ?int, per_page?: ?int}  $list
+     * @return array<string, mixed>
+     */
+    public function negativeStock(?int $warehouseId, ?string $itemId, array $list = []): array
+    {
+        $query = DB::table('stock_balances as sb')
+            ->join('items as i', 'i.id', '=', 'sb.item_id')
+            ->join('warehouses as w', 'w.id', '=', 'sb.warehouse_id')
+            ->when($warehouseId !== null, fn ($q) => $q->where('sb.warehouse_id', $warehouseId))
+            ->when($itemId !== null, fn ($q) => $q->where('sb.item_id', $itemId))
+            ->groupBy('sb.item_id', 'sb.warehouse_id', 'i.item_code', 'i.name', 'w.name')
+            ->havingRaw('SUM(sb.quantity) < 0')
+            ->selectRaw('sb.item_id, sb.warehouse_id, i.item_code AS code, i.name AS name, w.name AS warehouse,'
+                .' SUM(sb.quantity) AS quantity, MAX(sb.unit_cost) AS unit_cost, COALESCE(SUM(sb.inventory_value), 0) AS value');
+        $this->warehouses->applyVisibleWarehouseConstraint($query, 'sb.warehouse_id');
+
+        $search = trim((string) ($list['search'] ?? ''));
+        [$sort, $desc] = SqlReportPage::sort($list, self::NEGATIVE_STOCK_SORTS, 'quantity', false);
+        $perPage = ! empty($list['per_page']) ? (int) $list['per_page'] : null;
+        $result = SqlReportPage::run(
+            $query,
+            $search !== '' ? $search : null,
+            ['r.code', 'r.name', 'r.warehouse'],
+            SqlReportPage::orderBy([
+                'code' => 'LOWER(r.code)', 'name' => 'LOWER(r.name)', 'warehouse' => 'LOWER(r.warehouse)',
+                'quantity' => 'r.quantity', 'unit_cost' => 'r.unit_cost', 'value' => 'r.value',
+            ], $sort, $desc, [], 'r.quantity ASC, r.code ASC, r.warehouse_id ASC'),
+            ['quantity' => 'r.quantity', 'value' => 'r.value'],
+            isset($list['page']) ? (int) $list['page'] : null,
+            $perPage
+        );
+
+        $rows = array_map(fn (array $row): array => [
+            'code' => $row['code'],
+            'name' => $row['name'],
+            'warehouse' => $row['warehouse'],
+            'quantity' => Decimal::round($row['quantity'], 6),
+            'unit_cost' => Decimal::round($row['unit_cost'] ?? '0', 4),
+            'value' => Decimal::round($row['value'], 4),
+        ], $result['rows']);
+
+        $report = AnalyticsReport::make(
+            [['code', 'text'], ['name', 'text'], ['warehouse', 'text'], ['quantity', 'qty'], ['unit_cost', 'money'], ['value', 'money']],
+            $rows,
+            ['quantity' => Decimal::round($result['sums']['quantity'] ?? '0', 6), 'value' => Decimal::round($result['sums']['value'] ?? '0', 4)],
+            ['warehouse_id' => $warehouseId, 'item_id' => $itemId, 'search' => $search !== '' ? $search : null],
+        );
+        $report['pagination'] = $perPage !== null ? SqlReportPage::meta($result, $perPage, self::NEGATIVE_STOCK_SORTS, $sort, $desc) : null;
+
+        return $report;
+    }
+
     public function deadStock(?int $days, ?int $warehouseId, array $list = []): array
     {
         $days ??= 90;

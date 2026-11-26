@@ -164,6 +164,8 @@ Route::middleware([
 
         Route::get('auth/me', [MeController::class, 'show']);
         Route::put('auth/me', [MeController::class, 'update']);
+        Route::put('auth/me/approval-pin', [MeController::class, 'approvalPin'])->middleware('throttle:10,1');
+        Route::get('auth/manager-approvers', [MeController::class, 'approvers']);
         Route::get('branch-context', [BranchContextController::class, 'show']);
         Route::post('branch-context/switch', [BranchContextController::class, 'switch']);
 
@@ -229,6 +231,10 @@ Route::middleware([
             Route::get('print-settings', [PrintSettingController::class, 'show'])
                 ->middleware('check.permission:print_settings,view');
             Route::put('print-settings', [PrintSettingController::class, 'update'])
+                ->middleware('check.permission:print_settings,edit');
+            Route::put('print-settings/types/{type}', [PrintSettingController::class, 'updateType'])
+                ->middleware('check.permission:print_settings,edit');
+            Route::delete('print-settings/types/{type}', [PrintSettingController::class, 'destroyType'])
                 ->middleware('check.permission:print_settings,edit');
 
             // Emailing documents: the company mailbox, the templates and the send itself.
@@ -307,6 +313,10 @@ Route::middleware([
                     ->middleware('ensure.module:inventory');
                 Route::get('reports/warranty-expiring', [AnalyticsReportController::class, 'show'])->defaults('report', 'warranty-expiring')
                     ->middleware('ensure.module:inventory');
+                Route::get('reports/waste', [AnalyticsReportController::class, 'show'])->defaults('report', 'waste')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/negative-stock', [AnalyticsReportController::class, 'show'])->defaults('report', 'negative-stock')
+                    ->middleware('ensure.module:inventory');
                 Route::get('reports/dead-stock', [AnalyticsReportController::class, 'show'])->defaults('report', 'dead-stock')
                     ->middleware('ensure.module:inventory');
                 Route::get('reports/item-movement', [AnalyticsReportController::class, 'show'])->defaults('report', 'item-movement')
@@ -343,6 +353,10 @@ Route::middleware([
                 Route::get('reports/serials-sold/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'serials-sold')
                     ->middleware('ensure.module:inventory');
                 Route::get('reports/warranty-expiring/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'warranty-expiring')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/waste/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'waste')
+                    ->middleware('ensure.module:inventory');
+                Route::get('reports/negative-stock/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'negative-stock')
                     ->middleware('ensure.module:inventory');
                 Route::get('reports/dead-stock/export', [AnalyticsReportController::class, 'export'])->defaults('report', 'dead-stock')
                     ->middleware('ensure.module:inventory');
@@ -800,6 +814,9 @@ Route::middleware([
             // Default line prices for sales documents (same audience as invoice-line-setup).
             Route::post('pricing/resolve', [PriceListController::class, 'resolve'])
                 ->middleware('check.permission:items,view');
+            // Tax mode a new document for this customer would get (its main price list, else the company setting).
+            Route::get('pricing/tax-mode', [PriceListController::class, 'taxMode'])
+                ->middleware('check.permission:items,view');
             Route::apiResource('price-lists', PriceListController::class)
                 ->middlewareFor(['index', 'show'], ['check.permission:price_lists,view'])
                 ->middlewareFor(['store'], ['check.permission:price_lists,add'])
@@ -957,6 +974,8 @@ Route::middleware([
             Route::get('sales-invoices', [SalesInvoiceController::class, 'index'])
                 ->middleware('check.permission:sales_invoices,view');
             Route::post('sales-invoices', [SalesInvoiceController::class, 'store'])
+                ->middleware('check.permission:sales_invoices,add');
+            Route::post('sales-invoices/post', [SalesInvoiceController::class, 'postNew'])
                 ->middleware('check.permission:sales_invoices,add');
             Route::get('sales-invoices/{sales_invoice}/pdf', [SalesInvoiceController::class, 'pdf'])
                 ->middleware('check.permission:sales_invoices,print');

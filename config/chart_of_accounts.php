@@ -357,6 +357,7 @@ return [
                 ['code' => '6611', 'name' => 'Attendance Fees', 'name_ar' => 'بدلات الحضور', 'parent' => '661', 'type' => 'expense', 'normal_balance' => 'debit'],
                 ['code' => '6612', 'name' => 'Operating Bad Debts', 'name_ar' => 'الديون المعدومة التشغيلية', 'parent' => '661', 'type' => 'expense', 'normal_balance' => 'debit'],
                 ['code' => '6613', 'name' => 'Inventory Shortages And Write-Offs', 'name_ar' => 'نواقص المخزون والإسقاطات', 'parent' => '661', 'type' => 'expense', 'normal_balance' => 'debit'], // added
+                ['code' => '6614', 'name' => 'Waste And Spoilage', 'name_ar' => 'الهدر والتلف', 'parent' => '661', 'type' => 'expense', 'normal_balance' => 'debit'], // added
                 ['code' => '67', 'name' => 'Financial Charges', 'name_ar' => 'الأعباء المالية', 'parent' => '6', 'type' => 'expense', 'normal_balance' => 'debit', 'is_group' => true],
                 ['code' => '673', 'name' => 'Interest And Similar Charges', 'name_ar' => 'الفوائد والأعباء المماثلة', 'parent' => '67', 'type' => 'expense', 'normal_balance' => 'debit', 'is_group' => true],
                 ['code' => '6731', 'name' => 'Interest On Payables And Loans', 'name_ar' => 'فوائد الذمم الدائنة والقروض', 'parent' => '673', 'type' => 'expense', 'normal_balance' => 'debit'],
@@ -485,6 +486,7 @@ return [
                 'cheques_to_collect' => '5110',
                 'salesman_commission_payable' => '4161',
                 'inventory_shortage' => '6613',
+                'waste_expense' => '6614',
                 'inventory_surplus' => '7614',
                 'opening_balance_equity' => '1201',
                 'exchange_loss' => '6751',

@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\DB;
 class CustomerLedgerService
 {
     /**
-     * Live balance in one currency: SUM(debit) − SUM(credit). Positive means customer owes.
+     * Live balance in one currency (debit − credit of the ledger, kept up to date on customer_balances).
+     * Positive means the customer owes.
      */
     public function balanceInCurrency(Customer $customer, int $currencyId): string
     {
@@ -26,13 +27,12 @@ class CustomerLedgerService
 
     public function balanceInCurrencyForCustomerId(string $customerId, int $currencyId): string
     {
-        $raw = CustomerLedgerEntry::query()
+        $raw = DB::table('customer_balances')
             ->where('customer_id', $customerId)
             ->where('currency_id', $currencyId)
-            ->selectRaw('COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as bal')
-            ->value('bal');
+            ->value('balance');
 
-        return $this->formatMoney($raw);
+        return $this->formatMoney($raw ?? 0);
     }
 
     /**
@@ -40,11 +40,10 @@ class CustomerLedgerService
      */
     public function balancesPerCurrencyForCustomer(Customer $customer): array
     {
-        $rows = CustomerLedgerEntry::query()
+        $rows = DB::table('customer_balances')
             ->where('customer_id', $customer->id)
-            ->groupBy('currency_id')
-            ->selectRaw('currency_id, COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as bal')
-            ->pluck('bal', 'currency_id');
+            ->where('balance', '!=', 0)
+            ->pluck('balance', 'currency_id');
 
         $out = [];
         foreach ($rows as $currencyId => $raw) {
@@ -64,11 +63,10 @@ class CustomerLedgerService
             return [];
         }
 
-        $rows = CustomerLedgerEntry::query()
+        $rows = DB::table('customer_balances')
             ->whereIn('customer_id', $customerIds)
-            ->groupBy('customer_id', 'currency_id')
-            ->selectRaw('customer_id, currency_id, COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as bal')
-            ->get();
+            ->where('balance', '!=', 0)
+            ->get(['customer_id', 'currency_id', 'balance as bal']);
 
         $out = [];
         foreach ($rows as $row) {
@@ -85,10 +83,13 @@ class CustomerLedgerService
      */
     public function deleteDocumentEntries(LedgerReferenceType $referenceType, string $referenceId): void
     {
-        CustomerLedgerEntry::query()
+        $rows = CustomerLedgerEntry::query()
             ->where('reference_type', $referenceType)
-            ->where('reference_id', $referenceId)
-            ->delete();
+            ->where('reference_id', $referenceId);
+        foreach ((clone $rows)->groupBy('customer_id', 'currency_id')->selectRaw('customer_id, currency_id, COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as bal')->get() as $sum) {
+            $this->moveBalance((string) $sum->customer_id, (int) $sum->currency_id, Decimal::sub('0', (string) $sum->getAttribute('bal')));
+        }
+        $rows->delete();
     }
 
     /**
@@ -212,7 +213,7 @@ class CustomerLedgerService
         ?string $referenceId,
         string $transactionDate
     ): CustomerLedgerEntry {
-        return CustomerLedgerEntry::query()->create([
+        $entry = CustomerLedgerEntry::query()->create([
             'customer_id' => $customer->id,
             'currency_id' => $currencyId,
             'debit' => $debit,
@@ -221,6 +222,35 @@ class CustomerLedgerService
             'reference_id' => $referenceId,
             'transaction_date' => $transactionDate,
         ]);
+        $this->moveBalance((string) $customer->id, $currencyId, Decimal::sub($debit, $credit));
+
+        return $entry;
+    }
+
+    /**
+     * Keeps the stored balance in step with the ledger rows (one row per customer and currency).
+     */
+    private function moveBalance(string $customerId, int $currencyId, string $delta): void
+    {
+        if (Decimal::cmp($delta, '0') === 0) {
+            return;
+        }
+        $now = now();
+        DB::table('customer_balances')->insertOrIgnore([
+            'customer_id' => $customerId,
+            'currency_id' => $currencyId,
+            'credit_limit' => 0,
+            'balance' => 0,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        DB::table('customer_balances')
+            ->where('customer_id', $customerId)
+            ->where('currency_id', $currencyId)
+            ->update([
+                'balance' => DB::raw('balance + '.Decimal::round($delta, 4)),
+                'updated_at' => $now,
+            ]);
     }
 
     private function formatMoney(mixed $value): string
@@ -470,7 +500,7 @@ class CustomerLedgerService
                 continue;
             }
             $type = $entry->reference_type instanceof \BackedEnum ? $entry->reference_type->value : (string) $entry->reference_type;
-            if ($type === LedgerReferenceType::Invoice->value) {
+            if ($type === LedgerReferenceType::Invoice->value || $type === LedgerReferenceType::SalePayment->value) {
                 $invoiceIds[] = (string) $entry->reference_id;
             } elseif ($type === LedgerReferenceType::Payment->value) {
                 $paymentIds[] = (string) $entry->reference_id;
@@ -489,6 +519,7 @@ class CustomerLedgerService
             foreach ($numbers as $id => $number) {
                 if ($number !== null && $number !== '') {
                     $out[LedgerReferenceType::Invoice->value.'|'.$id] = (string) $number;
+                    $out[LedgerReferenceType::SalePayment->value.'|'.$id] = (string) $number;
                 }
             }
         }

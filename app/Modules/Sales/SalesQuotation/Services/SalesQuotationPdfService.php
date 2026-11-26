@@ -10,6 +10,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\DocumentType;
 use Barryvdh\DomPDF\PDF;
 
 class SalesQuotationPdfService
@@ -29,7 +30,7 @@ class SalesQuotationPdfService
             'SALES_QUOTATION_PDF_NOT_ALLOWED',
         );
 
-        $options = DocumentPdfOptions::fromRequest($locale);
+        $options = DocumentPdfOptions::fromRequest($locale, documentType: DocumentType::SalesQuotation);
         $money = DocumentMoney::forOptions($options);
         $labels = $this->renderer->labelsFor($options);
 

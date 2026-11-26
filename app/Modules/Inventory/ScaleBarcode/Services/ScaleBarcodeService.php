@@ -374,12 +374,8 @@ class ScaleBarcodeService
         ])));
 
         $barcode = ItemBarcode::query()->whereIn('barcode', $candidates)->with('item')->first();
-        if ($barcode?->item instanceof Item && $barcode->item->is_active) {
-            return $barcode->item;
-        }
-        $uom = ItemUom::query()->whereIn('barcode', $candidates)->with('item')->first();
 
-        return $uom?->item instanceof Item && $uom->item->is_active ? $uom->item : null;
+        return $barcode?->item instanceof Item && $barcode->item->is_active ? $barcode->item : null;
     }
 
     private function itemUom(ScaleBarcodeFormat $format, Item $item): ItemUom

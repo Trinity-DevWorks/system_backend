@@ -23,6 +23,8 @@ return new class extends Migration
             $table->foreignUuid('manager_id')->nullable()->constrained('users')->nullOnDelete();
             $table->boolean('is_active')->default(true);
             $table->boolean('is_default')->default(false);
+            // What a customer return does by default in this branch: restock | waste (an item may override it).
+            $table->string('return_default', 16)->default('restock');
             $table->timestamps();
 
             $table->unique(['name']);

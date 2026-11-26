@@ -47,6 +47,22 @@ return new class extends Migration
         Schema::table('branch_user', function (Blueprint $table) {
             $table->foreign('role_id')->references('id')->on('roles')->restrictOnDelete();
         });
+
+        // A manager's OK given on the spot with their PIN (discount above limit, credit limit, ...).
+        Schema::create('manager_approvals', function (Blueprint $table) {
+            $table->id();
+            // The permission it needed, e.g. discount_override.
+            $table->string('action', 64)->index();
+            $table->foreignUuid('approver_id')->constrained('users')->restrictOnDelete();
+            $table->foreignUuid('requested_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('branch_id')->nullable()->constrained('branches')->nullOnDelete();
+            $table->string('document_type', 64)->nullable();
+            $table->uuid('document_id')->nullable();
+            $table->string('detail')->nullable();
+            $table->timestamp('created_at')->nullable();
+
+            $table->index(['document_type', 'document_id']);
+        });
     }
 
     public function down(): void
@@ -55,6 +71,7 @@ return new class extends Migration
             $table->dropForeign(['role_id']);
         });
 
+        Schema::dropIfExists('manager_approvals');
         Schema::dropIfExists('role_permissions');
         Schema::dropIfExists('permissions');
         Schema::dropIfExists('roles');

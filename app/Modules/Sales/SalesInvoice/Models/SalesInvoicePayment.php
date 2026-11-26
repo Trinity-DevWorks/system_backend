@@ -8,15 +8,15 @@ use App\Modules\Currency\Models\Currency;
 use App\Modules\PaymentMethod\Models\PaymentMethod;
 use App\Modules\Sales\CustomerReceipt\Models\CustomerReceipt;
 use App\Modules\Treasury\Models\CashBankAccount;
-use App\Modules\Treasury\Models\TreasuryTransfer;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * A payment taken when the sales invoice is posted (split payment: cash, card, ...).
- * On post each line becomes a posted customer receipt allocated to the invoice.
+ * A payment on a sales invoice (split payment: cash, card, cheque, customer credit, ...).
+ * Taken at the sale (`at_sale`): posted in the invoice's own journal entry, no receipt.
+ * Recorded later: becomes a posted customer receipt (`customer_receipt_id`).
  *
  * @property int $id
  * @property string $sales_invoice_id
@@ -34,7 +34,10 @@ use Illuminate\Support\Carbon;
  * @property string|null $change_rate
  * @property string|null $change_amount in the change currency
  * @property int|null $change_cash_bank_account_id
- * @property string|null $treasury_transfer_id
+ * @property bool $at_sale
+ * @property string|null $applied_amount value settled on the invoice, in the invoice currency
+ * @property string|null $extra_credit part kept as customer credit, in the invoice currency
+ * @property Carbon|null $bounced_on the cheque of this payment bounced
  * @property string|null $cheque_number
  * @property string|null $cheque_bank
  * @property Carbon|null $cheque_due_date
@@ -54,7 +57,10 @@ use Illuminate\Support\Carbon;
     'change_rate',
     'change_amount',
     'change_cash_bank_account_id',
-    'treasury_transfer_id',
+    'at_sale',
+    'applied_amount',
+    'extra_credit',
+    'bounced_on',
     'cheque_number',
     'cheque_bank',
     'cheque_due_date',
@@ -80,6 +86,10 @@ class SalesInvoicePayment extends Model
             'change_rate' => 'decimal:12',
             'change_amount' => 'decimal:4',
             'cheque_due_date' => 'date',
+            'at_sale' => 'boolean',
+            'applied_amount' => 'decimal:4',
+            'extra_credit' => 'decimal:4',
+            'bounced_on' => 'date',
         ];
     }
 
@@ -102,14 +112,6 @@ class SalesInvoicePayment extends Model
     public function changeCashBankAccount(): BelongsTo
     {
         return $this->belongsTo(CashBankAccount::class, 'change_cash_bank_account_id');
-    }
-
-    /**
-     * @return BelongsTo<TreasuryTransfer, $this>
-     */
-    public function treasuryTransfer(): BelongsTo
-    {
-        return $this->belongsTo(TreasuryTransfer::class);
     }
 
     /**

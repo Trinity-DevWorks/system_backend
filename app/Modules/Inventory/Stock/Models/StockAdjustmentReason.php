@@ -20,6 +20,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'direction',
     'is_active',
     'is_system',
+    'is_waste',
     'notes',
 ])]
 class StockAdjustmentReason extends Model implements AuditableContract
@@ -35,6 +36,7 @@ class StockAdjustmentReason extends Model implements AuditableContract
             'direction' => StockAdjustmentReasonDirection::class,
             'is_active' => 'boolean',
             'is_system' => 'boolean',
+            'is_waste' => 'boolean',
         ];
     }
 

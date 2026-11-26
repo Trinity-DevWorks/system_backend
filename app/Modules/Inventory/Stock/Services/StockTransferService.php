@@ -268,6 +268,7 @@ class StockTransferService
             ]);
             app(DocumentNumberService::class)->assign($receipt, 'receipt_number', DocumentType::StockTransferReceipt, (int) $receipt->branch_id, $receivedDate);
 
+            $correction = '0';
             foreach ($posted as $row) {
                 /** @var StockTransferLine $line */
                 $line = $row['line'];
@@ -294,7 +295,7 @@ class StockTransferService
                     'notes' => $row['notes'],
                 ]);
 
-                $this->stockMovementService->post(StockMovementData::forTransfer(
+                $arrived = $this->stockMovementService->post(StockMovementData::forTransfer(
                     itemId: (string) $line->item_id,
                     warehouseId: (int) $locked->to_warehouse_id,
                     quantityDelta: $baseQty,
@@ -306,6 +307,7 @@ class StockTransferService
                     unitCost: $unitCost !== null ? (string) $unitCost : null,
                     lotId: $line->lot_id ? (int) $line->lot_id : null,
                 )->withSerials($serials));
+                $correction = bcadd($correction, (string) ($arrived->cost_correction ?? '0'), 4);
 
                 $line->update([
                     'received_quantity' => bcadd((string) $line->received_quantity, $qty, 6),
@@ -313,6 +315,8 @@ class StockTransferService
                 ]);
             }
 
+            // Filled negative stock in the destination: post the cost correction against this receipt.
+            $this->journalPostingService->stockTransferReceipt($receipt, $correction, $userId);
             $this->syncLifecycleAfterReceive($locked, $userId);
 
             return $this->find($locked->id);

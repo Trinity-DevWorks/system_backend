@@ -10,6 +10,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\DocumentType;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -31,7 +32,7 @@ class LandedCostPdfService
             'LANDED_COST_PDF_NOT_ALLOWED',
         );
 
-        $options = DocumentPdfOptions::fromRequest($locale);
+        $options = DocumentPdfOptions::fromRequest($locale, documentType: DocumentType::LandedCost);
         $money = DocumentMoney::forOptions($options);
         $labels = $this->renderer->labelsFor($options);
         $data = $this->service->toArray($this->service->find((string) $document->id));

@@ -9,10 +9,13 @@ use App\Modules\CompanySetting\Support\PriceMath;
 use App\Modules\Currency\Models\Currency;
 use App\Modules\Customer\Models\Customer;
 use App\Modules\Customer\Models\CustomerGroup;
+use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
 use App\Modules\Sales\PriceList\Models\PriceList;
 use App\Modules\Sales\PriceList\Models\PriceListItem;
+use App\Modules\Sales\Support\DocumentTaxMode;
 use App\Support\Decimal;
+use App\Support\DocumentTaxContext;
 
 /**
  * What: Default selling price for document lines.
@@ -26,11 +29,15 @@ use App\Support\Decimal;
 class PriceResolver
 {
     /**
+     * `$documentIncludesTax`: the document's tax mode; a price from a list (or the unit's selling price, which
+     * follows the company setting) in the other mode is converted with the item's VAT rate.
+     *
      * @param  list<array{item_id: string, item_uom_id?: int|string|null, quantity?: mixed}>  $lines
      * @return list<array{item_id: string, item_uom_id: ?int, unit_price: ?string, price_source: string, price_list_id: ?int}>
      */
-    public function resolve(?string $customerId, int $currencyId, mixed $exchangeRate, string $date, ?int $branchId, array $lines): array
+    public function resolve(?string $customerId, int $currencyId, mixed $exchangeRate, string $date, ?int $branchId, array $lines, ?bool $documentIncludesTax = null): array
     {
+        $companyIncludesTax = DocumentTaxContext::pricesIncludeTax();
         $primaryId = (int) (Currency::getPrimary()?->id ?? 0);
         $rate = Decimal::isPositive($exchangeRate) ? Decimal::of($exchangeRate) : '1';
         $lists = $this->candidateLists($customerId, $branchId, $date, $currencyId, $primaryId);
@@ -44,6 +51,7 @@ class PriceResolver
             $price = null;
             $source = 'none';
             $listId = null;
+            $priceIncludesTax = $companyIncludesTax;
 
             if ($uomId !== null) {
                 foreach ($lists as $list) {
@@ -62,6 +70,7 @@ class PriceResolver
                         : Decimal::mul($row->price, $rate);
                     $source = $list->code;
                     $listId = (int) $list->id;
+                    $priceIncludesTax = (bool) $list->prices_include_tax;
 
                     break;
                 }
@@ -75,6 +84,10 @@ class PriceResolver
                 }
             }
 
+            if ($price !== null && $documentIncludesTax !== null && $documentIncludesTax !== $priceIncludesTax) {
+                $price = DocumentTaxMode::convertForItem($price, $itemId, $priceIncludesTax, $documentIncludesTax);
+            }
+
             $out[] = [
                 'item_id' => $itemId,
                 'item_uom_id' => $uomId,
@@ -85,6 +98,16 @@ class PriceResolver
         }
 
         return $out;
+    }
+
+    /**
+     * The list a new document is priced from first (customer → group → branch → company default), if any.
+     */
+    public function mainList(?string $customerId, ?int $branchId, string $date, int $currencyId): ?PriceList
+    {
+        $primaryId = (int) (Currency::getPrimary()?->id ?? 0);
+
+        return $this->candidateLists($customerId, $branchId, $date, $currencyId, $primaryId)[0] ?? null;
     }
 
     /**

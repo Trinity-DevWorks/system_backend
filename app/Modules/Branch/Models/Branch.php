@@ -32,6 +32,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
     'is_active',
     'is_default',
     'price_list_id',
+    'return_default',
 ])]
 class Branch extends Model implements AuditableContract
 {

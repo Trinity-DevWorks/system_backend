@@ -11,6 +11,7 @@ use App\Support\DocumentPdf\DocumentMoney;
 use App\Support\DocumentPdf\DocumentPdfOptions;
 use App\Support\DocumentPdf\DocumentPdfRenderer;
 use App\Support\DocumentPdf\DocumentPdfSupport;
+use App\Support\DocumentType;
 use Barryvdh\DomPDF\PDF;
 
 class SalesOrderPdfService
@@ -29,7 +30,7 @@ class SalesOrderPdfService
             'SALES_ORDER_PDF_NOT_ALLOWED',
         );
 
-        $options = DocumentPdfOptions::fromRequest($locale);
+        $options = DocumentPdfOptions::fromRequest($locale, documentType: DocumentType::SalesOrder);
         $money = DocumentMoney::forOptions($options);
         $labels = $this->renderer->labelsFor($options);
 

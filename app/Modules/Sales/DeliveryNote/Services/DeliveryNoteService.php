@@ -9,6 +9,7 @@ use App\Modules\Currency\Models\Currency;
 use App\Modules\Inventory\Item\Models\BundleItem;
 use App\Modules\Inventory\Item\Models\Item;
 use App\Modules\Inventory\Item\Models\ItemUom;
+use App\Modules\Inventory\Item\Support\RecipeConsumption;
 use App\Modules\Inventory\Stock\DTOs\StockMovementData;
 use App\Modules\Inventory\Stock\Models\InventoryLot;
 use App\Modules\Inventory\Stock\Services\InventorySerialService;
@@ -25,9 +26,11 @@ use App\Modules\Sales\SalesOrder\Models\SalesOrderLine;
 use App\Modules\Sales\SalesOrder\Services\SalesOrderFulfillment;
 use App\Modules\Sales\Support\CommercialLineBuilder;
 use App\Modules\Sales\Support\CommercialLineQuantity;
+use App\Modules\Sales\Support\DocumentTaxMode;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\Decimal;
 use App\Support\DocumentNumberService;
+use App\Support\DocumentTaxContext;
 use App\Support\DocumentType;
 use App\Support\ListPagination;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -105,6 +108,9 @@ class DeliveryNoteService
                 'status' => DeliveryNoteStatus::Draft,
                 'created_by' => $userId,
             ]);
+            // Copies its order's mode; a note without an order takes the mode a new document would have.
+            $orderMode = $orderId !== null ? SalesOrder::query()->whereKey($orderId)->value('prices_include_tax') : null;
+            DocumentTaxMode::stamp($note, $orderMode !== null ? (bool) $orderMode : null, (string) $customer->id, $note->branch_id !== null ? (int) $note->branch_id : null, (string) ($note->delivery_date?->toDateString() ?? now()->toDateString()), (int) (Currency::getPrimary()?->id ?? 0));
             $this->replaceLines($note, (array) ($data['lines'] ?? []));
 
             return $this->find((string) $note->id);
@@ -359,7 +365,7 @@ class DeliveryNoteService
                     'item_id' => (string) $line->item_id,
                     'item_uom_id' => $line->item_uom_id,
                     'quantity' => Decimal::round($qty, 6),
-                    'unit_price' => $orderLine?->unit_price ?? $this->catalogPrice($line),
+                    'unit_price' => $orderLine?->unit_price ?? $this->catalogPrice($line, DocumentTaxMode::of($locked)),
                     'discount_percent' => $orderLine?->discount_percent ?? 0,
                     'description' => $line->description,
                     'warehouse_id' => $line->warehouse_id ?? $locked->warehouse_id,
@@ -371,6 +377,7 @@ class DeliveryNoteService
             }
 
             return $this->salesInvoiceService->create([
+                'prices_include_tax' => DocumentTaxMode::of($locked),
                 'customer_id' => (string) $locked->customer_id,
                 'warehouse_id' => (int) $locked->warehouse_id,
                 'currency_id' => $order?->currency_id ?? Currency::getPrimary()?->id,
@@ -500,6 +507,24 @@ class DeliveryNoteService
             return;
         }
 
+        if (RecipeConsumption::isMadeOnSale($item)) {
+            // Made on sale: the recipe's ingredients leave stock, not the item itself.
+            $tag = 'DN '.$note->delivery_number.' '.RecipeConsumption::TAG.' '.$item->item_code;
+            foreach (RecipeConsumption::ingredients($item, (string) $line->base_quantity, 'DELIVERY_NOTE') as $ingredient) {
+                $this->stockMovementService->post(StockMovementData::forRecipeIngredient(
+                    itemId: (string) $ingredient['item']->id,
+                    warehouseId: $warehouseId,
+                    quantityDelta: Decimal::neg($ingredient['base_quantity'], 6),
+                    documentId: (string) $note->id,
+                    notes: $tag,
+                    userId: $userId,
+                    referenceType: DeliveryNote::REFERENCE_TYPE,
+                ));
+            }
+
+            return;
+        }
+
         if (! $item->track_inventory) {
             return;
         }
@@ -518,11 +543,12 @@ class DeliveryNoteService
         )->withSerials($line->serial_numbers, 'customer', (string) $note->customer_id));
     }
 
-    private function catalogPrice(DeliveryNoteLine $line): string
+    /** The unit's selling price (written in the company's mode), in the note's mode. */
+    private function catalogPrice(DeliveryNoteLine $line, bool $noteIncludesTax): string
     {
         $price = $line->item_uom_id !== null ? ItemUom::query()->whereKey($line->item_uom_id)->value('selling_price') : null;
 
-        return Decimal::of($price ?? 0);
+        return DocumentTaxMode::convertForItem(Decimal::of($price ?? 0), (string) $line->item_id, DocumentTaxContext::pricesIncludeTax(), $noteIncludesTax);
     }
 
     private function lockDraft(DeliveryNote $note): DeliveryNote

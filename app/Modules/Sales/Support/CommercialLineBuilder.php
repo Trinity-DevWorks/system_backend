@@ -18,9 +18,8 @@ final class CommercialLineBuilder
      * @param  list<array<string, mixed>>  $lines
      * @return list<array<string, mixed>>
      */
-    public static function rows(array $lines, Customer $customer, string $date, string $codePrefix): array
+    public static function rows(array $lines, Customer $customer, string $date, string $codePrefix, bool $includeTax): array
     {
-        $includeTax = DocumentTaxContext::pricesIncludeTax();
         $out = [];
 
         foreach (array_values($lines) as $index => $row) {
@@ -72,9 +71,8 @@ final class CommercialLineBuilder
      * @param  iterable<int, array<string, mixed>|object>  $rows
      * @return array{subtotal:string,discount_total:string,tax_total:string,grand_total:string}
      */
-    public static function totals(iterable $rows): array
+    public static function totals(iterable $rows, bool $includeTax): array
     {
-        $includeTax = DocumentTaxContext::pricesIncludeTax();
         $linePayload = [];
         foreach ($rows as $line) {
             $quantity = is_array($line) ? (string) $line['quantity'] : (string) $line->quantity;
@@ -130,24 +128,33 @@ final class CommercialLineBuilder
      *
      * @param  iterable<int, Model>  $lines  line models with quantity, unit_price, discount_percent, tax_rate
      */
-    public static function applyHeaderDiscount(iterable $lines, ?string $type, mixed $value): void
+    public static function applyHeaderDiscount(iterable $lines, ?string $type, mixed $value, bool $includeTax): void
     {
         $models = [];
-        $inputs = [];
         foreach ($lines as $line) {
             $models[] = $line;
+        }
+        $noDiscount = Item::query()
+            ->whereIn('id', array_values(array_unique(array_filter(array_map(fn (Model $l): ?string => $l->getAttribute('item_id') !== null ? (string) $l->getAttribute('item_id') : null, $models)))))
+            ->where('allow_discount', false)
+            ->pluck('id')
+            ->map(fn ($id): string => (string) $id)
+            ->all();
+        $inputs = [];
+        foreach ($models as $line) {
             $inputs[] = [
                 'quantity' => (string) $line->getAttribute('quantity'),
                 'unit_price' => (string) $line->getAttribute('unit_price'),
                 'discount_percent' => (string) $line->getAttribute('discount_percent'),
                 'tax_rate' => (string) $line->getAttribute('tax_rate'),
+                'no_header_discount' => in_array((string) $line->getAttribute('item_id'), $noDiscount, true),
             ];
         }
         if ($models === []) {
             return;
         }
 
-        $maths = DocumentTaxMath::lines($inputs, $type, $value ?? '0', DocumentTaxContext::pricesIncludeTax());
+        $maths = DocumentTaxMath::lines($inputs, $type, $value ?? '0', $includeTax);
         foreach ($models as $i => $line) {
             $line->forceFill([
                 'discount_amount' => $maths[$i]['discount_amount'],

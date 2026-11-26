@@ -14,6 +14,7 @@ use App\Modules\Reports\Services\FixedAssetReportService;
 use App\Modules\Reports\Services\SalesProfitService;
 use App\Modules\Reports\Services\SerialReportService;
 use App\Modules\Reports\Services\StockAnalyticsService;
+use App\Modules\Reports\Services\WasteReportService;
 use App\Modules\Reports\Support\AnalyticsReport;
 use App\Support\Export\TabularExportService;
 use Illuminate\Http\JsonResponse;
@@ -32,7 +33,9 @@ class AnalyticsReportController extends Controller
         'serials-in-stock' => ['serials_in_stock_title', 'serials-in-stock'],
         'serials-sold' => ['serials_sold_title', 'serials-sold'],
         'warranty-expiring' => ['warranty_expiring_title', 'warranty-expiring'],
+        'waste' => ['waste_title', 'waste'],
         'dead-stock' => ['dead_stock_title', 'dead-stock'],
+        'negative-stock' => ['negative_stock_title', 'negative-stock'],
         'item-movement' => ['item_movement_title', 'item-movement'],
         'cash-flow' => ['cash_flow_title', 'cash-flow'],
         'general-ledger' => ['general_ledger_title', 'general-ledger'],
@@ -54,6 +57,7 @@ class AnalyticsReportController extends Controller
         private readonly PriceReportService $prices,
         private readonly BudgetReportService $budgets,
         private readonly SerialReportService $serials,
+        private readonly WasteReportService $waste,
         private readonly TabularExportService $tabularExportService,
     ) {}
 
@@ -98,7 +102,9 @@ class AnalyticsReportController extends Controller
             'serials-in-stock' => $this->serials->inStock($warehouse, $request->textFilter('item_id'), $list),
             'serials-sold' => $this->serials->sold($from, $to, $warehouse, $request->textFilter('item_id'), $list),
             'warranty-expiring' => $this->serials->warrantyExpiring($request->intFilter('days'), $request->boolFilter('include_expired'), $warehouse, $request->textFilter('item_id'), $list),
+            'waste' => $this->waste->waste($from, $to, $branch, $request->textFilter('item_id'), $request->textFilter('source'), $list),
             'dead-stock' => $this->stock->deadStock($request->intFilter('days'), $warehouse, $list),
+            'negative-stock' => $this->stock->negativeStock($warehouse, $request->textFilter('item_id'), $list),
             'item-movement' => $this->itemMovement($request, $from, $to, $warehouse),
             'cash-flow' => $this->accounting->cashFlow($from, $to, $branch),
             'general-ledger' => $this->accounting->generalLedger($from, $to, $branch, $request->textFilter('account_from'), $request->textFilter('account_to'), $list),

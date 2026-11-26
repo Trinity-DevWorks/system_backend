@@ -24,6 +24,8 @@ return new class extends Migration
             $table->date('valid_from')->nullable();
             $table->date('valid_to')->nullable();
             $table->boolean('is_default')->default(false);
+            // Are this list's prices with VAT included? New lists start from the company setting.
+            $table->boolean('prices_include_tax')->default(false);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 

@@ -16,19 +16,14 @@ return new class extends Migration
             $table->foreignUuid('item_id')->constrained('items')->cascadeOnDelete();
             $table->foreignId('uom_id')->constrained('unit_of_measurements')->restrictOnDelete();
             $table->decimal('conversion_factor', 24, 12)->default(1);
-            $table->string('barcode', 128)->nullable();
             $table->decimal('selling_price', 20, 6)->nullable();
             $table->decimal('cost_price', 20, 6)->nullable();
-            $table->decimal('takeaway_price', 20, 6)->nullable();
-            $table->decimal('dine_in_price', 20, 6)->nullable();
-            $table->decimal('delivery_price', 20, 6)->nullable();
             $table->boolean('is_base')->default(false);
             $table->boolean('is_default_sale')->default(false);
             $table->boolean('is_default_purchase')->default(false);
             $table->timestamps();
 
             $table->unique(['item_id', 'uom_id']);
-            $table->unique('barcode');
             $table->index('item_id');
         });
     }

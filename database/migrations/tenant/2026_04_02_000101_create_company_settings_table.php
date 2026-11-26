@@ -27,6 +27,9 @@ return new class extends Migration
             $table->unsignedTinyInteger('fiscal_year_start_month')->default(1);
             $table->date('books_closed_through')->nullable();
             $table->string('chart_template', 32)->nullable();
+            $table->boolean('auto_depreciation')->default(false);
+            $table->boolean('budget_warnings_enabled')->default(true);
+            $table->string('budget_warning_scope', 8)->default('month');
             $table->timestamps();
         });
     }

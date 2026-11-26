@@ -49,6 +49,9 @@ class UpdateSalesInvoiceRequest extends FormRequest
             'notes' => ['nullable', 'string', 'max:2000'],
             'header_discount_type' => ['nullable', 'string', 'in:percent,amount'],
             'header_discount_value' => ['nullable', 'numeric', 'min:0', 'max:9999999999999999'],
+            // Sent with the header, the lines are saved in the same call.
+            ...(new SyncSalesInvoiceLinesRequest)->rules(),
+            'lines' => ['sometimes', 'array'],
         ];
     }
 }

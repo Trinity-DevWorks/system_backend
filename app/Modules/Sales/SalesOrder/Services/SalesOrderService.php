@@ -18,6 +18,8 @@ use App\Modules\Sales\SalesOrder\Support\SalesOrderRules;
 use App\Modules\Sales\SalesQuotation\Models\SalesQuotation;
 use App\Modules\Sales\Support\CommercialLineBuilder;
 use App\Modules\Sales\Support\DiscountGuard;
+use App\Modules\Sales\Support\DocumentTaxMode;
+use App\Modules\Sales\Support\ItemPriceRules;
 use App\Modules\Warehouse\Services\WarehouseService;
 use App\Support\Decimal;
 use App\Support\DocumentNumberService;
@@ -88,6 +90,7 @@ class SalesOrderService
                 'created_by' => $userId,
             ]);
             app(DocumentNumberService::class)->assign($order, 'order_number', DocumentType::SalesOrder, $order->branch_id !== null ? (int) $order->branch_id : null, $order->order_date);
+            DocumentTaxMode::stamp($order, isset($data['prices_include_tax']) ? (bool) $data['prices_include_tax'] : null, (string) $order->customer_id, $order->branch_id !== null ? (int) $order->branch_id : null, $order->order_date->toDateString(), (int) $order->currency_id);
 
             $this->replaceLines($order, $data['lines'] ?? []);
 
@@ -119,6 +122,7 @@ class SalesOrderService
             'header_discount_type' => $quotation->header_discount_type,
             'header_discount_value' => $quotation->header_discount_value,
             'sales_quotation_id' => $quotation->id,
+            'prices_include_tax' => DocumentTaxMode::of($quotation),
             'lines' => $quotation->lines->map(fn ($line): array => [
                 'item_id' => $line->item_id,
                 'item_uom_id' => $line->item_uom_id,
@@ -198,11 +202,11 @@ class SalesOrderService
     }
 
     /**
-     * @param  array{email?: mixed, password?: mixed}|null  $discountApproval  manager login when the discount is above the user's limit
+     * @param  array{approver_id?: mixed, pin?: mixed}|null  $approval  a manager's PIN when the discount or the credit limit needs approval
      */
-    public function confirm(SalesOrder $order, ?string $userId, ?array $discountApproval = null): SalesOrder
+    public function confirm(SalesOrder $order, ?string $userId, ?array $approval = null): SalesOrder
     {
-        return DB::transaction(function () use ($order, $userId, $discountApproval): SalesOrder {
+        return DB::transaction(function () use ($order, $userId, $approval): SalesOrder {
             $locked = $this->lockDraft($order);
             $customer = SalesOrderRules::assertCustomer((string) $locked->customer_id);
             $lines = SalesOrderLine::query()->where('sales_order_id', $locked->id)->orderBy('id')->get();
@@ -216,8 +220,9 @@ class SalesOrderService
                     ]);
                 }
             }
-            $approvedBy = app(DiscountGuard::class)->assert($locked, $lines, $discountApproval);
-            app(CreditLimitGuard::class)->assert($customer, (int) $locked->currency_id, (string) $locked->grand_total);
+            ItemPriceRules::assert($locked, $lines, (string) $locked->customer_id, (int) $locked->currency_id, $locked->exchange_rate, $locked->order_date->toDateString(), $locked->branch_id !== null ? (int) $locked->branch_id : null, 'SALES_ORDER');
+            $approvedBy = app(DiscountGuard::class)->assert($locked, $lines, $approval);
+            app(CreditLimitGuard::class)->assert($customer, (int) $locked->currency_id, (string) $locked->grand_total, null, $approval, $locked->branch_id !== null ? (int) $locked->branch_id : null, 'sales_order', (string) $locked->id);
             $locked->update([
                 'discount_approved_by' => $approvedBy,
                 'discount_approved_at' => $approvedBy !== null ? now() : null,
@@ -388,6 +393,7 @@ class SalesOrderService
                 'notes' => $locked->notes,
                 ...CommercialLineBuilder::carriedHeaderDiscount($locked->loadMissing('lines')),
                 'sales_order_id' => $locked->id,
+                'prices_include_tax' => DocumentTaxMode::of($locked),
                 'lines' => array_map(fn (array $pair): array => [
                     'sales_order_line_id' => $pair[0]->id,
                     'item_id' => $pair[0]->item_id,
@@ -466,7 +472,7 @@ class SalesOrderService
     {
         $order->loadMissing('customer');
         $customer = $order->customer ?? SalesOrderRules::assertCustomer((string) $order->customer_id);
-        $rows = CommercialLineBuilder::rows($lines, $customer, $order->order_date->toDateString(), 'SALES_ORDER');
+        $rows = CommercialLineBuilder::rows($lines, $customer, $order->order_date->toDateString(), 'SALES_ORDER', DocumentTaxMode::of($order));
 
         SalesOrderLine::query()->where('sales_order_id', $order->id)->delete();
         foreach ($rows as $row) {
@@ -483,7 +489,7 @@ class SalesOrderService
     private function recalculateTotals(SalesOrder $order): void
     {
         $rows = SalesOrderLine::query()->where('sales_order_id', $order->id)->orderBy('sort_order')->orderBy('id')->get();
-        CommercialLineBuilder::applyHeaderDiscount($rows, $order->header_discount_type, $order->header_discount_value);
-        $order->update(CommercialLineBuilder::totals($rows));
+        CommercialLineBuilder::applyHeaderDiscount($rows, $order->header_discount_type, $order->header_discount_value, DocumentTaxMode::of($order));
+        $order->update(CommercialLineBuilder::totals($rows, DocumentTaxMode::of($order)));
     }
 }

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Support\DocumentPdf;
 
+use App\Modules\CompanySetting\Models\CompanySetting;
 use BackedEnum;
+use Illuminate\Database\Eloquent\Model;
 
 final class DocumentPdfSupport
 {
@@ -117,6 +119,10 @@ final class DocumentPdfSupport
             $rows[] = ['label' => $labels['adjustment'], 'value' => $money->money($doc->adjustment)];
         }
         $rows[] = ['label' => $labels['grand_total'], 'value' => $money->money($doc->grand_total ?? 0), 'emphasis' => true];
+        // Sales documents say once whether their prices include VAT.
+        if ($doc instanceof Model && array_key_exists('prices_include_tax', $doc->getAttributes()) && CompanySetting::current()->tax_enabled) {
+            $rows[] = ['label' => $doc->getAttribute('prices_include_tax') ? $labels['prices_incl_tax'] : $labels['prices_excl_tax'], 'value' => ''];
+        }
 
         if ($includeSettlement) {
             if (isset($doc->paid_total)) {
@@ -276,8 +282,8 @@ final class DocumentPdfSupport
 
             $equivalent = null;
             $receipt = $payment->customerReceipt ?? null;
-            $applied = null;
-            if ($receipt !== null) {
+            $applied = $payment->applied_amount ?? null;
+            if ($applied === null && $receipt !== null) {
                 $applied = collect($receipt->allocations ?? [])->firstWhere('sales_invoice_id', $invoice->id)?->applied_amount;
             }
             if ($code !== $invoiceCode && $applied !== null) {
@@ -301,7 +307,13 @@ final class DocumentPdfSupport
             if ($payment->reference !== null && $payment->reference !== '' && empty($payment->cheque_number)) {
                 $details[] = $labels['reference'].': '.$payment->reference;
             }
-            if ($receipt !== null && $applied !== null && isset($receipt->amount)) {
+            if (! empty($payment->bounced_on)) {
+                $details[] = $labels['bounced'].': '.$money->date($payment->bounced_on);
+            }
+            if (($payment->extra_credit ?? null) !== null && (float) $payment->extra_credit > 0) {
+                // Kept on the invoice as customer credit, in the invoice currency.
+                $details[] = $labels['kept_as_credit'].': '.$money->money($payment->extra_credit).' '.$invoiceCode;
+            } elseif ($receipt !== null && $applied !== null && isset($receipt->amount)) {
                 $allocated = collect($receipt->allocations ?? [])->sum(fn ($a): float => (float) $a->amount);
                 $kept = round((float) $receipt->amount - $allocated, 4);
                 if ($kept > 0.00005) {

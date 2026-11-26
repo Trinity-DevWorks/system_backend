@@ -326,7 +326,7 @@ class SalesProfitService
             $out[$doc] ??= ['item' => [], 'bundle' => [], 'qty' => []];
             $value = Decimal::abs($row->value_delta);
             $bundleCode = $this->bundleCode((string) ($row->notes ?? ''));
-            if (in_array($row->type, ['bundle_sale'], true) || ($row->type === 'sales_return' && $bundleCode !== null)) {
+            if (in_array($row->type, ['bundle_sale', 'recipe_sale'], true) || ($row->type === 'sales_return' && $bundleCode !== null)) {
                 if ($bundleCode !== null) {
                     $out[$doc]['bundle'][$bundleCode] = Decimal::add($out[$doc]['bundle'][$bundleCode] ?? '0', $value);
                 }
@@ -375,14 +375,17 @@ class SalesProfitService
         return $out;
     }
 
+    /** Code of the bundle or made-on-sale item a component movement belongs to ("… bundle CODE" / "… recipe CODE"). */
     private function bundleCode(string $notes): ?string
     {
-        $pos = strrpos($notes, ' bundle ');
-        if ($pos === false) {
-            return null;
+        foreach ([' bundle ', ' recipe '] as $tag) {
+            $pos = strrpos($notes, $tag);
+            if ($pos !== false) {
+                return trim(substr($notes, $pos + strlen($tag)));
+            }
         }
 
-        return trim(substr($notes, $pos + 8));
+        return null;
     }
 
     /**

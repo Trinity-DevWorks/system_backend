@@ -74,7 +74,8 @@ final class PartySubledger
         }
 
         $invoiceType = $partyType === 'customer' ? 'invoice' : 'purchase_invoice';
-        $invoiceIds = $foreign->where('reference_type', $invoiceType)->pluck('reference_id')->filter()->unique()->all();
+        // A payment taken with a sales invoice sits on the invoice's rate (reference = the invoice).
+        $invoiceIds = $foreign->whereIn('reference_type', [$invoiceType, 'sale_payment'])->pluck('reference_id')->filter()->unique()->all();
         $invoiceRates = $invoiceIds === []
             ? []
             : DB::table($invoiceTable)->whereIn('id', $invoiceIds)->pluck('exchange_rate', 'id')->all();
@@ -100,7 +101,7 @@ final class PartySubledger
                 ? JournalMath::sub($entry->debit, $entry->credit)
                 : JournalMath::sub($entry->credit, $entry->debit);
             $primaryAmount = match ((string) $entry->reference_type) {
-                $invoiceType => $this->convert($net, (string) ($invoiceRates[$entry->reference_id] ?? '1')),
+                $invoiceType, 'sale_payment' => $this->convert($net, (string) ($invoiceRates[$entry->reference_id] ?? '1')),
                 'payment' => $this->scaleToBundle($net, $allocations[$entry->reference_id.'|'.$entry->currency_id] ?? null),
                 $noteType => $this->convert($net, (string) ($noteRates[$entry->reference_id] ?? '1')),
                 'refund' => $this->scaleToBundle($net, $refunds[$entry->reference_id.'|'.$entry->currency_id] ?? null),

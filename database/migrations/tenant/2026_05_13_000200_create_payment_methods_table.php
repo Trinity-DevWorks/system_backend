@@ -16,6 +16,8 @@ return new class extends Migration
             $table->string('name');
             /** cash | card | bank_transfer | cheque | digital_wallet | credit | other */
             $table->string('type', 32)->index();
+            // The brand or network behind a generic type, e.g. Visa / Mastercard (card), Whish Money (digital wallet).
+            $table->string('provider', 64)->nullable();
             $table->foreignId('currency_id')->nullable()->constrained('currencies')->nullOnDelete();
             $table->boolean('requires_reference')->default(false);
             $table->boolean('supports_change')->default(false);

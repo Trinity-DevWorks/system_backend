@@ -35,6 +35,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'tax_amount',
     'line_total',
     'restock',
+    'return_action',
+    'waste_value',
     'description',
     'sort_order',
 ])]
@@ -60,6 +62,7 @@ class SalesCreditNoteLine extends Model
             'tax_amount' => 'decimal:4',
             'line_total' => 'decimal:4',
             'restock' => 'boolean',
+            'waste_value' => 'decimal:4',
             'sort_order' => 'integer',
         ];
     }
