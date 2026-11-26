@@ -284,7 +284,7 @@ Route::middleware([
 
             Route::get('overview', [OverviewController::class, 'show']);
 
-            Route::middleware(['check.permission:business_reports,view'])->group(function () {
+            Route::middleware(['ensure.module:reports', 'check.permission:business_reports,view'])->group(function () {
                 Route::middleware(['ensure.module:sales'])->group(function () {
                     Route::get('reports/sales-by-period', [ReportController::class, 'salesByPeriod']);
                     Route::get('reports/customer-aging', [ReportController::class, 'customerAging']);
@@ -315,7 +315,7 @@ Route::middleware([
                     ->middleware('ensure.module:purchasing');
             });
 
-            Route::middleware(['check.permission:business_reports,export'])->group(function () {
+            Route::middleware(['ensure.module:reports', 'check.permission:business_reports,export'])->group(function () {
                 Route::middleware(['ensure.module:sales'])->group(function () {
                     Route::get('reports/sales-by-period/export', [ReportController::class, 'exportSalesByPeriod']);
                     Route::get('reports/customer-aging/export', [ReportController::class, 'exportCustomerAging']);

@@ -15,7 +15,7 @@ return [
             'description' => 'Users, roles, permissions, company profile, company settings, branches, notifications, and base tenant access.',
             'is_core' => true,
             'sort_order' => 10,
-            'resources' => ['users', 'roles', 'permissions', 'company_profile', 'company_settings', 'subscription', 'document_numbering', 'print_settings', 'branches', 'notifications', 'business_reports'],
+            'resources' => ['users', 'roles', 'permissions', 'company_profile', 'company_settings', 'subscription', 'document_numbering', 'print_settings', 'branches', 'notifications'],
         ],
         'master_data' => [
             'name' => 'Master Data',
@@ -67,6 +67,15 @@ return [
             'is_core' => false,
             'sort_order' => 60,
             'resources' => ['accounts', 'account_mappings', 'journal_entries', 'accounting_reports', 'vat_settlements', 'currency_revaluations', 'accounting_periods', 'budgets', 'cash_bank_accounts', 'treasury_transfers', 'expense_vouchers', 'recurring_entries', 'deferral_schedules', 'fixed_asset_categories', 'fixed_assets', 'depreciation_runs'],
+        ],
+        // Business reports (sales, purchasing, inventory). Each report also needs the module
+        // whose data it shows; Accounting's financial statements stay in Accounting.
+        'reports' => [
+            'name' => 'Reports',
+            'description' => 'Sales, purchasing and inventory reports and analytics.',
+            'is_core' => false,
+            'sort_order' => 70,
+            'resources' => ['business_reports'],
         ],
     ],
 
